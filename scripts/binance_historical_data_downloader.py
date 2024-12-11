@@ -1,6 +1,4 @@
 # binance_historical_data_downloader.py
-# binance_historical_data_downloader.py
-# binance_historical_data_downloader.py
 import os
 import sys
 import requests

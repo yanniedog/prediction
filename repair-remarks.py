@@ -8,7 +8,7 @@ def process_python_files(directory, exclude_file=None, exclude_dirs=None):
     for root, dirs, files in os.walk(directory):
         dirs[:] = [d for d in dirs if d not in exclude_dirs]
         for file in files:
-            if file.endswith('.py'):
+            if file.endswith('.py') and file != 'repair-remarks.py':
                 file_path = os.path.join(root, file)
                 if exclude_file and file_path == exclude_file:
                     continue
@@ -21,11 +21,28 @@ def process_file(file_path, filename):
         
         correct_comment = f'# {filename}'
         
-        if lines and lines[0].strip() == correct_comment:
-            modified_lines = [line for line in lines if not (line.strip().startswith('#') and line.strip() != correct_comment)]
-        else:
-            modified_lines = [f'{correct_comment}\n']
-            modified_lines.extend([line for line in lines if not (line.strip().startswith('#') and line.strip() != correct_comment)])
+        # Remove any in-line comments that are not the correct comment
+        modified_lines = []
+        found_correct_comment = False
+        
+        for line in lines:
+            stripped_line = line.strip()
+            if stripped_line == correct_comment:
+                if not found_correct_comment:
+                    modified_lines.append(line)
+                    found_correct_comment = True
+            else:
+                # Remove in-line comments
+                if '#' in line:
+                    code_part, _, _ = line.partition('#')
+                    if code_part.strip():  # Ensure there is code before the comment
+                        modified_lines.append(code_part.rstrip() + '\n')
+                else:
+                    modified_lines.append(line)
+        
+        # Ensure there is exactly one correct comment at the top
+        if not found_correct_comment:
+            modified_lines.insert(0, f'{correct_comment}\n')
         
         with open(file_path, 'w', encoding='utf-8') as f:
             f.writelines(modified_lines)

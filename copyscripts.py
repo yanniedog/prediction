@@ -1,12 +1,11 @@
 # copyscripts.py
-# copyscripts.py
 import os
 import sys
 import argparse
 from datetime import datetime
 import shutil
 from collections import defaultdict
-import chardet  # For encoding detection
+import chardet
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="Generate a .GPT file containing contents of specified scripts."
@@ -103,7 +102,7 @@ def read_file_contents(file_path):
         result = chardet.detect(raw_data)
         encoding = result['encoding']
         content = raw_data.decode(encoding, errors='replace')
-        return content.replace('\r\n', '\n')  # Standardize line endings
+        return content.replace('\r\n', '\n')
     except Exception as e:
         print(f"Error reading file '{file_path}': {e}")
         return "[Error reading file]"
@@ -156,7 +155,7 @@ if __name__ == "__main__":
     output_path = os.path.join(current_dir, output_filename)
     script_filename = os.path.basename(__file__).lower()
     excluded_filenames = {script_filename, 'parsetab.py', 'copyscripts.py', 'repair-remarks.py', 'cspell.json'}
-    extensions = ['.py', '.ps']  # Include .ps files
+    extensions = ['.py', '.ps']
     if args.extensions:
         additional_ext = [ext.lower() if ext.startswith('.') else f".{ext.lower()}" for ext in args.extensions]
         extensions.extend(additional_ext)

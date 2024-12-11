@@ -1,6 +1,4 @@
 # restore_backup.py
-# restore_backup.py
-# restore_backup.py
 import os
 from pathlib import Path
 def rename_files(directory):
