@@ -11,23 +11,24 @@ from correlation_database import CorrelationDatabase
 from visualization_utils import generate_individual_indicator_chart
 from datetime import datetime
 
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def calculate_correlation(data: pd.DataFrame, indicator_name: str, lag: int, is_reverse_chronological: bool) -> float:
     """
-    Calculate the correlation between a given indicator and the Close price with a specified lag.
-    
+    Calculate the Pearson correlation coefficient between the indicator and Close price at a given lag.
+
     Parameters:
     - data: DataFrame containing the data.
     - indicator_name: Name of the indicator column.
     - lag: Lag value.
     - is_reverse_chronological: Boolean indicating if the data is in reverse chronological order.
-    
+
     Returns:
     - Correlation coefficient as a float.
     """
     if indicator_name.lower() == 'close':
-        return np.nan
+        return np.nan  # Skip correlation with itself
 
     shift_value = lag if is_reverse_chronological else -lag
     shifted_col = data[indicator_name].shift(shift_value)
@@ -41,10 +42,10 @@ def calculate_correlation(data: pd.DataFrame, indicator_name: str, lag: int, is_
 def is_valid_indicator(series: pd.Series) -> bool:
     """
     Check if the indicator series is valid (not all NaNs and has more than one unique value).
-    
+
     Parameters:
     - series: Pandas Series of the indicator.
-    
+
     Returns:
     - Boolean indicating validity.
     """
@@ -61,7 +62,7 @@ def load_or_calculate_correlations(
     """
     Load existing correlations from the database or calculate and insert them if they do not exist.
     After calculating all correlations for an indicator, generate an individual indicator chart.
-    
+
     Parameters:
     - data: DataFrame containing the data.
     - original_indicators: List of indicator column names.
@@ -70,29 +71,38 @@ def load_or_calculate_correlations(
     - symbol: Trading symbol (e.g., 'SOLUSDT').
     - timeframe: Timeframe interval (e.g., '1w').
     """
+    # Initialize CorrelationDatabase
     correlation_db = CorrelationDatabase(DB_PATH)
 
+    # Initialize a dictionary to store correlations per indicator
     indicator_correlations = {}
 
+    # Iterate through each indicator
     for indicator in tqdm(original_indicators, desc="Calculating correlations", unit="indicator"):
         if not is_valid_indicator(data[indicator]):
             logging.warning(f"Indicator '{indicator}' is not valid. Skipping.")
             continue
 
+        # List to hold correlation values for all lags of this indicator
         corr_values = []
 
+        # Iterate through each lag
         for lag in range(1, max_lag + 1):
+            # Calculate correlation
             corr_value = calculate_correlation(data, indicator, lag, is_reverse_chronological)
             corr_values.append(corr_value)
 
+            # Insert or update correlation in the database
             try:
                 correlation_db.insert_correlation(symbol, timeframe, indicator, lag, corr_value)
             except Exception as e:
                 logging.error(f"Failed to insert correlation for {indicator} at lag {lag}: {e}")
-                continue
+                continue  # Skip to next lag
 
+        # Store the correlations for this indicator
         indicator_correlations[indicator] = corr_values
 
+        # Generate individual indicator chart after all lags are processed
         try:
             timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
             base_csv_filename = f"{symbol}_{timeframe}"
@@ -105,8 +115,9 @@ def load_or_calculate_correlations(
             )
         except Exception as e:
             logging.error(f"Failed to generate chart for {indicator}: {e}")
-            continue
+            continue  # Continue processing other indicators
 
+    # Close the database connection
     correlation_db.close()
 
 def get_all_correlations(
@@ -118,14 +129,14 @@ def get_all_correlations(
 ) -> List[float]:
     """
     Retrieve all correlation values for a specific symbol, timeframe, and indicator up to max_lag.
-    
+
     Parameters:
     - conn: SQLite3 connection object.
     - symbol_id: ID of the symbol in the database.
     - timeframe_id: ID of the timeframe in the database.
     - indicator_id: ID of the indicator in the database.
     - max_lag: Maximum lag to retrieve correlations for.
-    
+
     Returns:
     - List of correlation values ordered by lag ascending.
     """
