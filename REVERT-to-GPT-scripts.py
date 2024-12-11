@@ -1,16 +1,15 @@
+# REVERT-to-GPT-scripts.py
 import os
 import sys
 import re
 import logging
 from pathlib import Path
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# Files to exclude from management
 EXCLUDED_FILES = {
     '.gitignore',
     'copyscripts.py',
@@ -18,7 +17,6 @@ EXCLUDED_FILES = {
     'REVERT-to-GPT-scripts.py'
 }
 
-# Directories to manage
 MANAGED_DIRECTORIES = [
     Path.cwd(),
     Path.cwd() / 'scripts'
@@ -107,15 +105,10 @@ def parse_gptbak_file(gptbak_filepath: Path):
     with gptbak_filepath.open('r', encoding='utf-8') as file:
         content = file.read()
     
-    # Split the content into sections based on separators (5 or more equal signs)
     sections = re.split(r'={5,}', content)
     
     scripts = []
     
-    # Pattern to match script headers, e.g.,
-    # 1) launch.py (located in the working directory):
-    # or
-    # 2) backup_cleanup.py (located in the 'scripts' subdirectory):
     script_header_pattern = re.compile(
         r'^\s*\d+\)\s+([^\s]+)\s+\(located in the (working directory|\'([^\']+)\' subdirectory)\):\s*\n',
         re.MULTILINE
@@ -126,9 +119,8 @@ def parse_gptbak_file(gptbak_filepath: Path):
         if match:
             filename = match.group(1).strip()
             location = match.group(2).strip()
-            subdirectory = match.group(3)  # This will be None if location is 'working directory'
+            subdirectory = match.group(3)
             
-            # Ensure the script is located in managed directories
             if location == 'working directory':
                 target_dir = Path.cwd()
             elif subdirectory and subdirectory == 'scripts':
@@ -141,12 +133,9 @@ def parse_gptbak_file(gptbak_filepath: Path):
                 logging.info(f"Skipping excluded file: '{filename}'.")
                 continue
             
-            # Extract the script content after the header line
-            # Find the position where the match ends
             start_pos = match.end()
             script_content = section[start_pos:].strip()
             
-            # Remove any leading/trailing delimiters or newlines
             script_content = script_content.strip('`').strip()
             
             scripts.append({
@@ -155,7 +144,7 @@ def parse_gptbak_file(gptbak_filepath: Path):
                 'content': script_content
             })
         else:
-            continue  # Non-script sections are ignored
+            continue
     
     return scripts
 
@@ -169,8 +158,6 @@ def sanitize_filename_comment(comment: str) -> str:
     Returns:
     - A sanitized version of the comment string.
     """
-    # Remove or replace invalid characters
-    # For Windows, invalid characters: < > : " / \ | ? *
     invalid_chars = r'<>:"/\|?*'
     sanitized = ''.join(['_' if c in invalid_chars else c for c in comment])
     return sanitized
@@ -210,7 +197,6 @@ def find_existing_scripts(managed_dirs: list, filename: str) -> list:
     """
     existing_scripts = []
     for directory in managed_dirs:
-        # Search only in the specified directory, not recursively
         for file_path in directory.glob(filename):
             if file_path.name in EXCLUDED_FILES:
                 continue
@@ -230,11 +216,9 @@ def replace_scripts(scripts: list, managed_dirs: list):
         target_dir = script['directory']
         content = script['content']
         
-        # Ensure target directory is absolute
         if not target_dir.is_absolute():
             target_dir = Path.cwd() / target_dir
         
-        # Ensure target directory exists
         try:
             target_dir.mkdir(parents=True, exist_ok=True)
             logging.info(f"Ensured directory exists: {target_dir}")
@@ -242,7 +226,6 @@ def replace_scripts(scripts: list, managed_dirs: list):
             logging.error(f"Failed to create directory '{target_dir}': {e}")
             continue
         
-        # Find and delete existing scripts with the same filename within managed directories
         existing_scripts = find_existing_scripts(managed_dirs, filename)
         for existing_script in existing_scripts:
             try:
@@ -251,10 +234,8 @@ def replace_scripts(scripts: list, managed_dirs: list):
             except Exception as e:
                 logging.error(f"Failed to delete '{existing_script}': {e}")
         
-        # Define the path for the new script
         new_script_path = target_dir / filename
         
-        # Write the new script content
         try:
             with new_script_path.open('w', encoding='utf-8') as f:
                 f.write(content)
@@ -300,18 +281,15 @@ def main():
         
         if not scripts:
             logging.warning("No valid scripts found in the GPTBAK file.")
-            # Proceed to prompt for renaming even if no scripts were replaced
             prompt_amend_filename(selected_gptbak, selection_number)
-            continue  # Return to GPTBAK file selection
+            continue
         
         logging.info(f"Found {len(scripts)} scripts to replace.")
         
         replace_scripts(scripts, managed_dirs)
         
-        # Prompt to amend the GPTBAK file's filename
         prompt_amend_filename(selected_gptbak, selection_number)
         
-        # Check if there are more GPTBAK files to process
         remaining_gptbak_files = list_gptbak_files(working_dir)
         if not remaining_gptbak_files:
             logging.info("No more GPTBAK files to process. Exiting.")

@@ -1,4 +1,4 @@
-# filename: restore_backup.py
+# restore_backup.py
 import os
 from pathlib import Path
 

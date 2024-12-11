@@ -1,4 +1,4 @@
-# filename: backup_utils.py
+# backup_utils.py
 import os
 import sys
 import subprocess
@@ -11,9 +11,7 @@ def run_backup_cleanup() -> None:
             print(f"Backup script '{backup_script}' not found.")
             sys.exit(1)
         print(f"Executing backup script: {backup_script}")
-        # Capture output from subprocess so it also goes to the logfile
         result = subprocess.run([sys.executable, str(backup_script)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        # Print captured output to ensure it is logged by DoubleWriter
         if result.stdout:
             for line in result.stdout.splitlines():
                 print(line)

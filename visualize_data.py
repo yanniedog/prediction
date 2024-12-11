@@ -1,4 +1,4 @@
-# filename: visualize_data.py
+# visualize_data.py
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
