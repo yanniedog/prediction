@@ -186,6 +186,7 @@ def main() -> None:
     if missing_columns:
         logging.error(f"Missing required columns in data: {missing_columns}")
         sys.exit(1)
+    logging.info(f"All required columns are present: {required_columns}")
     
     # Prepare data
     X_scaled, feature_names = prepare_data(data)
@@ -243,7 +244,7 @@ def main() -> None:
         generate_combined_correlation_chart(
             correlations=correlations,
             max_lag=max_lag,
-            time_interval=time_interval,
+            time_interval=determine_time_interval(data),
             timestamp=new_timestamp,
             base_csv_filename=f"{symbol}_{timeframe}"
         )
@@ -259,7 +260,7 @@ def main() -> None:
             feature_columns=feature_names,
             timestamp=new_timestamp,
             is_reverse_chronological=is_reverse_chronological,
-            time_interval=time_interval,
+            time_interval=determine_time_interval(data),
             generate_charts=True,
             correlations=correlations,
             calculate_correlation_func=calculate_correlation,
@@ -274,7 +275,7 @@ def main() -> None:
         generate_heatmaps(
             data=data,
             timestamp=new_timestamp,
-            time_interval=time_interval,
+            time_interval=determine_time_interval(data),
             generate_heatmaps_flag=True,
             correlations=correlations,
             calculate_correlation=calculate_correlation,
@@ -306,7 +307,7 @@ def main() -> None:
             data=data,
             correlations=correlations,
             max_lag=max_lag,
-            time_interval=time_interval,
+            time_interval=determine_time_interval(data),
             timestamp=new_timestamp,
             base_csv_filename=f"{symbol}_{timeframe}",
             future_datetime=future_datetime,
@@ -322,7 +323,7 @@ def main() -> None:
             data=data,
             correlations=correlations,
             max_lag=max_lag,
-            time_interval=time_interval,
+            time_interval=determine_time_interval(data),
             timestamp=new_timestamp,
             base_csv_filename=f"{symbol}_{timeframe}",
             future_datetime=future_datetime,
