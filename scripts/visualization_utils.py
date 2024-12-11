@@ -7,6 +7,20 @@ import numpy as np
 from typing import Dict,List,Any,Callable
 from scipy.stats import t
 import pandas as pd
+def generate_individual_indicator_chart(indicator_name: str, lag: int, corr_value: float, timestamp: str, base_csv_filename: str):
+    charts_dir = 'indicator_charts'
+    os.makedirs(charts_dir, exist_ok=True)
+    plt.figure(figsize=(6,4))
+    plt.bar(lag, corr_value, color='green' if corr_value >=0 else 'red')
+    plt.title(f'Correlation for {indicator_name} at Lag {lag}')
+    plt.xlabel('Lag')
+    plt.ylabel('Correlation')
+    plt.ylim(-1, 1)
+    plt.grid(True, linestyle='--', linewidth=0.5)
+    filename = f"{timestamp}_{base_csv_filename}_{indicator_name}_lag_{lag}_correlation.png"
+    filepath = os.path.join(charts_dir, filename)
+    plt.savefig(filepath, bbox_inches='tight')
+    plt.close()
 def generate_combined_correlation_chart(correlations:Dict[str,List[float]],max_lag:int,time_interval:str,timestamp:str,base_csv_filename:str,output_dir:str='combined_charts')->None:
     os.makedirs(output_dir,exist_ok=True)
     max_positive_correlations=[]
