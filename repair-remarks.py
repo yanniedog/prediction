@@ -33,6 +33,7 @@ def process_file(file_path, filename):
         in_string = False
 
         for token in tokens:
+            print(f"Token type: {token.type}, String: {token.string}")
             if token.type == tokenize.COMMENT:
                 in_comment = True
             elif token.type == tokenize.STRING:
@@ -40,6 +41,7 @@ def process_file(file_path, filename):
             elif token.type == tokenize.NEWLINE:
                 if previous_token_type == tokenize.NEWLINE and not in_comment and not in_string:
                     # Skip blank line in code
+                    print("Skipping blank line")
                     continue
             elif token.type == tokenize.INDENT or token.type == tokenize.DEDENT:
                 # Manage indentation
@@ -61,6 +63,11 @@ def process_file(file_path, filename):
         # Write the new content back to the file
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(new_content)
+        
+        # Verify the file was written correctly
+        with open(file_path, 'r', encoding='utf-8') as f:
+            content_after = f.read()
+        assert content_after == new_content, "File content was not written correctly"
         
         new_length = len(new_content)
         characters_deleted = original_length - new_length
