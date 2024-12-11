@@ -67,7 +67,7 @@ def main():
     # List of directories to search
     directories = [os.getcwd(), os.path.join(os.getcwd(), 'scripts')]
     # List of directories to exclude
-    exclude_dirs = ['.venv']
+    exclude_dirs = ['.venv', 'venv', '_pycache_']
     for dir_path in directories:
         if os.path.exists(dir_path):
             process_python_files(dir_path, exclude_file=script_path, exclude_dirs=exclude_dirs)
