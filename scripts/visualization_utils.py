@@ -3,6 +3,7 @@
 import os
 import matplotlib.pyplot as plt
 from typing import List
+import logging
 
 def generate_individual_indicator_chart(
     indicator_name: str, 
@@ -38,6 +39,7 @@ def generate_individual_indicator_chart(
     filepath = os.path.join(charts_dir, filename)
     plt.savefig(filepath, bbox_inches='tight')
     plt.close()
+    logging.info(f"Generated individual indicator chart for {indicator_name} at {filepath}.")
 
 def generate_combined_correlation_chart(
     correlations: dict, 
@@ -90,6 +92,7 @@ def generate_combined_correlation_chart(
     combined_filename = f"{timestamp}_{base_csv_filename}_max_correlation.png"
     plt.savefig(os.path.join(output_dir, combined_filename), bbox_inches='tight')
     plt.close()
+    logging.info(f"Generated combined correlation chart at {os.path.join(output_dir, combined_filename)}.")
 
 def visualize_data(
     data: pd.DataFrame, 
@@ -133,5 +136,3 @@ def visualize_data(
         logging.info("Combined correlation chart generated successfully.")
     except Exception as e:
         logging.error(f"Error generating combined correlation chart: {e}")
-    
-    # Heatmaps will be generated separately

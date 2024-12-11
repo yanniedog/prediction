@@ -1,6 +1,7 @@
 # correlation_database.py
 
 import sqlite3
+from typing import List
 
 class CorrelationDatabase:
     def __init__(self, db_path: str):
