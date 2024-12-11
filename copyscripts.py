@@ -203,13 +203,11 @@ if __name__ == "__main__":
         print("No files found matching the specified criteria or all have duplicates.")
         sys.exit(0)
 
-    # Detect and read log files
     log_files = [os.path.join(current_dir, f) for f in os.listdir(current_dir) if f.endswith('.log')]
     print(f"Log files found: {log_files}")
     log_content = None
     if log_files:
-        log_content = read_file_contents(log_files[0])  # Read only the first log file found
+        log_content = read_file_contents(log_files[0])
 
-    # Generate and write the output file
     output_content = generate_output(unique_files, log_content)
     write_output_file(output_path, output_content)
