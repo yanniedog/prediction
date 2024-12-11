@@ -9,7 +9,6 @@ from config import DB_PATH
 from sqlite_data_manager import save_to_sqlite, create_connection, create_tables
 import logging
 
-# Configure logging for this module
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler(sys.stdout)
