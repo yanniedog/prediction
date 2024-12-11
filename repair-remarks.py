@@ -1,4 +1,4 @@
-# repair-filename-remarks.py
+# repair-remarks.py
 import os
 import sys
 

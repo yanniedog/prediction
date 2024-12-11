@@ -184,7 +184,7 @@ if __name__ == "__main__":
     output_path = os.path.join(current_dir, output_filename)
 
     script_filename = os.path.basename(__file__).lower()
-    excluded_filenames = {script_filename, 'parsetab.py', 'copyscripts.py', 'repair-filename-remarks.py', 'cspell.json'}
+    excluded_filenames = {script_filename, 'parsetab.py', 'copyscripts.py', 'repair-remarks.py', 'cspell.json'}
 
     extensions = ['.py', '.ps']  # Include .ps files
     if args.extensions:
