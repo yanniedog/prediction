@@ -25,6 +25,7 @@
         "dateutil",
         "DCPERIOD",
         "DCPHASE",
+        "dcpphase",
         "ddof",
         "DEMA",
         "differenced",
