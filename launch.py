@@ -53,5 +53,7 @@ try:
 except SystemExit as e:
     sys.exit(e.code)
 except Exception as e:
-    logging.exception("An error occurred while running the script.")
+    logging.exception("An error occurred while running the script.") #testing # testing 123456
     sys.exit(1)
+    
+    # hello
