@@ -13,10 +13,16 @@ def process_python_files(directory, excluded_files=None):
         for file in files:
             if file.endswith('.py') and file not in excluded_files:
                 file_path = os.path.join(root, file)
-                process_file(file_path, file)
+                yield file_path, file
 
 def process_file(file_path, filename):
     try:
+        # Read original content
+        with open(file_path, 'r', encoding='utf-8') as f:
+            original_content = f.read()
+            original_length = len(original_content)
+        
+        # Token processing
         with tokenize.open(file_path) as f:
             tokens = list(tokenize.generate_tokens(f.readline))
         
@@ -46,14 +52,11 @@ def process_file(file_path, filename):
             else:
                 new_tokens.append(token)
         
-        # If filename remark is not added, insert it
+        # Insert filename remark if not added
         if not filename_remark_added:
-            # Determine where to insert the filename remark
             if encoding_declared:
-                # Insert after the encoding declaration
                 insert_pos = 1
             else:
-                # Insert at the beginning
                 insert_pos = 0
             filename_token = tokenize.TokenInfo(
                 type=tokenize.COMMENT,
@@ -65,23 +68,43 @@ def process_file(file_path, filename):
             new_tokens.insert(insert_pos, filename_token)
         
         # Rebuild the file content
-        new_content = tokenize.untokenize(new_tokens).decode('utf-8')
+        content = tokenize.untokenize(new_tokens)
+        if isinstance(content, bytes):
+            new_content = content.decode('utf-8')
+        else:
+            new_content = content
+        
+        # Write the new content back to the file
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(new_content)
-        print(f"Modified {file_path}: Preserved encoding declaration and set correct filename remark.")
+        
+        new_length = len(new_content)
+        characters_deleted = original_length - new_length
+        print(f"Deleted {characters_deleted} characters from {file_path}.")
+        return characters_deleted
     except Exception as e:
         print(f"Error processing {file_path}: {e}")
         print(f"Exception type: {type(e)}, Exception args: {e.args}")
+        return 0
 
 def main():
-    script_path = sys.argv[0]
+    script_path = os.path.abspath(sys.argv[0])
     excluded_files = ['copyscripts.py', 'repair-remarks.py']
     directories = [os.getcwd()]
     scripts_dir = os.path.join(os.getcwd(), 'scripts')
     if os.path.isdir(scripts_dir):
         directories.append(scripts_dir)
+    
+    total_characters_deleted = 0
     for dir_path in directories:
-        process_python_files(dir_path, excluded_files)
+        for file_path, filename in process_python_files(dir_path, excluded_files):
+            # Exclude the script itself
+            if os.path.abspath(file_path) == script_path:
+                continue
+            deleted = process_file(file_path, filename)
+            total_characters_deleted += deleted
+    
+    print(f"Total characters deleted: {total_characters_deleted}")
 
 if __name__ == "__main__":
     main()
