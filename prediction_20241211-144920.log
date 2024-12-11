@@ -1,0 +1,10 @@
+2024-12-11 14:49:20,044 - INFO - Traceback (most recent call last):
+2024-12-11 14:49:20,044 - INFO - File "c:\code\prediction\launch.py", line 44, in <module>
+2024-12-11 14:49:20,044 - INFO - runpy.run_path("start.py", run_name="__main__")
+2024-12-11 14:49:20,044 - INFO - File "C:\Users\jkoka\.pyenv\pyenv-win\versions\3.10.0\lib\runpy.py", line 268, in run_path
+2024-12-11 14:49:20,044 - INFO - code, fname = _get_code_from_file(run_name, path_name)
+2024-12-11 14:49:20,044 - INFO - File "C:\Users\jkoka\.pyenv\pyenv-win\versions\3.10.0\lib\runpy.py", line 237, in _get_code_from_file
+2024-12-11 14:49:20,044 - INFO - with io.open_code(decoded_path) as f:
+2024-12-11 14:49:20,044 - INFO - FileNotFoundError
+2024-12-11 14:49:20,044 - INFO - :
+2024-12-11 14:49:20,044 - INFO - [Errno 2] No such file or directory: 'C:\\code\\prediction\\start.py'
