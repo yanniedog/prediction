@@ -11,6 +11,7 @@ from correlation_database import CorrelationDatabase
 from visualization_utils import generate_individual_indicator_chart
 from datetime import datetime
 
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def calculate_correlation(data: pd.DataFrame, indicator_name: str, lag: int, is_reverse_chronological: bool) -> float:
@@ -27,7 +28,7 @@ def calculate_correlation(data: pd.DataFrame, indicator_name: str, lag: int, is_
     - Correlation coefficient as a float.
     """
     if indicator_name.lower() == 'close':
-        return np.nan
+        return np.nan  # Skip correlation with itself
 
     shift_value = lag if is_reverse_chronological else -lag
     shifted_col = data[indicator_name].shift(shift_value)
@@ -70,29 +71,38 @@ def load_or_calculate_correlations(
     - symbol: Trading symbol (e.g., 'SOLUSDT').
     - timeframe: Timeframe interval (e.g., '1w').
     """
+    # Initialize CorrelationDatabase
     correlation_db = CorrelationDatabase(DB_PATH)
 
+    # Initialize a dictionary to store correlations per indicator
     indicator_correlations = {}
 
+    # Iterate through each indicator
     for indicator in tqdm(original_indicators, desc="Calculating correlations", unit="indicator"):
         if not is_valid_indicator(data[indicator]):
             logging.warning(f"Indicator '{indicator}' is not valid. Skipping.")
             continue
 
+        # List to hold correlation values for all lags of this indicator
         corr_values = []
 
+        # Iterate through each lag
         for lag in range(1, max_lag + 1):
+            # Calculate correlation
             corr_value = calculate_correlation(data, indicator, lag, is_reverse_chronological)
             corr_values.append(corr_value)
 
+            # Insert or update correlation in the database
             try:
                 correlation_db.insert_correlation(symbol, timeframe, indicator, lag, corr_value)
             except Exception as e:
                 logging.error(f"Failed to insert correlation for {indicator} at lag {lag}: {e}")
-                continue
+                continue  # Skip to next lag
 
+        # Store the correlations for this indicator
         indicator_correlations[indicator] = corr_values
 
+        # Generate individual indicator chart after all lags are processed
         try:
             timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
             base_csv_filename = f"{symbol}_{timeframe}"
@@ -103,10 +113,12 @@ def load_or_calculate_correlations(
                 timestamp=timestamp,
                 base_csv_filename=base_csv_filename
             )
+            logging.info(f"Generated individual indicator chart for {indicator}.")
         except Exception as e:
             logging.error(f"Failed to generate chart for {indicator}: {e}")
-            continue
+            continue  # Continue processing other indicators
 
+    # Close the database connection
     correlation_db.close()
 
 def get_all_correlations(

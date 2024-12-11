@@ -5,8 +5,6 @@ import matplotlib.pyplot as plt
 from typing import List
 import logging
 
-import pandas as pd
-
 def generate_individual_indicator_chart(
     indicator_name: str, 
     correlations: List[float], 
@@ -35,7 +33,7 @@ def generate_individual_indicator_chart(
     plt.ylabel('Correlation')
     plt.ylim(-1, 1)
     plt.grid(True, linestyle='--', linewidth=0.5)
-    plt.xticks(lags)
+    plt.xticks(lags)  # Ensure all lags are marked on the x-axis
     
     filename = f"{timestamp}_{base_csv_filename}_{indicator_name}_correlation_across_lags.png"
     filepath = os.path.join(charts_dir, filename)
@@ -126,6 +124,7 @@ def visualize_data(
     if not generate_charts:
         return
     
+    # Combined Correlation Chart
     try:
         generate_combined_correlation_chart(
             correlations=correlations,

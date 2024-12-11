@@ -21,6 +21,7 @@ def prepare_data(data: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
         X_scaled_df: Scaled features DataFrame.
         numeric_features: List of feature column names.
     """
+    # Exclude only 'date' columns; retain 'Open', 'High', 'Low', 'Close', 'Volume'
     excluded_columns = ['date', 'Date']
     feature_columns = [col for col in data.columns if col not in excluded_columns and col.lower() not in ['close']]
     
