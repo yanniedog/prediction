@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from typing import List
 import logging
+import numpy as np
+from scipy.stats import t
 
 def generate_individual_indicator_chart(
     indicator_name: str, 
@@ -14,7 +16,8 @@ def generate_individual_indicator_chart(
     base_csv_filename: str
 ) -> None:
     """
-    Generates and saves an individual indicator chart that visualizes correlation across all lags.
+    Generates and saves an individual indicator chart that visualizes correlation across all lags,
+    including area fills for positive/negative correlations and confidence intervals.
 
     Parameters:
     - indicator_name: Name of the indicator.
@@ -27,14 +30,33 @@ def generate_individual_indicator_chart(
     os.makedirs(charts_dir, exist_ok=True)
     
     lags = list(range(1, max_lag + 1))
+    corr_array = np.array(correlations)
+    
     plt.figure(figsize=(10, 6))
-    plt.plot(lags, correlations, marker='o', linestyle='-', color='blue')
+    
+    # Plot correlation line
+    plt.plot(lags, corr_array, marker='o', linestyle='-', color='blue', label='Correlation')
+    
+    # Area fill based on positive or negative correlation
+    plt.fill_between(lags, corr_array, where=corr_array > 0, color='green', alpha=0.3, interpolate=True, label='Positive Correlation')
+    plt.fill_between(lags, corr_array, where=corr_array < 0, color='red', alpha=0.3, interpolate=True, label='Negative Correlation')
+    
+    # Calculate Confidence Intervals (95% CI)
+    n = len(corr_array)
+    if n > 1:
+        std_err = np.std(corr_array, ddof=1) / np.sqrt(n)
+        margin_of_error = t.ppf(0.975, n - 1) * std_err
+        lower_bound = corr_array - margin_of_error
+        upper_bound = corr_array + margin_of_error
+        plt.fill_between(lags, lower_bound, upper_bound, color='gray', alpha=0.2, label='95% Confidence Interval')
+    
     plt.title(f'Correlation of {indicator_name} with Close Price Across Lags')
     plt.xlabel('Lag')
     plt.ylabel('Correlation')
     plt.ylim(-1, 1)
     plt.grid(True, linestyle='--', linewidth=0.5)
     plt.xticks(lags)
+    plt.legend(loc='upper right', fontsize=8)
     
     filename = f"{timestamp}_{base_csv_filename}_{indicator_name}_correlation_across_lags.png"
     filepath = os.path.join(charts_dir, filename)
@@ -88,7 +110,7 @@ def generate_combined_correlation_chart(
     plt.ylabel('Correlation', fontsize=12)
     plt.ylim(-1.0, 1.0)
     plt.grid(True, linestyle='--', linewidth=0.5)
-    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=10)
+    plt.legend(loc='upper right', fontsize=10)
     plt.tight_layout()
     combined_filename = f"{timestamp}_{base_csv_filename}_max_correlation.png"
     plt.savefig(os.path.join(output_dir, combined_filename), bbox_inches='tight')
@@ -108,7 +130,7 @@ def visualize_data(
     base_csv_filename: str
 ) -> None:
     """
-    Visualizes data by generating combined correlation charts.
+    Visualizes data by generating individual and combined correlation charts.
 
     Parameters:
     - data: Original DataFrame containing the data.
@@ -126,13 +148,23 @@ def visualize_data(
         return
     
     try:
+        for indicator, corr_values in correlations.items():
+            generate_individual_indicator_chart(
+                indicator_name=indicator,
+                correlations=corr_values,
+                max_lag=len(corr_values),
+                timestamp=timestamp,
+                base_csv_filename=base_csv_filename
+            )
+        logging.info("All individual indicator charts generated successfully.")
+
         generate_combined_correlation_chart(
             correlations=correlations,
-            max_lag=max(correlations[next(iter(correlations))]) if correlations else 0,
+            max_lag=len(next(iter(correlations.values()))) if correlations else 0,
             time_interval=time_interval,
             timestamp=timestamp,
             base_csv_filename=base_csv_filename
         )
         logging.info("Combined correlation chart generated successfully.")
     except Exception as e:
-        logging.error(f"Error generating combined correlation chart: {e}")
+        logging.error(f"Error during visualization: {e}")
