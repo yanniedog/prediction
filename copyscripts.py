@@ -124,17 +124,6 @@ def read_file_contents(file_path):
         return "[Error reading file]"
 
 
-def read_single_log_file(log_files):
-    """
-    Reads the contents of log files. If multiple log files are found, their contents are concatenated.
-    """
-    log_contents = []
-    for log_file in log_files:
-        content = read_file_contents(log_file)
-        if content:
-            log_contents.append(content)
-    return "\n\n====================\n\n".join(log_contents) if log_contents else None
-
 
 def generate_output(collected_files, log_content=None):
     header = (
@@ -216,10 +205,12 @@ if __name__ == "__main__":
         sys.exit(0)
 
     # Detect and read log files
-    log_files = list(set([os.path.join(current_dir, f) for f in os.listdir(current_dir) if f.endswith('.log')]))
+    log_files = [os.path.join(current_dir, f) for f in os.listdir(current_dir) if f.endswith('.log')]
     print(f"Log files found: {log_files}")
-    log_content = read_single_log_file(log_files)
-    print(f"Log content: {log_content}")
+    log_content = None
+    if log_files:
+        log_content = read_file_contents(log_files[0])  # Read only the first log file found
+        print(f"Log content: {log_content}")
 
     # Generate and write the output file
     output_content = generate_output(unique_files, log_content)
