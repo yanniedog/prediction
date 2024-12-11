@@ -1,6 +1,5 @@
-#!/usr/bin/env python3
-
 # copyscripts.py
+#!/usr/bin/env python3
 
 import os
 import sys
@@ -8,6 +7,7 @@ import argparse
 from datetime import datetime
 import shutil
 from collections import defaultdict
+import chardet  # For encoding detection
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
@@ -54,7 +54,6 @@ def backup_existing_gpt_files(current_dir, work_dir_name):
             try:
                 os.rename(original_path, os.path.join(current_dir, bak_filename))
                 print(f"Renamed '{item}' to '{bak_filename}'.")
-
                 shutil.move(os.path.join(current_dir, bak_filename), backup_path)
                 print(f"Moved '{bak_filename}' to '{backup_path}'.")
             except Exception as e:
@@ -72,7 +71,6 @@ def collect_files(base_dirs, extensions, excluded_filenames, exclude_subdirs_map
         exclude_subdirs = exclude_subdirs_map.get(base_dir, []) + always_excluded_subdirs
 
         for root, dirs, files in os.walk(base_dir):
-            # Exclude specified subdirectories and always excluded ones
             dirs[:] = [d for d in dirs if d not in exclude_subdirs and not d.startswith('.')]
 
             for file in files:
@@ -117,8 +115,12 @@ def alert_duplicate_filenames(duplicate_files):
 
 def read_file_contents(file_path):
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
+        with open(file_path, 'rb') as f:
+            raw_data = f.read()
+        result = chardet.detect(raw_data)
+        encoding = result['encoding']
+        content = raw_data.decode(encoding, errors='replace')
+        return content.replace('\r\n', '\n')  # Standardize line endings
     except Exception as e:
         print(f"Error reading file '{file_path}': {e}")
         return "[Error reading file]"
@@ -129,26 +131,40 @@ def read_single_log_file(log_files):
     return None
 
 def generate_output(collected_files, log_content=None):
-    header = "I encounter the following error when running my script. Below, I’ve included the output I received, followed by all the scripts in my project. Please provide a complete and working fix for any scripts requiring revision. Do not truncate or omit any code; provide full, functional, and production-ready revisions. Ensure all code you provide is complete, error-free, and ready for deployment, with no placeholders, hypothetical examples, or omissions.\n\n"
+    header = (
+        "I encounter the following error when running my script. Below, I’ve included the output I received, followed by all the scripts in my project. Please provide a complete and working fix for any scripts requiring revision. Do not truncate or omit any code; provide full, functional, and production-ready revisions. Ensure all code you provide is complete, error-free, and ready for deployment, with no placeholders, hypothetical examples, or omissions.\n\n"
+    )
 
     error_header = ""
     if log_content:
-        error_header += f"See the error I receive here:\n\n====================\n\n{log_content}\n\n====================\n\n"
+        error_header += (
+            f"See the error I receive here:\n\n====================\n\n{log_content}\n\n====================\n\n"
+        )
 
     error_header += "I've listed all the scripts in this project here:\n\n====================\n\n"
 
-    content = header + error_header
+    sections = [header + error_header]
     for idx, (filename, path) in enumerate(collected_files, start=1):
         relative_path = os.path.relpath(path, start=current_dir)
-        location = "located in the 'scripts' subdirectory" if os.path.commonpath([path, scripts_dir]) == scripts_dir else "located in the working directory"
+        location = (
+            "located in the 'scripts' subdirectory"
+            if os.path.commonpath([path, scripts_dir]) == scripts_dir
+            else "located in the working directory"
+        )
 
         file_contents = read_file_contents(path)
-        content += f"{idx}) {os.path.basename(relative_path)} ({location}):\n\n{file_contents}\n\n====================\n\n"
+        section = (
+            f"{idx}) {os.path.basename(relative_path)} ({location}):\n"
+            f"{file_contents}"
+            f"\n===================="
+        )
+        sections.append(section)
+    content = '\n'.join(sections)
     return content
 
 def write_output_file(output_path, content):
     try:
-        with open(output_path, 'w', encoding='utf-8') as f:
+        with open(output_path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(content)
         print(f"Successfully created '{output_path}'.")
     except Exception as e:
@@ -168,19 +184,16 @@ if __name__ == "__main__":
     output_path = os.path.join(current_dir, output_filename)
 
     script_filename = os.path.basename(__file__).lower()
-    excluded_filenames = {script_filename, 'parsetab.py'}  # Exclude parsetab.py
+    excluded_filenames = {script_filename, 'parsetab.py', 'copyscripts.py', 'repair-filename-remarks.py', 'cspell.json'}
 
     extensions = ['.py', '.ps']  # Include .ps files
     if args.extensions:
         additional_ext = [ext.lower() if ext.startswith('.') else f".{ext.lower()}" for ext in args.extensions]
         extensions.extend(additional_ext)
 
-    # By default, only include current_dir and scripts_dir
     base_dirs = [current_dir, scripts_dir]
-    # Remove duplicates while preserving order
     base_dirs = list(dict.fromkeys(base_dirs))
 
-    # Include additional directories only if specified by the user
     if args.folders:
         for folder in args.folders:
             additional_dir = os.path.join(current_dir, folder)
@@ -191,7 +204,6 @@ if __name__ == "__main__":
         current_dir: ['scripts']
     }
 
-    # Define always excluded subdirectories
     always_excluded_subdirs = ['venv', '.venv']
 
     filename_map = collect_files(base_dirs, extensions, excluded_filenames, exclude_subdirs_map, always_excluded_subdirs)
