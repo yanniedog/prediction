@@ -1,4 +1,3 @@
-# repair-remarks.py
 import os
 import sys
 import tokenize
@@ -26,14 +25,13 @@ def process_file(file_path, filename):
         with tokenize.open(file_path) as f:
             tokens = list(tokenize.generate_tokens(f.readline))
         
-        correct_comment = f'# {filename}'
         new_tokens = []
         previous_token_type = None
         in_comment = False
         in_string = False
 
         for token in tokens:
-            print(f"Token type: {token.type}, String: {token.string}")
+            # print(f"Token type: {token.type}, String: {token.string}")  # Uncomment for debugging
             if token.type == tokenize.COMMENT:
                 in_comment = True
             elif token.type == tokenize.STRING:
@@ -41,7 +39,7 @@ def process_file(file_path, filename):
             elif token.type == tokenize.NEWLINE:
                 if previous_token_type == tokenize.NEWLINE and not in_comment and not in_string:
                     # Skip blank line in code
-                    print("Skipping blank line")
+                    # print(f"Skipping blank line in {file_path}")  # Uncomment for debugging
                     continue
             elif token.type == tokenize.INDENT or token.type == tokenize.DEDENT:
                 # Manage indentation
