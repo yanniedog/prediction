@@ -1,4 +1,4 @@
-# correlation_utils.py
+# scripts/correlation_utils.py
 
 import sqlite3
 import numpy as np
@@ -11,6 +11,7 @@ from correlation_database import CorrelationDatabase
 from visualization_utils import generate_individual_indicator_chart
 from datetime import datetime
 
+# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def calculate_correlation(data: pd.DataFrame, indicator_name: str, lag: int, is_reverse_chronological: bool) -> float:
@@ -31,12 +32,12 @@ def calculate_correlation(data: pd.DataFrame, indicator_name: str, lag: int, is_
 
     shift_value = lag if is_reverse_chronological else -lag
     shifted_col = data[indicator_name].shift(shift_value)
-    valid_data = pd.concat([shifted_col, data['close']], axis=1).dropna()
+    valid_data = pd.concat([shifted_col, data['Close']], axis=1).dropna()
 
     if valid_data.empty:
         return np.nan
 
-    return valid_data[indicator_name].corr(valid_data['close'])
+    return valid_data[indicator_name].corr(valid_data['Close'])
 
 def is_valid_indicator(series: pd.Series) -> bool:
     """
@@ -70,6 +71,8 @@ def load_or_calculate_correlations(
     - symbol: Trading symbol (e.g., 'SOLUSDT').
     - timeframe: Timeframe interval (e.g., '1w').
     """
+    logging.info(f"Starting correlation calculations for symbol='{symbol}', timeframe='{timeframe}' with max_lag={max_lag}")
+    
     correlation_db = CorrelationDatabase(DB_PATH)
 
     indicator_correlations = {}
@@ -88,7 +91,7 @@ def load_or_calculate_correlations(
             try:
                 correlation_db.insert_correlation(symbol, timeframe, indicator, lag, corr_value)
             except Exception as e:
-                logging.error(f"Failed to insert correlation for {indicator} at lag {lag}: {e}")
+                logging.error(f"Failed to insert correlation for '{indicator}' at lag {lag}: {e}")
                 continue
 
         indicator_correlations[indicator] = corr_values
@@ -103,12 +106,13 @@ def load_or_calculate_correlations(
                 timestamp=timestamp,
                 base_csv_filename=base_csv_filename
             )
-            logging.info(f"Generated individual indicator chart for {indicator}.")
+            logging.info(f"Generated individual indicator chart for '{indicator}'.")
         except Exception as e:
-            logging.error(f"Failed to generate chart for {indicator}: {e}")
+            logging.error(f"Failed to generate chart for '{indicator}': {e}")
             continue
 
     correlation_db.close()
+    logging.info("All correlations processed and charts generated successfully.")
 
 def get_all_correlations(
     conn: sqlite3.Connection, 
