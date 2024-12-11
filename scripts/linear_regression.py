@@ -37,18 +37,18 @@ def perform_linear_regression(
     top_indicators = sorted(correlations.keys(), key=lambda x: abs(correlations[x][lag_periods-1]), reverse=True)[:5]
     logging.info(f"Top indicators selected for regression: {top_indicators}")
     
-    feature_cols = top_indicators + ['Volume', 'Open', 'High', 'Low']
+    feature_cols = top_indicators + ['volume', 'open', 'high', 'low']
     if not all(col in data.columns for col in feature_cols):
         missing = [col for col in feature_cols if col not in data.columns]
         logging.error(f"Missing columns for regression: {missing}")
         return
     
     data_copy = data.copy()
-    data_copy['Target'] = data_copy['Close'].shift(-lag_periods)
+    data_copy['target'] = data_copy['close'].shift(-lag_periods)
     data_copy.dropna(inplace=True)
     
     X = data_copy[feature_cols]
-    y = data_copy['Target']
+    y = data_copy['target']
     
     split_index = int(len(X) * 0.8)
     X_train, X_test = X[:split_index], X[split_index:]
@@ -80,8 +80,8 @@ def perform_linear_regression(
     logging.info(f"Saved linear regression predictions at {predictions_filepath}.")
     
     plt.figure(figsize=(12,6))
-    plt.plot(data_copy['Date'], y_test, label='Actual Close Price', color='blue')
-    plt.plot(data_copy['Date'], y_pred, label='Predicted Close Price', color='red', linestyle='--')
+    plt.plot(data_copy['open_time'], y_test, label='Actual Close Price', color='blue')
+    plt.plot(data_copy['open_time'], y_pred, label='Predicted Close Price', color='red', linestyle='--')
     plt.title('Linear Regression Predictions vs Actual Close Prices')
     plt.xlabel('Date')
     plt.ylabel('Price')

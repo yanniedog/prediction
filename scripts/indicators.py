@@ -297,14 +297,14 @@ def compute_all_indicators(data: pd.DataFrame) -> pd.DataFrame:
         logging.debug("Computed VAR.")
         
         try:
-            ao = pta.ao(data['high'], data['low'])
+            ao = pta.ao(data['high'], data['low'], append=False)
             indicators['ao'] = ao
             logging.debug("Computed AO using pandas_ta.")
         except Exception as e:
             logging.warning(f"Failed to compute AO using pandas_ta: {e}")
         
         try:
-            fi = pta.fi(data['close'], data['volume'])
+            fi = pta.force_index(data['close'], data['volume'], append=False)
             indicators['fi'] = fi
             logging.debug("Computed FI using pandas_ta.")
         except Exception as e:
@@ -317,7 +317,7 @@ def compute_all_indicators(data: pd.DataFrame) -> pd.DataFrame:
                 logging.error(f"Failed to compute FI using fallback method: {ex}")
         
         try:
-            ichimoku = pta.ichimoku(data['high'], data['low'], append=False)
+            ichimoku = pta.ichimoku(data['high'], data['low'], data['close'], append=False)
             for col in ['ISA_9', 'ISB_26', 'ITS_9', 'IKS_26']:
                 if col not in ichimoku.columns:
                     raise KeyError(f"Missing column '{col}' in Ichimoku data.")
@@ -342,14 +342,14 @@ def compute_all_indicators(data: pd.DataFrame) -> pd.DataFrame:
             logging.warning(f"Failed to compute Keltner Channels indicators: {e}")
         
         try:
-            mfi = pta.mfi(data['high'], data['low'], data['close'], data['volume'])
+            mfi = pta.mfi(data['high'], data['low'], data['close'], data['volume'], append=False)
             indicators['mfi'] = mfi
             logging.debug("Computed MFI using pandas_ta.")
         except Exception as e:
             logging.warning(f"Failed to compute MFI using pandas_ta: {e}")
         
         try:
-            rvi = pta.rvi(data['close'])
+            rvi = pta.rvi(data['close'], append=False)
             indicators['rvi'] = rvi
             logging.debug("Computed RVI using pandas_ta.")
         except Exception as e:
@@ -367,7 +367,7 @@ def compute_all_indicators(data: pd.DataFrame) -> pd.DataFrame:
             logging.warning(f"Failed to compute Stochastic RSI indicators: {e}")
         
         try:
-            tsi = pta.tsi(data['close'])
+            tsi = pta.tsi(data['close'], append=False)
             for col in tsi.columns:
                 indicators[col] = tsi[col]
             logging.debug("Computed TSI using pandas_ta.")
@@ -395,9 +395,6 @@ def compute_all_indicators(data: pd.DataFrame) -> pd.DataFrame:
         data.dropna(inplace=True)
         logging.info("Dropped rows with NaN values.")
         
-        return data
-    except Exception as e:
-        logging.error(f"Error in compute_all_indicators: {e}")
         return data
 
 if __name__ == "__main__":
