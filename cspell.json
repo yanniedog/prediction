@@ -18,6 +18,7 @@
         "certifi",
         "chardet",
         "cmap",
+        "colorama",
         "contourpy",
         "coolwarm",
         "copyscripts",
