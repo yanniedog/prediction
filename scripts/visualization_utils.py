@@ -1,14 +1,13 @@
-# scripts/visualization_utils.py
+# visualization_utils.py
 
 import os
 import matplotlib.pyplot as plt
 import pandas as pd
-from typing import List, Dict
+from typing import List, Dict, Any
 import logging
 import numpy as np
 from scipy.stats import t
 
-# Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def generate_individual_indicator_chart(
@@ -37,14 +36,11 @@ def generate_individual_indicator_chart(
     
     plt.figure(figsize=(10, 6))
     
-    # Plot correlation line
     plt.plot(lags, corr_array, marker='o', linestyle='-', color='blue', label='Correlation')
     
-    # Area fill based on positive or negative correlation
     plt.fill_between(lags, corr_array, where=corr_array > 0, color='blue', alpha=0.3, interpolate=False, label='Positive Correlation')
     plt.fill_between(lags, corr_array, where=corr_array < 0, color='red', alpha=0.3, interpolate=False, label='Negative Correlation')
     
-    # Calculate Confidence Intervals (95% CI)
     n = len(corr_array)
     if n > 1:
         std_err = np.std(corr_array, ddof=1) / np.sqrt(n)
@@ -153,7 +149,6 @@ def visualize_data(
         return
     
     try:
-        # Generate individual indicator charts
         for indicator, corr_values in correlations.items():
             generate_individual_indicator_chart(
                 indicator_name=indicator,
@@ -164,7 +159,6 @@ def visualize_data(
             )
         logging.info("All individual indicator charts generated successfully.")
 
-        # Generate combined correlation chart
         generate_combined_correlation_chart(
             correlations=correlations,
             max_lag=len(next(iter(correlations.values()))) if correlations else 0,
