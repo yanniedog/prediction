@@ -7,20 +7,42 @@ import numpy as np
 from typing import Dict,List,Any,Callable
 from scipy.stats import t
 import pandas as pd
-def generate_individual_indicator_chart(indicator_name: str, lag: int, corr_value: float, timestamp: str, base_csv_filename: str):
+
+def generate_individual_indicator_chart(
+    indicator_name: str, 
+    correlations: List[float], 
+    max_lag: int, 
+    timestamp: str, 
+    base_csv_filename: str
+) -> None:
+    """
+    Generates and saves an individual indicator chart that visualizes correlation across all lags.
+    
+    Parameters:
+    - indicator_name: Name of the indicator.
+    - correlations: List of correlation values across lags.
+    - max_lag: Maximum lag considered.
+    - timestamp: Current timestamp for filename uniqueness.
+    - base_csv_filename: Base name derived from symbol and timeframe.
+    """
     charts_dir = 'indicator_charts'
     os.makedirs(charts_dir, exist_ok=True)
-    plt.figure(figsize=(6,4))
-    plt.bar(lag, corr_value, color='green' if corr_value >=0 else 'red')
-    plt.title(f'Correlation for {indicator_name} at Lag {lag}')
+    
+    lags = list(range(1, max_lag + 1))
+    plt.figure(figsize=(10, 6))
+    plt.plot(lags, correlations, marker='o', linestyle='-', color='blue')
+    plt.title(f'Correlation of {indicator_name} with Close Price Across Lags')
     plt.xlabel('Lag')
     plt.ylabel('Correlation')
     plt.ylim(-1, 1)
     plt.grid(True, linestyle='--', linewidth=0.5)
-    filename = f"{timestamp}_{base_csv_filename}_{indicator_name}_lag_{lag}_correlation.png"
+    plt.xticks(lags)
+    
+    filename = f"{timestamp}_{base_csv_filename}_{indicator_name}_correlation_across_lags.png"
     filepath = os.path.join(charts_dir, filename)
     plt.savefig(filepath, bbox_inches='tight')
     plt.close()
+
 def generate_combined_correlation_chart(correlations:Dict[str,List[float]],max_lag:int,time_interval:str,timestamp:str,base_csv_filename:str,output_dir:str='combined_charts')->None:
     os.makedirs(output_dir,exist_ok=True)
     max_positive_correlations=[]

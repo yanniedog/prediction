@@ -60,7 +60,7 @@ def load_or_calculate_correlations(
 ) -> None:
     """
     Load existing correlations from the database or calculate and insert them if they do not exist.
-    After inserting each correlation, generate an individual indicator chart.
+    After calculating all correlations for an indicator, generate an individual indicator chart.
     
     Parameters:
     - data: DataFrame containing the data.
@@ -72,13 +72,18 @@ def load_or_calculate_correlations(
     """
     correlation_db = CorrelationDatabase(DB_PATH)
 
+    indicator_correlations = {}
+
     for indicator in tqdm(original_indicators, desc="Calculating correlations", unit="indicator"):
         if not is_valid_indicator(data[indicator]):
             logging.warning(f"Indicator '{indicator}' is not valid. Skipping.")
             continue
 
+        corr_values = []
+
         for lag in range(1, max_lag + 1):
             corr_value = calculate_correlation(data, indicator, lag, is_reverse_chronological)
+            corr_values.append(corr_value)
 
             try:
                 correlation_db.insert_correlation(symbol, timeframe, indicator, lag, corr_value)
@@ -86,19 +91,21 @@ def load_or_calculate_correlations(
                 logging.error(f"Failed to insert correlation for {indicator} at lag {lag}: {e}")
                 continue
 
-            try:
-                timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-                base_csv_filename = f"{symbol}_{timeframe}"
-                generate_individual_indicator_chart(
-                    indicator_name=indicator,
-                    lag=lag,
-                    corr_value=corr_value,
-                    timestamp=timestamp,
-                    base_csv_filename=base_csv_filename
-                )
-            except Exception as e:
-                logging.error(f"Failed to generate chart for {indicator} at lag {lag}: {e}")
-                continue
+        indicator_correlations[indicator] = corr_values
+
+        try:
+            timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+            base_csv_filename = f"{symbol}_{timeframe}"
+            generate_individual_indicator_chart(
+                indicator_name=indicator,
+                correlations=corr_values,
+                max_lag=max_lag,
+                timestamp=timestamp,
+                base_csv_filename=base_csv_filename
+            )
+        except Exception as e:
+            logging.error(f"Failed to generate chart for {indicator}: {e}")
+            continue
 
     correlation_db.close()
 
