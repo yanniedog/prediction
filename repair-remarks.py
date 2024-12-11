@@ -24,6 +24,9 @@ def process_file(file_path, filename):
         # Remove any in-line comments that are not the correct comment
         modified_lines = []
         found_correct_comment = False
+        in_line_comments_removed = 0
+        standalone_comments_removed = 0
+        duplicate_correct_comments_removed = 0
         
         for line in lines:
             stripped_line = line.strip()
@@ -31,12 +34,21 @@ def process_file(file_path, filename):
                 if not found_correct_comment:
                     modified_lines.append(line)
                     found_correct_comment = True
+                else:
+                    duplicate_correct_comments_removed += 1
+            elif stripped_line.startswith('#'):
+                # Remove standalone comments
+                standalone_comments_removed += 1
             else:
                 # Remove in-line comments
                 if '#' in line:
-                    code_part, _, _ = line.partition('#')
+                    code_part, _, comment_part = line.partition('#')
                     if code_part.strip():  # Ensure there is code before the comment
                         modified_lines.append(code_part.rstrip() + '\n')
+                        if comment_part.strip():
+                            in_line_comments_removed += 1
+                    else:
+                        modified_lines.append(line)
                 else:
                     modified_lines.append(line)
         
@@ -44,9 +56,31 @@ def process_file(file_path, filename):
         if not found_correct_comment:
             modified_lines.insert(0, f'{correct_comment}\n')
         
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.writelines(modified_lines)
-        print(f"Modified {file_path}: Added/Updated correct comment and removed in-line remarks.")
+        # Write modified lines back to the file if any changes were made
+        modified = in_line_comments_removed > 0 or standalone_comments_removed > 0 or duplicate_correct_comments_removed > 0
+        if modified:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.writelines(modified_lines)
+        
+        # Report what was done
+        report = f"Modified {file_path}: "
+        if not modified:
+            report += "No changes made."
+        else:
+            actions = []
+            if found_correct_comment:
+                actions.append(f"Updated correct comment")
+            else:
+                actions.append(f"Added correct comment")
+            if in_line_comments_removed > 0:
+                actions.append(f"Removed {in_line_comments_removed} in-line comments")
+            if standalone_comments_removed > 0:
+                actions.append(f"Removed {standalone_comments_removed} standalone comments")
+            if duplicate_correct_comments_removed > 0:
+                actions.append(f"Removed {duplicate_correct_comments_removed} duplicate correct comments")
+            report += " and ".join(actions) + "."
+        
+        print(report)
     except Exception as e:
         print(f"Error processing {file_path}: {e}")
 

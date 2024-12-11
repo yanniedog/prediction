@@ -1,61 +1,74 @@
 # launch.py
 import os
 import sys
+from pathlib import Path
+from datetime import datetime
+import logging
+import runpy
 
-def process_python_files(directory, exclude_file=None, exclude_dirs=None):
-    if exclude_dirs is None:
-        exclude_dirs = []
-    for root, dirs, files in os.walk(directory):
-        dirs[:] = [d for d in dirs if d not in exclude_dirs]
-        for file in files:
-            if file.endswith('.py') and file != 'repair-remarks.py':
-                file_path = os.path.join(root, file)
-                if exclude_file and file_path == exclude_file:
-                    continue
-                process_file(file_path, file)
+if 'VIRTUAL_ENV' not in os.environ:
 
-def process_file(file_path, filename):
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-        
-        correct_comment = f'
-        
-        modified_lines = []
-        found_correct_comment = False
-        
-        for line in lines:
-            stripped_line = line.strip()
-            if stripped_line == correct_comment:
-                if not found_correct_comment:
-                    modified_lines.append(line)
-                    found_correct_comment = True
-            else:
-                if '
-                    code_part, _, _ = line.partition('
-                    if code_part.strip():
-                        modified_lines.append(code_part.rstrip() + '\n')
-                else:
-                    modified_lines.append(line)
-        
-        if not found_correct_comment:
-            modified_lines.insert(0, f'{correct_comment}\n')
-        
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.writelines(modified_lines)
-        print(f"Modified {file_path}: Added/Updated correct comment and removed in-line remarks.")
-    except Exception as e:
-        print(f"Error processing {file_path}: {e}")
+    venv_path = Path.cwd() / 'venv'
+    if not venv_path.is_dir():
+        print("Virtual environment not found. Please create it using 'python -m venv venv'.")
+        sys.exit(1)
 
-def main():
-    script_path = sys.argv[0]
-    directories = [os.getcwd(), os.path.join(os.getcwd(), 'scripts')]
-    exclude_dirs = ['.venv', 'venv', '_pycache_']
-    for dir_path in directories:
-        if os.path.exists(dir_path):
-            process_python_files(dir_path, exclude_file=script_path, exclude_dirs=exclude_dirs)
-        else:
-            print(f"Directory {dir_path} does not exist.")
+    if sys.platform == 'win32':
+        activate_script = venv_path / 'Scripts' / 'activate.bat'
+    else:
+        activate_script = venv_path / 'bin' / 'activate'
 
-if __name__ == "__main__":
-    main()
+    if sys.platform == 'win32':
+        os.system(f'call {activate_script}')
+    else:
+        os.system(f'source {activate_script}')
+
+    print("Virtual environment activated.")
+
+sys.path.append(str(Path.cwd() / 'scripts'))
+
+for f in Path.cwd().glob('*.log'):
+    f.unlink()
+
+timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+working_dir_name = Path.cwd().name
+log_filename = f"{working_dir_name}_{timestamp}.log"
+
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+for h in logger.handlers[:]:
+    logger.removeHandler(h)
+file_handler = logging.FileHandler(log_filename, mode='w')
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(file_handler)
+
+font_manager_logger = logging.getLogger('matplotlib.font_manager')
+font_manager_logger.setLevel(logging.WARNING)
+
+class DoubleWriter:
+    def __init__(self, stdout, stderr, logger):
+        self.stdout = stdout
+        self.stderr = stderr
+        self.logger = logger
+    def write(self, msg):
+        if msg.strip():
+            self.logger.info(msg.strip())
+        self.stdout.write(msg)
+    def flush(self):
+        self.stdout.flush()
+    def isatty(self):
+        return self.stdout.isatty()
+
+sys.stdout = DoubleWriter(sys.__stdout__, sys.__stderr__, logger)
+sys.stderr = DoubleWriter(sys.__stderr__, sys.__stderr__, logger)
+
+try:
+
+    start_path = str(Path.cwd() / 'scripts' / 'start.py')
+    runpy.run_path(start_path, run_name='__main__')
+except SystemExit as e:
+    sys.exit(e.code)
+except Exception as e:
+    logger.exception("An error occurred while running the script.")
+    sys.exit(1)
