@@ -37,7 +37,7 @@ def list_gptbak_files(directory: Path) -> list:
     gptbak_files = list(directory.glob('*.GPTBAK'))
     return gptbak_files
 
-def prompt_user_to_select_gptbak(gptbak_files: list) -> Path:
+def prompt_user_to_select_gptbak(gptbak_files: list) -> tuple:
     """
     Prompts the user to select a GPTBAK file from the list.
 
@@ -45,7 +45,7 @@ def prompt_user_to_select_gptbak(gptbak_files: list) -> Path:
     - gptbak_files: List of Path objects for GPTBAK files.
 
     Returns:
-    - Path object of the selected GPTBAK file.
+    - Tuple containing the Path object of the selected GPTBAK file and its selection number.
     """
     if not gptbak_files:
         logging.error("No .GPTBAK files found in the working directory.")
@@ -54,7 +54,7 @@ def prompt_user_to_select_gptbak(gptbak_files: list) -> Path:
     if len(gptbak_files) == 1:
         selected = gptbak_files[0]
         logging.info(f"Only one GPTBAK file found: '{selected.name}'. Selecting it by default.")
-        return selected
+        return (selected, 1)
     
     logging.info("Multiple GPTBAK files found:")
     for idx, gptbak in enumerate(gptbak_files, start=1):
@@ -70,7 +70,7 @@ def prompt_user_to_select_gptbak(gptbak_files: list) -> Path:
             if 1 <= choice <= len(gptbak_files):
                 selected = gptbak_files[choice - 1]
                 logging.info(f"Selected GPTBAK file: '{selected.name}'.")
-                return selected
+                return (selected, choice)
             else:
                 logging.warning(f"Please enter a number between 1 and {len(gptbak_files)}.")
         except Exception as e:
@@ -128,14 +128,18 @@ def parse_gptbak_file(gptbak_filepath: Path):
             location = match.group(2).strip()
             subdirectory = match.group(3)  # This will be None if location is 'working directory'
             
+            # Ensure the script is located in managed directories
+            if location == 'working directory':
+                target_dir = Path.cwd()
+            elif subdirectory and subdirectory == 'scripts':
+                target_dir = Path.cwd() / 'scripts'
+            else:
+                logging.warning(f"Skipping script '{filename}' with unsupported location: '{location}'.")
+                continue
+            
             if filename in EXCLUDED_FILES:
                 logging.info(f"Skipping excluded file: '{filename}'.")
                 continue
-            
-            if subdirectory:
-                target_dir = Path(subdirectory)
-            else:
-                target_dir = Path.cwd()
             
             # Extract the script content after the header line
             # Find the position where the match ends
@@ -154,6 +158,44 @@ def parse_gptbak_file(gptbak_filepath: Path):
             continue  # Non-script sections are ignored
     
     return scripts
+
+def sanitize_filename_comment(comment: str) -> str:
+    """
+    Sanitizes the user's comment to ensure it's safe for filenames.
+
+    Parameters:
+    - comment: The comment string entered by the user.
+
+    Returns:
+    - A sanitized version of the comment string.
+    """
+    # Remove or replace invalid characters
+    # For Windows, invalid characters: < > : " / \ | ? *
+    invalid_chars = r'<>:"/\|?*'
+    sanitized = ''.join(['_' if c in invalid_chars else c for c in comment])
+    return sanitized
+
+def rename_gptbak_file(gptbak_file: Path, comment: str):
+    """
+    Renames the GPTBAK file by appending the user's comment.
+
+    Parameters:
+    - gptbak_file: Path object of the original GPTBAK file.
+    - comment: The comment string to append.
+    """
+    sanitized_comment = sanitize_filename_comment(comment)
+    new_filename = f"{gptbak_file.stem} - {sanitized_comment}{gptbak_file.suffix}"
+    new_filepath = gptbak_file.parent / new_filename
+
+    if new_filepath.exists():
+        logging.warning(f"Cannot rename '{gptbak_file.name}' to '{new_filename}' because the destination file already exists.")
+        return
+
+    try:
+        gptbak_file.rename(new_filepath)
+        logging.info(f"Renamed GPTBAK file to: '{new_filename}'.")
+    except Exception as e:
+        logging.error(f"Failed to rename '{gptbak_file}' to '{new_filename}': {e}")
 
 def find_existing_scripts(managed_dirs: list, filename: str) -> list:
     """
@@ -190,8 +232,6 @@ def replace_scripts(scripts: list, managed_dirs: list):
         
         # Ensure target directory is absolute
         if not target_dir.is_absolute():
-            # Determine if the directory is relative to the working directory or the 'scripts' subdirectory
-            # Since managed_dirs includes both, we assume subdirectories are relative to the working directory
             target_dir = Path.cwd() / target_dir
         
         # Ensure target directory exists
@@ -222,6 +262,23 @@ def replace_scripts(scripts: list, managed_dirs: list):
         except Exception as e:
             logging.error(f"Failed to write to '{new_script_path}': {e}")
 
+def prompt_amend_filename(gptbak_file: Path, selection_number: int):
+    """
+    Prompts the user to amend the GPTBAK file's filename with comments.
+
+    Parameters:
+    - gptbak_file: Path object of the GPTBAK file.
+    - selection_number: The number corresponding to the GPTBAK file selection.
+    """
+    print(f"You just used the following GPTBAK file: {gptbak_file.name}.")
+    print(f"You selected option number {selection_number}.")
+    comment = input('Would you like to amend the GPTBAK\'s filename with any comments? Type your comments, otherwise just hit enter to return to the file page: ').strip()
+    
+    if comment:
+        rename_gptbak_file(gptbak_file, comment)
+    else:
+        logging.info("No comments entered. Returning to GPTBAK file selection.")
+
 def main():
     """
     Main function to execute the script restoration.
@@ -230,25 +287,40 @@ def main():
     scripts_dir = working_dir / 'scripts'
     managed_dirs = [working_dir, scripts_dir]
     
-    gptbak_files = list_gptbak_files(working_dir)
-    
-    selected_gptbak = prompt_user_to_select_gptbak(gptbak_files)
-    
-    confirm_overwrite()
-    
-    logging.info(f"Parsing GPTBAK file: {selected_gptbak}")
-    
-    scripts = parse_gptbak_file(selected_gptbak)
-    
-    if not scripts:
-        logging.warning("No valid scripts found in the GPTBAK file.")
-        sys.exit(0)
-    
-    logging.info(f"Found {len(scripts)} scripts to replace.")
-    
-    replace_scripts(scripts, managed_dirs)
-    
-    logging.info("Script restoration completed successfully.")
+    while True:
+        gptbak_files = list_gptbak_files(working_dir)
+        
+        selected_gptbak, selection_number = prompt_user_to_select_gptbak(gptbak_files)
+        
+        confirm_overwrite()
+        
+        logging.info(f"Parsing GPTBAK file: {selected_gptbak}")
+        
+        scripts = parse_gptbak_file(selected_gptbak)
+        
+        if not scripts:
+            logging.warning("No valid scripts found in the GPTBAK file.")
+            # Proceed to prompt for renaming even if no scripts were replaced
+            prompt_amend_filename(selected_gptbak, selection_number)
+            continue  # Return to GPTBAK file selection
+        
+        logging.info(f"Found {len(scripts)} scripts to replace.")
+        
+        replace_scripts(scripts, managed_dirs)
+        
+        # Prompt to amend the GPTBAK file's filename
+        prompt_amend_filename(selected_gptbak, selection_number)
+        
+        # Check if there are more GPTBAK files to process
+        remaining_gptbak_files = list_gptbak_files(working_dir)
+        if not remaining_gptbak_files:
+            logging.info("No more GPTBAK files to process. Exiting.")
+            break
+        else:
+            proceed = input("Would you like to restore another GPTBAK file? (y/n): ").strip().lower()
+            if proceed not in ['y', 'yes']:
+                logging.info("Exiting script restoration process.")
+                break
 
 if __name__ == "__main__":
     main()
