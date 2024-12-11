@@ -6,6 +6,8 @@ from datetime import datetime
 import shutil
 from collections import defaultdict
 import chardet
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="Generate a .GPT file containing contents of specified scripts."
@@ -21,12 +23,20 @@ def parse_arguments():
         help='Additional subdirectories to search for files (e.g., -f utils helpers)'
     )
     return parser.parse_args()
+
+
 def get_current_directory():
     return os.getcwd()
+
+
 def get_directory_name(path):
     return os.path.basename(os.path.normpath(path))
+
+
 def get_timestamp():
     return datetime.now().strftime("%Y%m%d-%H%M%S")
+
+
 def backup_existing_gpt_files(current_dir, work_dir_name):
     backup_base = r'C:\code\backups'
     backup_dir = os.path.join(backup_base, work_dir_name, 'copyscript-backups')
@@ -49,6 +59,8 @@ def backup_existing_gpt_files(current_dir, work_dir_name):
             except Exception as e:
                 print(f"Error backing up '{item}': {e}")
                 continue
+
+
 def collect_files(base_dirs, extensions, excluded_filenames, exclude_subdirs_map, always_excluded_subdirs):
     filename_map = defaultdict(list)
     for base_dir in base_dirs:
@@ -67,6 +79,8 @@ def collect_files(base_dirs, extensions, excluded_filenames, exclude_subdirs_map
                     full_path = os.path.join(root, file)
                     filename_map[file.lower()].append(full_path)
     return filename_map
+
+
 def alert_duplicate_filenames(duplicate_files):
     print("\n=== Duplicate Filenames Detected ===\n")
     for filename, paths in duplicate_files.items():
@@ -95,6 +109,8 @@ def alert_duplicate_filenames(duplicate_files):
             print()
         print("-----------------------------------\n")
     print("Please resolve duplicate filenames to ensure each script is uniquely identified.\n")
+
+
 def read_file_contents(file_path):
     try:
         with open(file_path, 'rb') as f:
@@ -106,13 +122,27 @@ def read_file_contents(file_path):
     except Exception as e:
         print(f"Error reading file '{file_path}': {e}")
         return "[Error reading file]"
+
+
 def read_single_log_file(log_files):
-    if len(log_files) == 1:
-        return read_file_contents(log_files[0])
-    return None
+    """
+    Reads the contents of log files. If multiple log files are found, their contents are concatenated.
+    """
+    log_contents = []
+    for log_file in log_files:
+        content = read_file_contents(log_file)
+        if content:
+            log_contents.append(content)
+    return "\n\n====================\n\n".join(log_contents) if log_contents else None
+
+
 def generate_output(collected_files, log_content=None):
     header = (
-        "I encounter the following error when running my script. Below, I’ve included the output I received, followed by all the scripts in my project. Please provide a complete and working fix for any scripts requiring revision. Do not truncate or omit any code; provide full, functional, and production-ready revisions. Ensure all code you provide is complete, error-free, and ready for deployment, with no placeholders, hypothetical examples, or omissions.\n\n"
+        "I encounter the following error when running my script. Below, I’ve included the output I received, "
+        "followed by all the scripts in my project. Please provide a complete and working fix for any scripts "
+        "requiring revision. Do not truncate or omit any code; provide full, functional, and production-ready "
+        "revisions. Ensure all code you provide is complete, error-free, and ready for deployment, with no "
+        "placeholders, hypothetical examples, or omissions.\n\n"
     )
     error_header = ""
     if log_content:
@@ -137,6 +167,8 @@ def generate_output(collected_files, log_content=None):
         sections.append(section)
     content = '\n'.join(sections)
     return content
+
+
 def write_output_file(output_path, content):
     try:
         with open(output_path, 'w', encoding='utf-8', newline='\n') as f:
@@ -144,6 +176,8 @@ def write_output_file(output_path, content):
         print(f"Successfully created '{output_path}'.")
     except Exception as e:
         print(f"Error writing to file '{output_path}': {e}")
+
+
 if __name__ == "__main__":
     current_dir = get_current_directory()
     work_dir_name = get_directory_name(current_dir)
@@ -180,7 +214,13 @@ if __name__ == "__main__":
     if not unique_files:
         print("No files found matching the specified criteria or all have duplicates.")
         sys.exit(0)
+
+    # Detect and read log files
     log_files = [os.path.join(current_dir, f) for f in os.listdir(current_dir) if f.endswith('.log')]
+    print(f"Log files found: {log_files}")
     log_content = read_single_log_file(log_files)
+    print(f"Log content: {log_content}")
+
+    # Generate and write the output file
     output_content = generate_output(unique_files, log_content)
     write_output_file(output_path, output_content)
