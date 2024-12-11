@@ -3,7 +3,7 @@
 import os
 import matplotlib.pyplot as plt
 import pandas as pd
-from typing import List, Dict, Any, Callable
+from typing import List, Dict
 import logging
 import numpy as np
 from scipy.stats import t
@@ -130,7 +130,7 @@ def visualize_data(
     time_interval: str, 
     generate_charts: bool, 
     correlations: Dict[str, List[float]], 
-    calculate_correlation_func: Callable[..., float], 
+    calculate_correlation_func: Any, 
     base_csv_filename: str
 ) -> None:
     """
