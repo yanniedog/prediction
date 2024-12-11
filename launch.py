@@ -5,6 +5,7 @@ from datetime import datetime
 import logging
 import runpy
 
+# Add the scripts directory to the Python path
 sys.path.append('scripts')
 
 for f in Path.cwd().glob('*.log'):
