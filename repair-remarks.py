@@ -1,6 +1,8 @@
 # repair-remarks.py
 import os
 import sys
+import tokenize
+from io import StringIO
 
 def process_python_files(directory, exclude_file=None, exclude_dirs=None):
     if exclude_dirs is None:
@@ -20,44 +22,34 @@ def process_python_files(directory, exclude_file=None, exclude_dirs=None):
 def process_file(file_path, filename):
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-
-        # Read first three lines
-        first_three = lines[:3]
-        # Check if the correct comment is already present
+            content = f.read()
+        # Identify the filename remark
         correct_comment = f'# {filename}'
-        if any(line.strip().startswith(correct_comment) for line in first_three):
+        lines = content.splitlines()
+        # Check if the correct comment is the first line
+        if lines and lines[0].strip() == correct_comment:
             print(f"Correct comment already present in {file_path}. No changes made.")
             return
-
-        # Check for lines in the first three that end with '.py'
-        # and are not the correct comment
-        modified_lines = []
-        found_py_line = False
-        for line in first_three:
-            stripped_line = line.strip()
-            if stripped_line.endswith('.py'):
-                # Check if it's the correct comment
-                if not stripped_line.startswith(correct_comment):
-                    # Skip this line (remove it)
-                    found_py_line = True
-                    continue
-            modified_lines.append(line)
-        # Add any remaining lines
-        modified_lines += lines[3:]
-
-        # If a .py line was found in the first three, insert the correct comment
-        if found_py_line:
-            modified_lines.insert(0, f'{correct_comment}\n')
-            print(f"Modified {file_path}: Removed incorrect .py comment and added correct one.")
-        else:
-            # If correct comment not present, add it at the beginning
-            modified_lines.insert(0, f'{correct_comment}\n')
-            print(f"Modified {file_path}: Added correct comment.")
-
+        # Read tokens and rebuild the file without comments
+        tokens = []
+        filename_remark = None
+        with tokenize.open(file_path) as f:
+            for token in tokenize.generate_tokens(f.readline):
+                if token.type == tokenize.COMMENT:
+                    if token.start[0] == 1 and token.string.strip() == correct_comment:
+                        filename_remark = token
+                    continue  # Skip comments
+                tokens.append(token)
+        # Add the filename remark at the beginning if not present
+        if filename_remark is None:
+            # Insert the filename remark as the first token
+            tokens.insert(0, tokenize.TokenInfo(type=tokenize.COMMENT, string=' #' + filename, start=(1,0), end=(1,len(correct_comment)+1), line=correct_comment + '\n'))
+        # Rebuild the file content from tokens
+        new_content = tokenize.untokenize(tokens).decode('utf-8')
         # Write the modified content back to the file
         with open(file_path, 'w', encoding='utf-8') as f:
-            f.writelines(modified_lines)
+            f.write(new_content)
+        print(f"Modified {file_path}: Removed comments and added correct filename remark.")
     except Exception as e:
         print(f"Error processing {file_path}: {e}")
 
