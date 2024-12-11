@@ -29,7 +29,7 @@ def process_file(file_path, filename):
         previous_token_type = None
         in_comment = False
         in_string = False
-        skip_newline = False
+        last_non_newline_token = None
 
         for token in tokens:
             if token.type == tokenize.COMMENT:
@@ -37,14 +37,9 @@ def process_file(file_path, filename):
             elif token.type == tokenize.STRING:
                 in_string = True
             elif token.type == tokenize.NEWLINE:
-                if previous_token_type == tokenize.NEWLINE and not in_comment and not in_string:
-                    # Skip blank line in code
-                    skip_newline = True
-                    continue
-                elif skip_newline:
-                    # If we skipped a newline, add one back to maintain line structure
-                    new_tokens.append(tokenize.TokenInfo(tokenize.NEWLINE, '\n', token.start, token.end, token.line))
-                    skip_newline = False
+                # Check if the previous token was also a NEWLINE or if it was an INDENT/DEDENT
+                if last_non_newline_token is None or last_non_newline_token.type in (tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT):
+                    continue  # Skip this NEWLINE token
             elif token.type == tokenize.INDENT or token.type == tokenize.DEDENT:
                 # Manage indentation
                 pass
@@ -52,8 +47,8 @@ def process_file(file_path, filename):
             if token.type not in (tokenize.STRING, tokenize.COMMENT):
                 in_comment = False
                 in_string = False
-            if not skip_newline:
-                new_tokens.append(token)
+            new_tokens.append(token)
+            last_non_newline_token = token if token.type != tokenize.NEWLINE else last_non_newline_token
             previous_token_type = token.type
         
         # Rebuild the file content
