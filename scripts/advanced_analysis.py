@@ -38,7 +38,7 @@ def advanced_price_prediction(
     - lag_periods: Number of periods ahead to predict.
     """
     logging.info(f"Performing advanced analysis for lag {lag_periods} {time_interval}(s)...")
-    close_prices = data['Close'].dropna().astype(str)
+    close_prices = data['close'].dropna().astype(str)
     sig_figs = close_prices.apply(lambda x: len(x.replace('.', '').replace('-', '').lstrip('0'))).max()
     predictions_dir = os.path.join('predictions', 'advanced_analysis')
     csv_dir = os.path.join(predictions_dir, 'csv')
@@ -55,10 +55,10 @@ def advanced_price_prediction(
     lag = lag_periods
     logging.info(f"Creating lagged features for lag: {lag}")
     for i in range(1, lag + 1):
-        for col in ['Close', 'Volume', 'Open', 'High', 'Low']:
+        for col in ['close', 'volume', 'open', 'high', 'low']:
             data[f'{col}_lag_{i}'] = data[col].shift(i)
     
-    data['Target'] = data['Close'].shift(-lag)
+    data['target'] = data['close'].shift(-lag)
     
     N = 20
     lag_index = lag - 1
@@ -68,18 +68,18 @@ def advanced_price_prediction(
     top_indicators = [col for col, _ in sorted_correlations[:N] if col in data.columns]
     logging.info(f"Top {N} indicators selected based on correlation: {top_indicators}")
     
-    feature_columns = top_indicators + [f'{col}_lag_{lag}' for col in ['Close', 'Volume', 'Open', 'High', 'Low']] + ['Target']
+    feature_columns = top_indicators + [f'{col}_lag_{lag}' for col in ['close', 'volume', 'open', 'high', 'low']] + ['target']
     
     imputer = KNNImputer(n_neighbors=5)
     data_imputed = pd.DataFrame(imputer.fit_transform(data[feature_columns]), columns=feature_columns)
     
     scaler = StandardScaler()
-    data_scaled = pd.DataFrame(scaler.fit_transform(data_imputed[top_indicators + [f'{col}_lag_{lag}' for col in ['Close', 'Volume', 'Open', 'High', 'Low']]]), 
-                                columns=top_indicators + [f'{col}_lag_{lag}' for col in ['Close', 'Volume', 'Open', 'High', 'Low']],
+    data_scaled = pd.DataFrame(scaler.fit_transform(data_imputed[top_indicators + [f'{col}_lag_{lag}' for col in ['close', 'volume', 'open', 'high', 'low']]]), 
+                                columns=top_indicators + [f'{col}_lag_{lag}' for col in ['close', 'volume', 'open', 'high', 'low']],
                                 index=data_imputed.index)
     
     X = data_scaled
-    y = data_imputed['Target']
+    y = data_imputed['target']
     valid_indices = ~y.isna()
     X, y = X[valid_indices], y[valid_indices]
     
