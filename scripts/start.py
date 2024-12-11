@@ -144,7 +144,8 @@ def main() -> None:
     
     delete_choice = input_yes_no("Do you want to delete all previously generated output? (y/n) [Default: y]: ", 'y')
     if delete_choice == 'y':
-        for folder in ['csv', 'predictions']:
+        folders_to_delete = ['csv', 'predictions', 'combined_charts', 'heatmaps', 'indicator_charts', 'reports']
+        for folder in folders_to_delete:
             folder_path = Path(folder).resolve()
             if folder_path.exists():
                 shutil.rmtree(folder_path)
