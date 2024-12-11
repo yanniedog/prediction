@@ -57,27 +57,9 @@ class DoubleWriter:
     def isatty(self):
         return self.stdout.isatty()
 
-class ScreenOnlyWriter:
-    def __init__(self, stdout, stderr):
-        self.stdout = stdout
-        self.stderr = stderr
-
-    def write(self, msg):
-        if msg.strip():
-            self.stdout.write(msg)
-
-    def flush(self):
-        self.stdout.flush()
-
-    def isatty(self):
-        return self.stdout.isatty()
-
 # Redirect stdout and stderr to DoubleWriter for logging
 sys.stdout = DoubleWriter(sys.__stdout__, sys.__stderr__, logging.getLogger())
 sys.stderr = DoubleWriter(sys.__stderr__, sys.__stderr__, logging.getLogger())
-
-# Redirect stdin to ScreenOnlyWriter to ensure input is only taken from the screen
-sys.stdin = ScreenOnlyWriter(sys.__stdin__, sys.__stderr__)
 
 try:
     start_path = str(Path.cwd() / 'scripts' / 'start.py')
