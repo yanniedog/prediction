@@ -1,12 +1,15 @@
-# visualization_utils.py
+# scripts/visualization_utils.py
 
 import os
 import matplotlib.pyplot as plt
 import pandas as pd
-from typing import List
+from typing import List, Dict, Any, Callable
 import logging
 import numpy as np
 from scipy.stats import t
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def generate_individual_indicator_chart(
     indicator_name: str, 
@@ -38,8 +41,8 @@ def generate_individual_indicator_chart(
     plt.plot(lags, corr_array, marker='o', linestyle='-', color='blue', label='Correlation')
     
     # Area fill based on positive or negative correlation
-    plt.fill_between(lags, corr_array, where=corr_array > 0, color='green', alpha=0.3, interpolate=True, label='Positive Correlation')
-    plt.fill_between(lags, corr_array, where=corr_array < 0, color='red', alpha=0.3, interpolate=True, label='Negative Correlation')
+    plt.fill_between(lags, corr_array, where=corr_array > 0, color='blue', alpha=0.3, interpolate=False, label='Positive Correlation')
+    plt.fill_between(lags, corr_array, where=corr_array < 0, color='red', alpha=0.3, interpolate=False, label='Negative Correlation')
     
     # Calculate Confidence Intervals (95% CI)
     n = len(corr_array)
@@ -62,10 +65,10 @@ def generate_individual_indicator_chart(
     filepath = os.path.join(charts_dir, filename)
     plt.savefig(filepath, bbox_inches='tight')
     plt.close()
-    logging.info(f"Generated individual indicator chart for {indicator_name} at {filepath}.")
+    logging.info(f"Generated individual indicator chart for '{indicator_name}' at '{filepath}'.")
 
 def generate_combined_correlation_chart(
-    correlations: dict, 
+    correlations: Dict[str, List[float]], 
     max_lag: int, 
     time_interval: str, 
     timestamp: str, 
@@ -113,9 +116,10 @@ def generate_combined_correlation_chart(
     plt.legend(loc='upper right', fontsize=10)
     plt.tight_layout()
     combined_filename = f"{timestamp}_{base_csv_filename}_max_correlation.png"
-    plt.savefig(os.path.join(output_dir, combined_filename), bbox_inches='tight')
+    combined_filepath = os.path.join(output_dir, combined_filename)
+    plt.savefig(combined_filepath, bbox_inches='tight')
     plt.close()
-    logging.info(f"Generated combined correlation chart at {os.path.join(output_dir, combined_filename)}.")
+    logging.info(f"Generated combined correlation chart at '{combined_filepath}'.")
 
 def visualize_data(
     data: pd.DataFrame, 
@@ -125,8 +129,8 @@ def visualize_data(
     is_reverse_chronological: bool, 
     time_interval: str, 
     generate_charts: bool, 
-    correlations: dict, 
-    calculate_correlation_func, 
+    correlations: Dict[str, List[float]], 
+    calculate_correlation_func: Callable[..., float], 
     base_csv_filename: str
 ) -> None:
     """
@@ -145,9 +149,11 @@ def visualize_data(
     - base_csv_filename: Base name derived from symbol and timeframe.
     """
     if not generate_charts:
+        logging.info("Chart generation is disabled. Skipping visualization.")
         return
     
     try:
+        # Generate individual indicator charts
         for indicator, corr_values in correlations.items():
             generate_individual_indicator_chart(
                 indicator_name=indicator,
@@ -158,6 +164,7 @@ def visualize_data(
             )
         logging.info("All individual indicator charts generated successfully.")
 
+        # Generate combined correlation chart
         generate_combined_correlation_chart(
             correlations=correlations,
             max_lag=len(next(iter(correlations.values()))) if correlations else 0,
