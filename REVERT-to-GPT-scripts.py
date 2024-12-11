@@ -149,6 +149,25 @@ def parse_gpt_file(gpt_filepath: Path):
     
     return scripts
 
+def find_existing_scripts(directory: Path, filename: str) -> list:
+    """
+    Searches the entire directory for existing scripts with the given filename,
+    excluding the specified excluded files.
+
+    Parameters:
+    - directory: Path object of the directory to search.
+    - filename: Name of the script file to search for.
+
+    Returns:
+    - List of Path objects where the script is found.
+    """
+    existing_scripts = []
+    for file_path in directory.rglob(filename):
+        if file_path.name in EXCLUDED_FILES:
+            continue
+        existing_scripts.append(file_path)
+    return existing_scripts
+
 def replace_scripts(scripts: list):
     """
     Replaces existing scripts with the provided scripts.
@@ -156,19 +175,15 @@ def replace_scripts(scripts: list):
     Parameters:
     - scripts: List of dictionaries with 'filename', 'directory', and 'content' keys.
     """
+    working_dir = Path.cwd()
     for script in scripts:
-        target_dir = script['directory']
         filename = script['filename']
+        target_dir = script['directory']
         content = script['content']
         
-        # Determine the absolute path
+        # Ensure target directory is absolute
         if not target_dir.is_absolute():
-            target_dir = Path.cwd() / target_dir
-        
-        # Exclude certain files
-        if filename in EXCLUDED_FILES:
-            logging.info(f"Skipping excluded file: '{filename}'.")
-            continue
+            target_dir = working_dir / target_dir
         
         # Ensure target directory exists
         try:
@@ -178,28 +193,29 @@ def replace_scripts(scripts: list):
             logging.error(f"Failed to create directory '{target_dir}': {e}")
             continue
         
-        target_file = target_dir / filename
+        # Find and delete existing scripts with the same filename
+        existing_scripts = find_existing_scripts(working_dir, filename)
+        for existing_script in existing_scripts:
+            try:
+                existing_script.unlink()
+                logging.info(f"Deleted existing script: {existing_script}")
+            except Exception as e:
+                logging.error(f"Failed to delete '{existing_script}': {e}")
         
-        # Delete existing script if it exists
-        try:
-            if target_file.exists():
-                target_file.unlink()
-                logging.info(f"Deleted existing script: {target_file}")
-        except Exception as e:
-            logging.error(f"Failed to delete existing script '{target_file}': {e}")
-            continue
+        # Define the path for the new script
+        new_script_path = target_dir / filename
         
-        # Write new script content
+        # Write the new script content
         try:
-            with target_file.open('w', encoding='utf-8') as f:
+            with new_script_path.open('w', encoding='utf-8') as f:
                 f.write(content)
-            logging.info(f"Created/updated script: {target_file}")
+            logging.info(f"Created/Updated script: {new_script_path}")
         except Exception as e:
-            logging.error(f"Failed to write to '{target_file}': {e}")
+            logging.error(f"Failed to write to '{new_script_path}': {e}")
 
 def main():
     """
-    Main function to execute the script replacement.
+    Main function to execute the script restoration.
     """
     working_dir = Path.cwd()
     gpt_files = list_gpt_files(working_dir)
@@ -220,7 +236,7 @@ def main():
     
     replace_scripts(scripts)
     
-    logging.info("Script replacement completed successfully.")
+    logging.info("Script restoration completed successfully.")
 
 if __name__ == "__main__":
     main()
