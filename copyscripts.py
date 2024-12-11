@@ -124,7 +124,6 @@ def read_file_contents(file_path):
         return "[Error reading file]"
 
 
-
 def generate_output(collected_files, log_content=None):
     header = (
         "I encounter the following error when running my script. Below, I’ve included the output I received, "
@@ -210,7 +209,6 @@ if __name__ == "__main__":
     log_content = None
     if log_files:
         log_content = read_file_contents(log_files[0])  # Read only the first log file found
-        print(f"Log content: {log_content}")
 
     # Generate and write the output file
     output_content = generate_output(unique_files, log_content)
