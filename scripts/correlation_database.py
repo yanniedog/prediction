@@ -64,22 +64,18 @@ class CorrelationDatabase:
         - correlation_value: Correlation coefficient.
         """
         cursor = self.connection.cursor()
-        # Get or insert symbol
         cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol,))
         cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
         symbol_id = cursor.fetchone()[0]
         
-        # Get or insert timeframe
         cursor.execute("INSERT OR IGNORE INTO timeframes (timeframe) VALUES (?)", (timeframe,))
         cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
         timeframe_id = cursor.fetchone()[0]
         
-        # Get or insert indicator
         cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
         cursor.execute("SELECT id FROM indicators WHERE name = ?", (indicator_name,))
         indicator_id = cursor.fetchone()[0]
         
-        # Insert or replace correlation
         cursor.execute("""
             INSERT OR REPLACE INTO correlations 
             (symbol_id, timeframe_id, indicator_id, lag, correlation_value) 
@@ -103,28 +99,24 @@ class CorrelationDatabase:
         """
         cursor = self.connection.cursor()
         
-        # Get symbol_id
         cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
         symbol_row = cursor.fetchone()
         if not symbol_row:
             return []
         symbol_id = symbol_row[0]
         
-        # Get timeframe_id
         cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
         timeframe_row = cursor.fetchone()
         if not timeframe_row:
             return []
         timeframe_id = timeframe_row[0]
         
-        # Get indicator_id
         cursor.execute("SELECT id FROM indicators WHERE name = ?", (indicator_name,))
         indicator_row = cursor.fetchone()
         if not indicator_row:
             return []
         indicator_id = indicator_row[0]
         
-        # Retrieve correlations
         cursor.execute("""
             SELECT correlation_value 
             FROM correlations 

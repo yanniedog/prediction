@@ -33,6 +33,7 @@
         "differenced",
         "dropna",
         "dtype",
+        "dtypes",
         "executescript",
         "FAMA",
         "fastd",
