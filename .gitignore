@@ -38,6 +38,7 @@ database/
 heatmaps/
 indicator_charts/
 reports/
+__pycache__/
 
 # ------------------------------------------------------------
 # 4. Exclude Subdirectories
