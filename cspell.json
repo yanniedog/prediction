@@ -96,6 +96,7 @@
         "tzlocal",
         "ULTOSC",
         "uncomputed",
+        "venv",
         "vfactor",
         "vmax",
         "vmin",

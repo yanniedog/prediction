@@ -30,6 +30,14 @@
 # logs/
 # build/
 # node_modules/
+.venv/
+.vscode/
+combined_charts/
+csv/
+database/
+heatmaps/
+indicator_charts/
+reports/
 
 # ------------------------------------------------------------
 # 4. Exclude Subdirectories
