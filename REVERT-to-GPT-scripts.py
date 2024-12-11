@@ -24,55 +24,55 @@ MANAGED_DIRECTORIES = [
     Path.cwd() / 'scripts'
 ]
 
-def list_gpt_files(directory: Path) -> list:
+def list_gptbak_files(directory: Path) -> list:
     """
-    Lists all .GPT files in the specified directory.
+    Lists all .GPTBAK files in the specified directory.
 
     Parameters:
     - directory: Path object of the directory to search.
 
     Returns:
-    - List of Path objects for each .GPT file found.
+    - List of Path objects for each .GPTBAK file found.
     """
-    gpt_files = list(directory.glob('*.GPT'))
-    return gpt_files
+    gptbak_files = list(directory.glob('*.GPTBAK'))
+    return gptbak_files
 
-def prompt_user_to_select_gpt(gpt_files: list) -> Path:
+def prompt_user_to_select_gptbak(gptbak_files: list) -> Path:
     """
-    Prompts the user to select a GPT file from the list.
+    Prompts the user to select a GPTBAK file from the list.
 
     Parameters:
-    - gpt_files: List of Path objects for GPT files.
+    - gptbak_files: List of Path objects for GPTBAK files.
 
     Returns:
-    - Path object of the selected GPT file.
+    - Path object of the selected GPTBAK file.
     """
-    if not gpt_files:
-        logging.error("No .GPT files found in the working directory.")
+    if not gptbak_files:
+        logging.error("No .GPTBAK files found in the working directory.")
         sys.exit(1)
     
-    if len(gpt_files) == 1:
-        selected = gpt_files[0]
-        logging.info(f"Only one GPT file found: '{selected.name}'. Selecting it by default.")
+    if len(gptbak_files) == 1:
+        selected = gptbak_files[0]
+        logging.info(f"Only one GPTBAK file found: '{selected.name}'. Selecting it by default.")
         return selected
     
-    logging.info("Multiple GPT files found:")
-    for idx, gpt in enumerate(gpt_files, start=1):
-        logging.info(f"{idx}) {gpt.name}")
+    logging.info("Multiple GPTBAK files found:")
+    for idx, gptbak in enumerate(gptbak_files, start=1):
+        logging.info(f"{idx}) {gptbak.name}")
     
     while True:
         try:
-            choice = input(f"Enter the number of the GPT file you wish to restore (1-{len(gpt_files)}): ").strip()
+            choice = input(f"Enter the number of the GPTBAK file you wish to restore (1-{len(gptbak_files)}): ").strip()
             if not choice.isdigit():
                 logging.warning("Invalid input. Please enter a number.")
                 continue
             choice = int(choice)
-            if 1 <= choice <= len(gpt_files):
-                selected = gpt_files[choice - 1]
-                logging.info(f"Selected GPT file: '{selected.name}'.")
+            if 1 <= choice <= len(gptbak_files):
+                selected = gptbak_files[choice - 1]
+                logging.info(f"Selected GPTBAK file: '{selected.name}'.")
                 return selected
             else:
-                logging.warning(f"Please enter a number between 1 and {len(gpt_files)}.")
+                logging.warning(f"Please enter a number between 1 and {len(gptbak_files)}.")
         except Exception as e:
             logging.error(f"Error during selection: {e}")
 
@@ -81,7 +81,7 @@ def confirm_overwrite() -> None:
     Prompts the user to confirm overwriting scripts by typing "I am sure".
     Repeats until the user inputs the exact phrase.
     """
-    prompt = 'Are you sure you want to overwrite the existing scripts with the ones in the selected GPT file? Type "I am sure" to proceed: '
+    prompt = 'Are you sure you want to overwrite the existing scripts with the ones in the selected GPTBAK file? Type "I am sure" to proceed: '
     while True:
         confirmation = input(prompt).strip()
         if confirmation == "I am sure":
@@ -90,21 +90,21 @@ def confirm_overwrite() -> None:
         else:
             logging.warning('Confirmation failed. Please type "I am sure" to proceed.')
 
-def parse_gpt_file(gpt_filepath: Path):
+def parse_gptbak_file(gptbak_filepath: Path):
     """
-    Parses the GPT file and extracts scripts with their filenames and target directories.
+    Parses the GPTBAK file and extracts scripts with their filenames and target directories.
 
     Parameters:
-    - gpt_filepath: Path object pointing to the GPT file.
+    - gptbak_filepath: Path object pointing to the GPTBAK file.
 
     Returns:
     - List of dictionaries with 'filename', 'directory', and 'content' keys.
     """
-    if not gpt_filepath.exists():
-        logging.error(f"GPT file '{gpt_filepath}' does not exist.")
+    if not gptbak_filepath.exists():
+        logging.error(f"GPTBAK file '{gptbak_filepath}' does not exist.")
         sys.exit(1)
     
-    with gpt_filepath.open('r', encoding='utf-8') as file:
+    with gptbak_filepath.open('r', encoding='utf-8') as file:
         content = file.read()
     
     # Split the content into sections based on separators (5 or more equal signs)
@@ -168,6 +168,7 @@ def find_existing_scripts(managed_dirs: list, filename: str) -> list:
     """
     existing_scripts = []
     for directory in managed_dirs:
+        # Search only in the specified directory, not recursively
         for file_path in directory.glob(filename):
             if file_path.name in EXCLUDED_FILES:
                 continue
@@ -229,18 +230,18 @@ def main():
     scripts_dir = working_dir / 'scripts'
     managed_dirs = [working_dir, scripts_dir]
     
-    gpt_files = list_gpt_files(working_dir)
+    gptbak_files = list_gptbak_files(working_dir)
     
-    selected_gpt = prompt_user_to_select_gpt(gpt_files)
+    selected_gptbak = prompt_user_to_select_gptbak(gptbak_files)
     
     confirm_overwrite()
     
-    logging.info(f"Parsing GPT file: {selected_gpt}")
+    logging.info(f"Parsing GPTBAK file: {selected_gptbak}")
     
-    scripts = parse_gpt_file(selected_gpt)
+    scripts = parse_gptbak_file(selected_gptbak)
     
     if not scripts:
-        logging.warning("No valid scripts found in the GPT file.")
+        logging.warning("No valid scripts found in the GPTBAK file.")
         sys.exit(0)
     
     logging.info(f"Found {len(scripts)} scripts to replace.")
