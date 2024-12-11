@@ -2,6 +2,7 @@
 
 import os
 import matplotlib.pyplot as plt
+import pandas as pd  # Added import for pandas
 from typing import List
 import logging
 

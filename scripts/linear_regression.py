@@ -3,7 +3,7 @@
 import pandas as pd
 import numpy as np
 import os
-from datetime import timedelta
+from datetime import datetime, timedelta  # Added import for datetime
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import matplotlib.pyplot as plt
@@ -16,7 +16,7 @@ def perform_linear_regression(
     time_interval: str,
     timestamp: str,
     base_csv_filename: str,
-    future_datetime: datetime,
+    future_datetime: datetime,  # Ensure datetime is imported
     lag_periods: int
 ) -> None:
     """
