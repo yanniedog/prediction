@@ -31,12 +31,12 @@ def calculate_correlation(data: pd.DataFrame, indicator_name: str, lag: int, is_
 
     shift_value = lag if is_reverse_chronological else -lag
     shifted_col = data[indicator_name].shift(shift_value)
-    valid_data = pd.concat([shifted_col, data['Close']], axis=1).dropna()
+    valid_data = pd.concat([shifted_col, data['close']], axis=1).dropna()
 
     if valid_data.empty:
         return np.nan
 
-    return valid_data[indicator_name].corr(valid_data['Close'])
+    return valid_data[indicator_name].corr(valid_data['close'])
 
 def is_valid_indicator(series: pd.Series) -> bool:
     """

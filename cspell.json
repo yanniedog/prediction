@@ -55,6 +55,7 @@
         "ichimoku",
         "idna",
         "iloc",
+        "intrvl",
         "isna",
         "iterrows",
         "joblib",
