@@ -1,17 +1,17 @@
 # filename: table_generation.py
 import os
-import logging
 import pandas as pd
 import numpy as np
 from typing import Dict,List
+
 def generate_best_indicator_table(correlations:Dict[str,List[float]],max_lag:int)->pd.DataFrame:
     best_indicators={}
     for lag in range(1,max_lag+1):
         best_indicator=max(correlations,key=lambda col:correlations[col][lag-1] if lag-1<len(correlations[col])else -np.inf)
         best_indicators[lag]=best_indicator
     best_indicators_df=pd.DataFrame(list(best_indicators.items()),columns=['Lag','Best Indicator'])
-    logging.info("Best indicator table generated.")
     return best_indicators_df
+
 def generate_statistical_summary(correlations:Dict[str,List[float]],max_lag:int)->pd.DataFrame:
     summary={}
     for col in correlations:
@@ -24,8 +24,8 @@ def generate_statistical_summary(correlations:Dict[str,List[float]],max_lag:int)
     summary_df=pd.DataFrame(summary).T
     summary_df['Overall Performance Score']=summary_df['Average Correlation']*summary_df['Best Count']
     summary_df.sort_values(by='Overall Performance Score',ascending=False,inplace=True)
-    logging.info("Statistical summary generated.")
     return summary_df
+
 def generate_correlation_csv(correlations:Dict[str,List[float]],max_lag:int,base_csv_filename:str,reports_dir:str)->None:
     correlation_data={}
     for col,corr_list in correlations.items():
@@ -35,4 +35,3 @@ def generate_correlation_csv(correlations:Dict[str,List[float]],max_lag:int,base
     correlation_csv=os.path.join(reports_dir,'csv',f"{base_csv_filename}_correlation_table.csv")
     correlation_df.to_csv(correlation_csv,index=True)
     print(f"Generated correlation table: {correlation_csv}")
-    logging.info(f"Correlation table saved as '{correlation_csv}'.")

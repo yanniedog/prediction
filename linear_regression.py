@@ -8,6 +8,7 @@ from sklearn.metrics import mean_squared_error,mean_absolute_error
 from sklearn.utils import resample
 from joblib import Parallel,delayed
 import matplotlib.pyplot as plt
+
 def perform_linear_regression(data,correlations,max_lag,time_interval,timestamp,base_csv_filename,future_datetime,lag_periods):
     max_user_lag=lag_periods
     print(f"Calculated lag period: {max_user_lag} {time_interval}(s)")
@@ -121,10 +122,6 @@ def perform_linear_regression(data,correlations,max_lag,time_interval,timestamp,
     recent_data=data.tail(50)
     plot_actual_dates=pd.to_datetime(recent_data['Date'])
     plot_actual_prices=recent_data['Close']
-    all_dates=list(plot_actual_dates)+plot_dates
-    all_prices=list(plot_actual_prices)+plot_predictions
-    all_lower_bounds=[np.nan]*len(plot_actual_dates)+plot_lower_bounds
-    all_upper_bounds=[np.nan]*len(plot_actual_dates)+plot_upper_bounds
     plt.figure(figsize=(12,6))
     plt.plot(plot_actual_dates,plot_actual_prices,label='Actual Prices',color='blue')
     plt.plot(plot_dates,plot_predictions,label='Predicted Prices',color='green',linestyle='--')
@@ -139,9 +136,11 @@ def perform_linear_regression(data,correlations,max_lag,time_interval,timestamp,
     plt.savefig(plot_filepath)
     plt.close()
     print(f"Prediction plot saved to {plot_filepath}")
+
 def time_interval_seconds(time_interval):
     intervals={'second':1,'minute':60,'hour':3600,'day':86400,'week':604800}
     return intervals.get(time_interval.lower(),None)
+
 def format_significant_figures(value,sig_figs):
     if value==0 or np.isnan(value):
         return'0'
@@ -151,6 +150,7 @@ def format_significant_figures(value,sig_figs):
             return f"{value:.{decimals}f}"
         else:
             return f"{round(value,-decimals)}"
+
 def interpret_mse(mse_variance_ratio):
     if np.isnan(mse_variance_ratio):
         return "Variance is zero; cannot interpret MSE."
@@ -162,6 +162,7 @@ def interpret_mse(mse_variance_ratio):
         return "Average MSE relative to variance."
     else:
         return "Large MSE relative to variance."
+
 def save_predictions_and_coefficients(predictions_data,coefficients_data,csv_filepath,json_filepath):
     predictions_df=pd.DataFrame(predictions_data)
     predictions_df.sort_values('Lag',inplace=True)

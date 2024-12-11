@@ -1,15 +1,14 @@
 # filename: correlation_utils.py
 import os
-import logging
 import pandas as pd
 import numpy as np
+import sqlite3
 from typing import List
 from sklearn.preprocessing import StandardScaler
-import sqlite3
 from config import DB_PATH
+
 def calculate_correlation(data:pd.DataFrame,indicator_name:str,lag:int,is_reverse_chronological:bool)->float:
     if indicator_name=='close':
-        logging.warning(f"Skipping correlation calculation for '{indicator_name}' at lag {lag} as it is the target variable.")
         return np.nan
     try:
         shift_value=lag if is_reverse_chronological else -lag
@@ -18,19 +17,17 @@ def calculate_correlation(data:pd.DataFrame,indicator_name:str,lag:int,is_revers
         if not valid_data.empty:
             corr=valid_data[indicator_name].corr(valid_data['close'])
             return corr
-        logging.warning(f"No valid data for '{indicator_name}' at lag {lag}'. Returning NaN.")
         return np.nan
-    except Exception as e:
-        logging.error(f"Error calculating correlation for {indicator_name} at lag {lag}: {e}")
+    except:
         return np.nan
+
 def is_valid_indicator(series:pd.Series)->bool:
     if series.isna().all():
-        logging.warning("Indicator series contains only NaN values.")
         return False
     if series.nunique()<=1:
-        logging.warning("Indicator series is constant.")
         return False
     return True
+
 def get_symbol_id(conn,symbol):
     cursor=conn.cursor()
     cursor.execute("SELECT id FROM symbols WHERE symbol = ?",(symbol,))
@@ -41,6 +38,7 @@ def get_symbol_id(conn,symbol):
         cursor.execute("INSERT INTO symbols (symbol) VALUES (?)",(symbol,))
         conn.commit()
         return cursor.lastrowid
+
 def get_timeframe_id(conn,timeframe):
     cursor=conn.cursor()
     cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?",(timeframe,))
@@ -51,6 +49,7 @@ def get_timeframe_id(conn,timeframe):
         cursor.execute("INSERT INTO timeframes (timeframe) VALUES (?)",(timeframe,))
         conn.commit()
         return cursor.lastrowid
+
 def get_indicator_id(conn,indicator_name):
     cursor=conn.cursor()
     cursor.execute("SELECT id FROM indicators WHERE name = ?",(indicator_name,))
@@ -61,6 +60,7 @@ def get_indicator_id(conn,indicator_name):
         cursor.execute("INSERT INTO indicators (name) VALUES (?)",(indicator_name,))
         conn.commit()
         return cursor.lastrowid
+
 def load_or_calculate_correlations(data:pd.DataFrame,original_indicators:List[str],max_lag:int,is_reverse_chronological:bool,symbol:str,timeframe:str)->None:
     conn=sqlite3.connect(DB_PATH)
     cursor=conn.cursor()
@@ -72,19 +72,13 @@ def load_or_calculate_correlations(data:pd.DataFrame,original_indicators:List[st
         existing_lags=set([row[0]for row in cursor.fetchall()])
         lags_to_calculate=[lag for lag in range(1,max_lag+1) if lag not in existing_lags]
         if not lags_to_calculate:
-            logging.info(f"All correlations for indicator '{indicator_name}' already calculated. Skipping.")
             continue
         if not is_valid_indicator(data[indicator_name]):
-            logging.warning(f"Indicator '{indicator_name}' is invalid. Skipping correlation calculations.")
             continue
-        logging.info(f"Calculating correlations for indicator '{indicator_name}'.")
-        try:
-            for lag in lags_to_calculate:
-                calculate_correlation_and_insert(data,indicator_name,lag,is_reverse_chronological,symbol_id,timeframe_id,indicator_id)
-            logging.info(f"Calculated correlations for '{indicator_name}'.")
-        except Exception as e:
-            logging.error(f"Failed to calculate correlations for '{indicator_name}': {e}")
+        for lag in lags_to_calculate:
+            calculate_correlation_and_insert(data,indicator_name,lag,is_reverse_chronological,symbol_id,timeframe_id,indicator_id)
     conn.close()
+
 def calculate_correlation_and_insert(data,indicator_name,lag,is_reverse_chronological,symbol_id,timeframe_id,indicator_id):
     corr_value=calculate_correlation(data,indicator_name,lag,is_reverse_chronological)
     conn=sqlite3.connect(DB_PATH)

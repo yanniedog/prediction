@@ -2,7 +2,6 @@
 import os
 import pandas as pd
 import numpy as np
-import logging
 import sys
 from datetime import datetime, timedelta
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
@@ -13,6 +12,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.impute import KNNImputer
 import warnings
 warnings.filterwarnings('ignore')
+
 def advanced_price_prediction(data, correlations, max_lag, time_interval, timestamp, base_csv_filename, future_datetime, lag_periods):
     lag=lag_periods
     print(f"\nPerforming advanced analysis for lag {lag} {time_interval}(s)...")
@@ -84,6 +84,7 @@ def advanced_price_prediction(data, correlations, max_lag, time_interval, timest
     predictions_df.to_csv(csv_filepath,index=False)
     predictions_df.to_json(json_filepath,orient='records',lines=True)
     print(f"\nAdvanced predictions saved to {csv_filepath} and {json_filepath}")
+
 def format_significant_figures(value,sig_figs):
     if value==0:return'0'
     else:return f"{value:.{sig_figs - int(np.floor(np.log10(abs(value)))) - 1}f}"

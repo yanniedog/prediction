@@ -1,11 +1,12 @@
 # filename: correlation_database.py
 import sqlite3
-import logging
+
 class CorrelationDatabase:
     def __init__(self,db_path:str):
         self.db_path=db_path
         self.connection=sqlite3.connect(self.db_path)
         self.create_table()
+
     def create_table(self)->None:
         create_table_query="""
         CREATE TABLE IF NOT EXISTS correlations (
@@ -27,6 +28,7 @@ class CorrelationDatabase:
         for query in create_index_queries:
             cursor.execute(query)
         self.connection.commit()
+
     def insert_correlation(self,symbol:str,timeframe:str,indicator_name:str,lag:int,correlation_value:float)->None:
         cursor=self.connection.cursor()
         cursor.execute("SELECT id FROM symbols WHERE symbol = ?",(symbol,))
@@ -58,9 +60,9 @@ class CorrelationDatabase:
         try:
             cursor.execute(insert_query,(symbol_id,timeframe_id,indicator_id,lag,correlation_value))
             self.connection.commit()
-            logging.debug(f"Inserted correlation: Symbol: {symbol}, Timeframe: {timeframe}, Indicator: {indicator_name}, Lag: {lag}, Correlation: {correlation_value}")
-        except sqlite3.Error as e:
-            logging.error(f"Failed to insert correlation: {e}")
+        except sqlite3.Error:
+            pass
+
     def get_correlation(self,symbol:str,timeframe:str,indicator_name:str,lag:int):
         cursor=self.connection.cursor()
         cursor.execute("SELECT id FROM symbols WHERE symbol = ?",(symbol,))
@@ -88,6 +90,7 @@ class CorrelationDatabase:
         cursor.execute(select_query,(symbol_id,timeframe_id,indicator_id,lag))
         result=cursor.fetchone()
         return result[0] if result else None
+
     def get_all_correlations(self):
         select_query="""
         SELECT symbols.symbol, timeframes.timeframe, indicators.name, correlations.lag, correlations.correlation_value
@@ -99,5 +102,6 @@ class CorrelationDatabase:
         cursor=self.connection.cursor()
         cursor.execute(select_query)
         return cursor.fetchall()
+
     def close(self)->None:
         self.connection.close()

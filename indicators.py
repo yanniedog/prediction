@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import talib as ta
 import pandas_ta as pta
+
 def compute_obv_price_divergence(data,method="Difference",obv_method="SMA",obv_period=14,price_input_type="OHLC/4",price_method="SMA",price_period=14,bearish_threshold=-0.8,bullish_threshold=0.8,smoothing=0.01):
     if price_input_type.lower()=="close":
         selected_price=data['close']
@@ -43,6 +44,7 @@ def compute_obv_price_divergence(data,method="Difference",obv_method="SMA",obv_p
         raise ValueError(f"Unsupported method: {method}")
     data['obv_price_divergence']=metric
     return data
+
 def compute_all_indicators(data):
     indicators={}
     indicators['bbands_upper'],indicators['bbands_middle'],indicators['bbands_lower']=ta.BBANDS(data['close'],timeperiod=5,nbdevup=2,nbdevdn=2,matype=0)

@@ -1,6 +1,5 @@
 # filename: visualization_utils.py
 import os
-import logging
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -11,10 +10,9 @@ from typing import Dict,List,Any,Callable
 from datetime import datetime
 from joblib import Parallel,delayed
 from scipy.stats import t,zscore
-logging.basicConfig(level=logging.INFO,format='%(asctime)s - %(levelname)s - %(message)s',handlers=[logging.StreamHandler()])
+
 def generate_combined_correlation_chart(correlations:Dict[str,List[float]],max_lag:int,time_interval:str,timestamp:str,base_csv_filename:str,output_dir:str='combined_charts')->None:
     os.makedirs(output_dir,exist_ok=True)
-    logging.info(f"Ensured directory '{output_dir}' exists.")
     max_positive_correlations=[]
     max_negative_correlations=[]
     max_absolute_correlations=[]
@@ -25,12 +23,9 @@ def generate_combined_correlation_chart(correlations:Dict[str,List[float]],max_l
         neg_correlations=[x for x in lag_correlations if x<0]
         max_neg=min(neg_correlations)if neg_correlations else 0
         max_abs=max(max_pos,abs(max_neg))
-        logging.debug(f"Lag {lag}: Max Pos={max_pos},Max Neg={max_neg},Max Abs={max_abs}")
         max_positive_correlations.append(max_pos)
         max_negative_correlations.append(max_neg)
         max_absolute_correlations.append(max_abs)
-    logging.info(f"First 5 Max Abs: {max_absolute_correlations[:5]}")
-    logging.info(f"Last 5 Max Abs: {max_absolute_correlations[-5:]}")
     plt.figure(figsize=(15,10))
     plt.plot(range(1,max_lag+1),max_positive_correlations,color='green',label='Max Positive Correlation')
     plt.plot(range(1,max_lag+1),max_negative_correlations,color='red',label='Max Negative Correlation')
@@ -50,25 +45,19 @@ def generate_combined_correlation_chart(correlations:Dict[str,List[float]],max_l
     combined_filepath=os.path.join(output_dir,combined_filename)
     plt.savefig(combined_filepath,bbox_inches='tight')
     plt.close()
-    logging.info(f"Generated maximum correlation chart in '{output_dir}' as '{combined_filename}'.")
+
 def visualize_data(data:pd.DataFrame,features:pd.DataFrame,feature_columns:List[str],timestamp:str,is_reverse_chronological:bool,time_interval:str,generate_charts:bool,cache:Dict[str,Any],calculate_correlation_func:Callable[...,float],base_csv_filename:str)->None:
     if not generate_charts:
-        logging.info("Chart generation is disabled. Skipping.")
         return
     charts_dir='indicator_charts'
     os.makedirs(charts_dir,exist_ok=True)
-    logging.info(f"Ensured directory '{charts_dir}' exists.")
-    logging.info("Generating individual indicator charts...")
     max_lag=len(data)-51
     if max_lag<=0:
-        logging.warning("Not enough data.")
         return
     correlations={}
     original_indicators=[col for col in feature_columns if not any(future in col for future in['future_1d','future_5d','future_10d','future_20d'])and col!='Close']
     original_indicators=[col for col in original_indicators if data[col].notna().any()and data[col].var()>1e-6]
-    logging.info(f"Original indicators after filtering: {original_indicators}")
     for col in original_indicators:
-        logging.info(f"Plotting {col} vs price...")
         if col not in cache:
             corr_list=Parallel(n_jobs=-1)(delayed(calculate_correlation_func)(data,col,lag,is_reverse_chronological)for lag in range(1,max_lag+1))
             cache[col]=corr_list
@@ -99,10 +88,8 @@ def visualize_data(data:pd.DataFrame,features:pd.DataFrame,feature_columns:List[
         filepath=os.path.join(charts_dir,filename)
         plt.savefig(filepath,bbox_inches='tight')
         plt.close()
-    logging.info(f"Generated individual indicator charts in '{charts_dir}'.")
     combined_charts_dir='combined_charts'
     os.makedirs(combined_charts_dir,exist_ok=True)
-    logging.info(f"Ensured directory '{combined_charts_dir}' exists.")
     sorted_indicators=sorted(original_indicators,key=lambda col:correlations[col][-1]if len(correlations[col])>0 else 0,reverse=True)
     plt.figure(figsize=(15,10))
     colors=plt.cm.rainbow(np.linspace(0,1,len(sorted_indicators)))
@@ -123,7 +110,6 @@ def visualize_data(data:pd.DataFrame,features:pd.DataFrame,feature_columns:List[
     combined_filepath=os.path.join(combined_charts_dir,combined_filename)
     plt.savefig(combined_filepath,bbox_inches='tight')
     plt.close()
-    logging.info(f"Generated combined correlation chart in '{combined_charts_dir}'.")
     max_positive_correlations=[]
     max_negative_correlations=[]
     max_absolute_correlations=[]
@@ -137,9 +123,6 @@ def visualize_data(data:pd.DataFrame,features:pd.DataFrame,feature_columns:List[
         max_positive_correlations.append(max_pos)
         max_negative_correlations.append(max_neg)
         max_absolute_correlations.append(max_abs)
-    logging.debug(f"Max Pos: {max_positive_correlations[:5]}")
-    logging.debug(f"Max Neg: {max_negative_correlations[:5]}")
-    logging.debug(f"Max Abs: {max_absolute_correlations[:5]}")
     plt.figure(figsize=(15,10))
     plt.plot(range(1,max_lag+1),max_positive_correlations,color='green',label='Max Positive Correlation')
     plt.plot(range(1,max_lag+1),max_negative_correlations,color='red',label='Max Negative Correlation')
@@ -159,119 +142,3 @@ def visualize_data(data:pd.DataFrame,features:pd.DataFrame,feature_columns:List[
     combined_filepath=os.path.join(combined_charts_dir,combined_filename)
     plt.savefig(combined_filepath,bbox_inches='tight')
     plt.close()
-    logging.info(f"Generated maximum correlation chart in '{combined_charts_dir}'.")
-def generate_heatmaps(data:pd.DataFrame,timestamp:str,time_interval:str,generate_heatmaps_flag:bool,cache:Dict[str,Any],calculate_correlation:Callable[...,float],base_csv_filename:str,delete_existing:bool=False,annotation:bool=False,max_indicators:int=None,output_format:str='png')->None:
-    if not generate_heatmaps_flag:
-        logging.info("Heatmap generation is disabled. Skipping heatmap creation.")
-        return
-    heatmaps_dir='heatmaps'
-    os.makedirs(heatmaps_dir,exist_ok=True)
-    existing_files=os.listdir(heatmaps_dir)
-    if existing_files:
-        if delete_existing:
-            for file in existing_files:
-                file_path=os.path.join(heatmaps_dir,file)
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-            logging.info(f"Deleted existing heatmaps in '{heatmaps_dir}'.")
-        else:
-            logging.info(f"Existing files found in '{heatmaps_dir}'. Skipping deletion.")
-    original_indicators=[col for col in data.columns if pd.api.types.is_numeric_dtype(data[col]) and col!='Close' and data[col].notna().any()and data[col].var()>1e-6]
-    logging.info(f"Original indicators in generate_heatmaps: {original_indicators}")
-    max_lag=len(data)-51
-    if max_lag<=0:
-        logging.warning("Not enough data.")
-        return
-    correlations={}
-    logging.info("Calculating correlations...")
-    def compute_correlation(col:str):
-        if col not in cache:
-            corr_list=[calculate_correlation(data,col,lag,False)for lag in range(1,max_lag+1)]
-            cache[col]=corr_list
-            logging.debug(f"Calculated and cached {col}.")
-        else:
-            logging.debug(f"Cached {col}.")
-        return cache[col]
-    correlation_results=Parallel(n_jobs=-1)(delayed(compute_correlation)(col)for col in original_indicators)
-    for col,corr_list in zip(original_indicators,correlation_results):
-        correlations[col]=corr_list
-    corr_df=pd.DataFrame(correlations,index=range(1,max_lag+1))
-    corr_df=corr_df.dropna(axis=1,how='all').dropna(axis=0,how='all')
-    if corr_df.empty:
-        logging.warning("Correlation DataFrame empty.")
-        return
-    standardized_corr_df=corr_df.apply(lambda x:zscore(x,nan_policy='omit'),axis=0)
-    standardized_corr_df=standardized_corr_df.replace([np.inf,-np.inf],np.nan).fillna(0)
-    filtered_indicators=[col for col in standardized_corr_df.columns if np.nanmax(np.abs(standardized_corr_df[col]))>0.25]
-    standardized_corr_df=standardized_corr_df[filtered_indicators]
-    if standardized_corr_df.empty:
-        logging.warning("No indicators passed threshold.")
-        return
-    if max_indicators is not None:
-        filtered_indicators=filtered_indicators[:max_indicators]
-        standardized_corr_df=standardized_corr_df[filtered_indicators]
-    def earliest_max_lag(col:str)->int:
-        abs_corr=np.abs(standardized_corr_df[col])
-        max_corr=np.nanmax(abs_corr)
-        if max_corr==0:
-            return max_lag
-        return abs_corr.idxmax()
-    sorted_indicators=sorted(filtered_indicators,key=lambda col:earliest_max_lag(col))
-    sorted_standardized_corr_df=standardized_corr_df[sorted_indicators]
-    desired_label_count=20
-    step=max(1,max_lag//desired_label_count)
-    x_ticks=range(0,max_lag,step)
-    x_labels=[str(lag)for lag in range(1,max_lag+1,step)]
-    plt.figure(figsize=(20,max(10,len(sorted_indicators)*0.3)),dpi=300)
-    sns.heatmap(sorted_standardized_corr_df.T,annot=annotation,fmt=".2f"if annotation else None,cmap='RdBu_r',cbar=True,xticklabels=False,yticklabels=True,center=0,vmin=-3,vmax=3)
-    plt.title('Standardized Correlation of Indicators with Close Price at Various Time Lags',fontsize=16)
-    plt.xlabel(f'Time Lag ({time_interval})',fontsize=14)
-    plt.ylabel('Indicators',fontsize=14)
-    plt.xticks(ticks=np.arange(step/2,max_lag,step),labels=x_labels,rotation=45,ha='right',fontsize=8)
-    plt.yticks(rotation=0,fontsize=8)
-    plt.tight_layout()
-    heatmap_filename_1=f"{timestamp}_{base_csv_filename}_standardized_correlation_heatmap_sorted_earliest_max.{output_format}"
-    heatmap_filepath_1=os.path.join(heatmaps_dir,heatmap_filename_1)
-    plt.savefig(heatmap_filepath_1,bbox_inches='tight')
-    plt.close()
-    logging.info(f"Generated standardized correlation heatmap sorted by earliest max correlation: '{heatmap_filename_1}'.")
-    sorted_indicators_lag1=sorted(filtered_indicators,key=lambda col:standardized_corr_df[col].iloc[0],reverse=True)
-    sorted_standardized_corr_df_lag1=standardized_corr_df[sorted_indicators_lag1]
-    plt.figure(figsize=(20,max(10,len(sorted_indicators_lag1)*0.3)),dpi=300)
-    sns.heatmap(sorted_standardized_corr_df_lag1.T,annot=annotation,fmt=".2f"if annotation else None,cmap='RdBu_r',cbar=True,xticklabels=False,yticklabels=True,center=0,vmin=-3,vmax=3)
-    plt.title('Standardized Correlation... (Sorted by Lag 1)',fontsize=16)
-    plt.xlabel(f'Time Lag ({time_interval})',fontsize=14)
-    plt.ylabel('Indicators',fontsize=14)
-    plt.xticks(ticks=np.arange(step/2,max_lag,step),labels=x_labels,rotation=45,ha='right',fontsize=8)
-    plt.yticks(rotation=0,fontsize=8)
-    plt.tight_layout()
-    heatmap_filename_2=f"{timestamp}_{base_csv_filename}_standardized_correlation_heatmap_sorted_lag1.{output_format}"
-    heatmap_filepath_2=os.path.join(heatmaps_dir,heatmap_filename_2)
-    plt.savefig(heatmap_filepath_2,bbox_inches='tight')
-    plt.close()
-    logging.info(f"Generated standardized correlation heatmap sorted by highest correlation at lag 1: '{heatmap_filename_2}'.")
-    raw_corr_df=corr_df[filtered_indicators]
-    sorted_indicators_raw=sorted(filtered_indicators,key=lambda col:raw_corr_df[col].iloc[0],reverse=True)
-    sorted_raw_corr_df=raw_corr_df[sorted_indicators_raw]
-    plt.figure(figsize=(20,max(10,len(sorted_indicators_raw)*0.3)),dpi=300)
-    sns.heatmap(sorted_raw_corr_df.T,annot=annotation,fmt=".2f"if annotation else None,cmap='RdBu_r',cbar=True,xticklabels=False,yticklabels=True)
-    plt.title('Raw Correlation... (Sorted by Lag 1)',fontsize=16)
-    plt.xlabel(f'Time Lag ({time_interval})',fontsize=14)
-    plt.ylabel('Indicators',fontsize=14)
-    plt.xticks(ticks=np.arange(step/2,max_lag,step),labels=x_labels,rotation=45,ha='right',fontsize=8)
-    plt.yticks(rotation=0,fontsize=8)
-    plt.tight_layout()
-    heatmap_filename_3=f"{timestamp}_{base_csv_filename}_raw_correlation_heatmap_sorted_lag1.{output_format}"
-    heatmap_filepath_3=os.path.join(heatmaps_dir,heatmap_filename_3)
-    plt.savefig(heatmap_filepath_3,bbox_inches='tight')
-    plt.close()
-    logging.info(f"Generated raw correlation heatmap sorted by highest correlation at lag 1: '{heatmap_filename_3}'.")
-    logging.info(f"Generated all requested heatmaps in '{heatmaps_dir}'.")
-def calculate_correlation_example(data:pd.DataFrame,column:str,lag:int,reverse:bool=False)->float:
-    if reverse:
-        series1=data[column].shift(lag)
-        series2=data['Close']
-    else:
-        series1=data['Close'].shift(-lag)
-        series2=data[column]
-    return series1.corr(series2)

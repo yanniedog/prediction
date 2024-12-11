@@ -1,6 +1,7 @@
 # filename: restore_backup.py
 import os
 from pathlib import Path
+
 def rename_files(directory):
     dir_path=Path(directory)
     if not dir_path.is_dir():
@@ -21,6 +22,7 @@ def rename_files(directory):
                 print(f'Error renaming "{file_path.name}": {e}')
         else:
             print(f'Warning: The file "{file_path.name}" does not match the expected pattern. Skipping.')
+
 if __name__=="__main__":
     directory=r"C:\code\prediction"
     rename_files(directory)

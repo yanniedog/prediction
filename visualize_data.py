@@ -2,10 +2,10 @@
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
-import logging
 import numpy as np
 from scipy.stats import t
 from joblib import Parallel,delayed
+
 def visualize_data(data,features,feature_columns,timestamp,is_reverse_chronological,time_interval,generate_charts,cache,calculate_correlation,base_csv_filename):
     if not generate_charts:
         return
@@ -15,24 +15,18 @@ def visualize_data(data,features,feature_columns,timestamp,is_reverse_chronologi
     else:
         existing_files=os.listdir(charts_dir)
         if existing_files:
-            logging.info(f"Existing files found in '{charts_dir}' directory.")
             delete_choice=input(f"Do you want to delete them? (y/n): ").lower()
             if delete_choice=='y':
                 for file in existing_files:
                     file_path=os.path.join(charts_dir,file)
                     if os.path.isfile(file_path):
                         os.remove(file_path)
-                logging.info(f"Deleted existing charts in '{charts_dir}'.")
-            else:
-                logging.info(f"Retaining existing charts in '{charts_dir}'.")
-    logging.info("Generating individual indicator charts...")
     max_lag=len(data)-51
     correlations={}
     original_indicators=[col for col in feature_columns if not any(future in col for future in['future_1d','future_5d','future_10d','future_20d'])and col!='Close']
     original_indicators=[col for col in original_indicators if data[col].notna().any()and data[col].var()>1e-6]
     print(f"Original indicators in visualize_data.py: {original_indicators}")
     for col in original_indicators:
-        logging.info(f"Plotting {col} vs price...")
         if col not in cache:
             corr_list=Parallel(n_jobs=-1)(delayed(calculate_correlation)(data,col,lag,is_reverse_chronological)for lag in range(1,max_lag+1))
             cache[col]=corr_list
@@ -63,7 +57,6 @@ def visualize_data(data,features,feature_columns,timestamp,is_reverse_chronologi
         filepath=os.path.join(charts_dir,filename)
         plt.savefig(filepath,bbox_inches='tight')
         plt.close()
-    logging.info(f"Generated individual indicator charts in '{charts_dir}'.")
     combined_charts_dir='combined_charts'
     if not os.path.exists(combined_charts_dir):
         os.makedirs(combined_charts_dir)
@@ -87,7 +80,6 @@ def visualize_data(data,features,feature_columns,timestamp,is_reverse_chronologi
     combined_filepath=os.path.join(combined_charts_dir,combined_filename)
     plt.savefig(combined_filepath,bbox_inches='tight')
     plt.close()
-    logging.info(f"Generated combined correlation chart in '{combined_charts_dir}'.")
     max_positive_correlations=[]
     max_negative_correlations=[]
     for lag in range(1,max_lag+1):
@@ -112,4 +104,3 @@ def visualize_data(data,features,feature_columns,timestamp,is_reverse_chronologi
     combined_filepath=os.path.join(combined_charts_dir,combined_filename)
     plt.savefig(combined_filepath,bbox_inches='tight')
     plt.close()
-    logging.info(f"Generated maximum correlation chart in '{combined_charts_dir}'.")

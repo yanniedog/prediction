@@ -3,20 +3,18 @@ import os
 import sys
 import sqlite3
 import pandas as pd
-import logging
 from pathlib import Path
 from config import DB_PATH
+
 def create_connection(db_file):
-    logging.info(f"Attempting to create a connection to the SQLite database at {db_file}.")
     conn=None
     try:
         conn=sqlite3.connect(db_file)
-        logging.info(f"Connected to SQLite database: {db_file}")
-    except sqlite3.Error as e:
-        logging.exception(f"Failed to connect to SQLite database: {e}")
+    except:
+        pass
     return conn
+
 def create_tables(conn):
-    logging.info("Creating tables in the SQLite database.")
     try:
         cursor=conn.cursor()
         create_symbols_table="""
@@ -26,7 +24,6 @@ def create_tables(conn):
         );
         """
         cursor.execute(create_symbols_table)
-        logging.info("Created 'symbols' table successfully.")
         create_timeframes_table="""
         CREATE TABLE IF NOT EXISTS timeframes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,7 +31,6 @@ def create_tables(conn):
         );
         """
         cursor.execute(create_timeframes_table)
-        logging.info("Created 'timeframes' table successfully.")
         create_indicators_table="""
         CREATE TABLE IF NOT EXISTS indicators (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,7 +38,6 @@ def create_tables(conn):
         );
         """
         cursor.execute(create_indicators_table)
-        logging.info("Created 'indicators' table successfully.")
         create_klines_table="""
         CREATE TABLE IF NOT EXISTS klines (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -65,7 +60,6 @@ def create_tables(conn):
         );
         """
         cursor.execute(create_klines_table)
-        logging.info("Created 'klines' table successfully.")
         create_correlations_table="""
         CREATE TABLE IF NOT EXISTS correlations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,7 +74,6 @@ def create_tables(conn):
         );
         """
         cursor.execute(create_correlations_table)
-        logging.info("Created 'correlations' table successfully.")
         indexes=[
             "CREATE INDEX IF NOT EXISTS idx_open_time ON klines (open_time);",
             "CREATE INDEX IF NOT EXISTS idx_close_time ON klines (close_time);",
@@ -90,11 +83,10 @@ def create_tables(conn):
         for index_query in indexes:
             cursor.execute(index_query)
         conn.commit()
-        logging.info("Tables and indexes created and committed successfully.")
-    except sqlite3.Error as e:
-        logging.exception(f"Failed to create tables: {e}")
+    except:
+        pass
+
 def save_to_sqlite(df,db_path,symbol,timeframe):
-    logging.info(f"Saving DataFrame to SQLite database at {db_path}.")
     conn=None
     try:
         os.makedirs(os.path.dirname(db_path),exist_ok=True)
@@ -117,19 +109,8 @@ def save_to_sqlite(df,db_path,symbol,timeframe):
         for index,row in df.iterrows():
             cursor.execute(insert_query,(symbol_id,timeframe_id,row['open_time'],row['open'],row['high'],row['low'],row['close'],row['volume'],row['close_time'],row['quote_asset_volume'],row['number_of_trades'],row['taker_buy_base_asset_volume'],row['taker_buy_quote_asset_volume']))
         conn.commit()
-        logging.info("Data successfully inserted into SQLite database.")
-    except Exception as e:
-        logging.exception(f"Failed to save DataFrame to SQLite: {e}")
-        print(f"Failed to save data to SQLite: {e}")
+    except:
+        pass
     finally:
         if conn:
             conn.close()
-if __name__=="__main__":
-    db_path=DB_PATH
-    conn=create_connection(db_path)
-    if conn:
-        create_tables(conn)
-        conn.close()
-    else:
-        logging.error("Failed to establish a connection to the SQLite database. Exiting.")
-        sys.exit(1)

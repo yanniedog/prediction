@@ -4,6 +4,7 @@ import shutil
 import zipfile
 from pathlib import Path
 from datetime import datetime
+
 def backup_cleanup():
     try:
         cwd=Path.cwd()
@@ -62,5 +63,6 @@ def backup_cleanup():
         print("Backup cleanup completed successfully.")
     except Exception as e:
         print(f"An error occurred during backup cleanup: {e}")
+
 if __name__=="__main__":
     backup_cleanup()
