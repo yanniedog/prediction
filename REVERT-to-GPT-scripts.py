@@ -18,6 +18,12 @@ EXCLUDED_FILES = {
     'REVERT-to-GPT-scripts.py'
 }
 
+# Directories to manage
+MANAGED_DIRECTORIES = [
+    Path.cwd(),
+    Path.cwd() / 'scripts'
+]
+
 def list_gpt_files(directory: Path) -> list:
     """
     Lists all .GPT files in the specified directory.
@@ -149,33 +155,33 @@ def parse_gpt_file(gpt_filepath: Path):
     
     return scripts
 
-def find_existing_scripts(directory: Path, filename: str) -> list:
+def find_existing_scripts(managed_dirs: list, filename: str) -> list:
     """
-    Searches the entire directory for existing scripts with the given filename,
-    excluding the specified excluded files.
+    Searches only the managed directories for existing scripts with the given filename.
 
     Parameters:
-    - directory: Path object of the directory to search.
+    - managed_dirs: List of Path objects representing directories to search.
     - filename: Name of the script file to search for.
 
     Returns:
     - List of Path objects where the script is found.
     """
     existing_scripts = []
-    for file_path in directory.rglob(filename):
-        if file_path.name in EXCLUDED_FILES:
-            continue
-        existing_scripts.append(file_path)
+    for directory in managed_dirs:
+        for file_path in directory.glob(filename):
+            if file_path.name in EXCLUDED_FILES:
+                continue
+            existing_scripts.append(file_path)
     return existing_scripts
 
-def replace_scripts(scripts: list):
+def replace_scripts(scripts: list, managed_dirs: list):
     """
     Replaces existing scripts with the provided scripts.
 
     Parameters:
     - scripts: List of dictionaries with 'filename', 'directory', and 'content' keys.
+    - managed_dirs: List of Path objects representing directories to manage.
     """
-    working_dir = Path.cwd()
     for script in scripts:
         filename = script['filename']
         target_dir = script['directory']
@@ -183,7 +189,9 @@ def replace_scripts(scripts: list):
         
         # Ensure target directory is absolute
         if not target_dir.is_absolute():
-            target_dir = working_dir / target_dir
+            # Determine if the directory is relative to the working directory or the 'scripts' subdirectory
+            # Since managed_dirs includes both, we assume subdirectories are relative to the working directory
+            target_dir = Path.cwd() / target_dir
         
         # Ensure target directory exists
         try:
@@ -193,8 +201,8 @@ def replace_scripts(scripts: list):
             logging.error(f"Failed to create directory '{target_dir}': {e}")
             continue
         
-        # Find and delete existing scripts with the same filename
-        existing_scripts = find_existing_scripts(working_dir, filename)
+        # Find and delete existing scripts with the same filename within managed directories
+        existing_scripts = find_existing_scripts(managed_dirs, filename)
         for existing_script in existing_scripts:
             try:
                 existing_script.unlink()
@@ -218,6 +226,9 @@ def main():
     Main function to execute the script restoration.
     """
     working_dir = Path.cwd()
+    scripts_dir = working_dir / 'scripts'
+    managed_dirs = [working_dir, scripts_dir]
+    
     gpt_files = list_gpt_files(working_dir)
     
     selected_gpt = prompt_user_to_select_gpt(gpt_files)
@@ -234,7 +245,7 @@ def main():
     
     logging.info(f"Found {len(scripts)} scripts to replace.")
     
-    replace_scripts(scripts)
+    replace_scripts(scripts, managed_dirs)
     
     logging.info("Script restoration completed successfully.")
 
