@@ -52,7 +52,6 @@ def advanced_price_prediction(
     json_filepath = os.path.join(json_dir, json_filename)
     data = data.copy()
     
-    # Create lagged features
     lag = lag_periods
     logging.info(f"Creating lagged features for lag: {lag}")
     for i in range(1, lag + 1):
@@ -61,7 +60,6 @@ def advanced_price_prediction(
     
     data['Target'] = data['Close'].shift(-lag)
     
-    # Select top N correlated indicators
     N = 20
     lag_index = lag - 1
     lag_correlations = {col: correlations[col][lag_index] if lag_index < len(correlations[col]) else np.nan for col in correlations}
@@ -72,7 +70,6 @@ def advanced_price_prediction(
     
     feature_columns = top_indicators + [f'{col}_lag_{lag}' for col in ['Close', 'Volume', 'Open', 'High', 'Low']] + ['Target']
     
-    # Handle missing values
     imputer = KNNImputer(n_neighbors=5)
     data_imputed = pd.DataFrame(imputer.fit_transform(data[feature_columns]), columns=feature_columns)
     

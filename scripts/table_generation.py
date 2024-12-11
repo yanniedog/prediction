@@ -2,7 +2,7 @@
 
 import os
 import pandas as pd
-import numpy as np  # Added import for numpy
+import numpy as np
 import logging
 
 def generate_best_indicator_table(correlations: dict, max_lag: int) -> pd.DataFrame:
@@ -19,21 +19,25 @@ def generate_best_indicator_table(correlations: dict, max_lag: int) -> pd.DataFr
     try:
         best_indicators = []
         for indicator, corr_values in correlations.items():
-            # Find the lag with maximum absolute correlation
             abs_corr = [abs(c) if not pd.isna(c) else 0 for c in corr_values]
+            if not abs_corr:
+                continue
             max_abs = max(abs_corr)
             if max_abs == 0:
-                continue  # Skip if all correlations are zero or NaN
-            lag = abs_corr.index(max_abs) + 1  # lags start at 1
+                continue
+            lag = abs_corr.index(max_abs) + 1
             best_indicators.append({
                 'Indicator': indicator,
                 'Max_Absolute_Correlation': max_abs,
                 'Lag': lag
             })
         
-        # Create DataFrame
         best_indicators_df = pd.DataFrame(best_indicators)
-        # Sort by Max_Absolute_Correlation descending
+        
+        if best_indicators_df.empty:
+            logging.warning("No valid indicators found for the best indicator table.")
+            return best_indicators_df
+        
         best_indicators_df.sort_values(by='Max_Absolute_Correlation', ascending=False, inplace=True)
         logging.info("Generated best indicator table.")
         return best_indicators_df
@@ -65,6 +69,11 @@ def generate_statistical_summary(correlations: dict, max_lag: int) -> pd.DataFra
                 'Std_Deviation': np.std(valid_corr)
             })
         summary_df = pd.DataFrame(summary)
+        
+        if summary_df.empty:
+            logging.warning("No valid indicators found for the statistical summary.")
+            return summary_df
+        
         logging.info("Generated statistical summary of correlations.")
         return summary_df
     except Exception as e:
@@ -82,9 +91,19 @@ def generate_correlation_csv(correlations: dict, max_lag: int, base_csv_filename
     - csv_dir: Directory to save the CSV file.
     """
     try:
+        if not os.path.exists(csv_dir):
+            os.makedirs(csv_dir, exist_ok=True)
+            logging.info(f"Created CSV directory at {csv_dir}.")
+        
         corr_df = pd.DataFrame(correlations)
-        corr_df.index = range(1, max_lag + 1)  # Assuming lags start at 1
+        
+        if corr_df.empty:
+            logging.warning("Correlation DataFrame is empty. Skipping CSV generation.")
+            return
+        
+        corr_df.index = range(1, max_lag + 1)
         corr_df.index.name = 'Lag'
+        
         csv_filepath = os.path.join(csv_dir, f"{base_csv_filename}_correlations.csv")
         corr_df.to_csv(csv_filepath)
         logging.info(f"Saved correlation CSV at {csv_filepath}.")

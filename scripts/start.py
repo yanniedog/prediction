@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
+matplotlib.use('Agg')
 from joblib import Parallel, delayed
 from data_utils import clear_screen, prepare_data, determine_time_interval, get_original_indicators, handle_missing_indicators
 from correlation_utils import load_or_calculate_correlations, calculate_correlation
@@ -27,20 +27,17 @@ import logging
 
 from logging import StreamHandler, FileHandler, Formatter
 
-# Configure logging to output to both file and console
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)  # Capture all levels
+logger.setLevel(logging.DEBUG)
 
-# File handler
 file_handler = FileHandler('app.log')
 file_handler.setLevel(logging.DEBUG)
 file_formatter = Formatter('%(asctime)s - %(levelname)s - %(message)s')
 file_handler.setFormatter(file_formatter)
 logger.addHandler(file_handler)
 
-# Console handler
 console_handler = StreamHandler()
-console_handler.setLevel(logging.ERROR)  # Only ERROR and above to console
+console_handler.setLevel(logging.ERROR)
 console_formatter = Formatter('%(asctime)s - %(levelname)s - %(message)s')
 console_handler.setFormatter(console_formatter)
 logger.addHandler(console_handler)
@@ -145,7 +142,6 @@ def main() -> None:
         os.makedirs(d, exist_ok=True)
         logging.info(f"Ensured directory exists: {d}")
     
-    # a) Delete 'csv' and 'predictions' directories if user opts
     delete_choice = input_yes_no("Do you want to delete all previously generated output? (y/n) [Default: y]: ", 'y')
     if delete_choice == 'y':
         for folder in ['csv', 'predictions']:
@@ -153,15 +149,12 @@ def main() -> None:
             if folder_path.exists():
                 shutil.rmtree(folder_path)
                 logging.info(f"Deleted folder: {folder_path}")
-                # Recreate the directories after deletion
                 os.makedirs(folder_path, exist_ok=True)
                 logging.info(f"Recreated folder: {folder_path}")
     
-    # f) Set default trading symbol and interval
     symbol = input_with_default("Enter the trading symbol (e.g., 'SOLUSDT') [Default: SOLUSDT]: ", "SOLUSDT").upper()
     timeframe = input_with_default("Enter the timeframe (e.g., '1w') [Default: 1w]: ", "1w")
     
-    # Prompt for future date after deleting outputs
     today = datetime.now()
     default_future_datetime = today + timedelta(weeks=4)
     default_future_date_str = default_future_datetime.strftime('%Y%m%d')
@@ -171,11 +164,9 @@ def main() -> None:
     )
     future_datetime = parse_date_time_input(future_date_input, today)
     
-    # Load data
     data, is_reverse_chronological, db_filename = load_data(symbol, timeframe)
     logging.info(f"Loaded data for symbol: {symbol}, timeframe: {timeframe}")
     
-    # Check database integrity
     if not preview_database(DB_PATH):
         recreate_choice = input_yes_no_no_default("Database invalid. Erase and create new? (y/n): ")
         if recreate_choice == 'y':
@@ -186,11 +177,9 @@ def main() -> None:
             logging.error("Database not recreated. Exiting.")
             sys.exit(1)
     
-    # If no data, prompt to download
     if data.empty:
         download_choice = input_yes_no("No data found. Download now? (y/n) [Default: y]: ", 'y')
         if download_choice == 'y':
-            # Prompt for start and end dates or use defaults
             start_date_input = input_with_default("Enter start date (YYYYMMDD) or blank: ", "")
             end_date_input = input_with_default("Enter end date (YYYYMMDD) or blank: ", "")
             download_binance_data(symbol, timeframe, start_date_input, end_date_input)
@@ -200,11 +189,9 @@ def main() -> None:
             logging.error("No data found after download. Exiting.")
             sys.exit(1)
     
-    # Compute indicators
     data = compute_all_indicators(data)
     logging.info("Computed all indicators.")
     
-    # Ensure required columns are present
     required_columns = ['Volume', 'Open', 'High', 'Low']
     missing_columns = [col for col in required_columns if col not in data.columns]
     if missing_columns:
@@ -212,11 +199,9 @@ def main() -> None:
         sys.exit(1)
     logging.info(f"All required columns are present: {required_columns}")
     
-    # Prepare data
     X_scaled, feature_names = prepare_data(data)
     logging.info("Prepared and scaled data.")
     
-    # Get original indicators
     original_indicators = handle_missing_indicators(
         get_original_indicators(feature_names, data), 
         data, 
@@ -227,14 +212,12 @@ def main() -> None:
         sys.exit(1)
     logging.info(f"Identified original indicators: {original_indicators}")
     
-    # Determine max lag
     max_lag = len(data) - 51
     if max_lag < 1:
         logging.error("Not enough data to calculate correlations.")
         sys.exit(1)
     logging.info(f"Maximum lag for correlations: {max_lag}")
     
-    # Calculate or load correlations and embed into the database
     load_or_calculate_correlations(
         data=data,
         original_indicators=original_indicators,
@@ -245,7 +228,6 @@ def main() -> None:
     )
     logging.info("Calculated and embedded correlations into the database.")
     
-    # Load correlations from the database
     correlation_db = CorrelationDatabase(DB_PATH)
     correlations = {}
     for indicator in original_indicators:
@@ -253,7 +235,6 @@ def main() -> None:
     correlation_db.close()
     logging.info("Loaded correlations from the database.")
     
-    # Generate statistical summary
     try:
         summary_df = generate_statistical_summary(correlations, max_lag)
         summary_filepath = os.path.join(csv_dir, f"{new_timestamp}_{symbol}_{timeframe}_statistical_summary.csv")
@@ -263,7 +244,6 @@ def main() -> None:
     except Exception as e:
         logging.error(f"Error generating statistical summary: {e}")
     
-    # Generate combined correlation chart
     try:
         time_interval = determine_time_interval(data)
         generate_combined_correlation_chart(
@@ -277,7 +257,6 @@ def main() -> None:
     except Exception as e:
         logging.error(f"Error generating combined correlation chart: {e}")
     
-    # Visualize data and generate individual indicator charts
     try:
         visualize_data(
             data=data,
@@ -295,7 +274,6 @@ def main() -> None:
     except Exception as e:
         logging.error(f"Error visualizing data: {e}")
     
-    # Generate heatmaps automatically
     try:
         generate_heatmaps(
             data=data,
@@ -310,7 +288,6 @@ def main() -> None:
     except Exception as e:
         logging.error(f"Error generating heatmaps: {e}")
     
-    # Generate best indicator table
     try:
         best_indicators_df = generate_best_indicator_table(correlations, max_lag)
         best_indicators_filepath = os.path.join(csv_dir, f"{new_timestamp}_{symbol}_{timeframe}_best_indicators.csv")
@@ -319,14 +296,12 @@ def main() -> None:
     except Exception as e:
         logging.error(f"Error generating best indicator table: {e}")
     
-    # Automatically save correlation CSV
     try:
         generate_correlation_csv(correlations, max_lag, f"{symbol}_{timeframe}", csv_dir)
         logging.info(f"Saved correlation CSV at {csv_dir}.")
     except Exception as e:
         logging.error(f"Error generating correlation CSV: {e}")
     
-    # Perform Linear Regression Prediction
     try:
         perform_linear_regression(
             data=data,
@@ -336,13 +311,12 @@ def main() -> None:
             timestamp=new_timestamp,
             base_csv_filename=f"{symbol}_{timeframe}",
             future_datetime=future_datetime,
-            lag_periods=4  # Assuming 4 weeks ahead
+            lag_periods=4
         )
         logging.info("Performed linear regression predictions successfully.")
     except Exception as e:
         logging.error(f"Error performing linear regression: {e}")
     
-    # Perform Advanced Price Prediction
     try:
         advanced_price_prediction(
             data=data,
@@ -352,7 +326,7 @@ def main() -> None:
             timestamp=new_timestamp,
             base_csv_filename=f"{symbol}_{timeframe}",
             future_datetime=future_datetime,
-            lag_periods=4  # Assuming 4 weeks ahead
+            lag_periods=4
         )
         logging.info("Performed advanced price prediction successfully.")
     except Exception as e:

@@ -28,15 +28,22 @@ def generate_heatmaps(
     - base_csv_filename: Base name derived from symbol and timeframe.
     """
     if not generate_heatmaps_flag:
+        logging.info("Heatmap generation flag is False. Skipping heatmap generation.")
         return
-    
+
     try:
-        # Create a DataFrame from the correlations dictionary
         corr_df = pd.DataFrame(correlations)
-        # Compute the correlation matrix
-        corr_matrix = corr_df.corr()
         
-        # Generate heatmap
+        if corr_df.empty:
+            logging.warning("Correlation DataFrame is empty. Skipping heatmap generation.")
+            return
+        
+        corr_matrix = corr_df.corr()
+
+        if corr_matrix.empty or corr_matrix.shape[0] < 2:
+            logging.warning("Correlation matrix is empty or has insufficient data. Skipping heatmap generation.")
+            return
+        
         plt.figure(figsize=(12, 10))
         sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap='coolwarm', linewidths=.5)
         plt.title('Correlation Heatmap')
