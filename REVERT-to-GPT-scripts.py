@@ -10,6 +10,80 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
+# Files to exclude from management
+EXCLUDED_FILES = {
+    '.gitignore',
+    'copyscripts.py',
+    'repair-remarks.py',
+    'REVERT-to-GPT-scripts.py'
+}
+
+def list_gpt_files(directory: Path) -> list:
+    """
+    Lists all .GPT files in the specified directory.
+
+    Parameters:
+    - directory: Path object of the directory to search.
+
+    Returns:
+    - List of Path objects for each .GPT file found.
+    """
+    gpt_files = list(directory.glob('*.GPT'))
+    return gpt_files
+
+def prompt_user_to_select_gpt(gpt_files: list) -> Path:
+    """
+    Prompts the user to select a GPT file from the list.
+
+    Parameters:
+    - gpt_files: List of Path objects for GPT files.
+
+    Returns:
+    - Path object of the selected GPT file.
+    """
+    if not gpt_files:
+        logging.error("No .GPT files found in the working directory.")
+        sys.exit(1)
+    
+    if len(gpt_files) == 1:
+        selected = gpt_files[0]
+        logging.info(f"Only one GPT file found: '{selected.name}'. Selecting it by default.")
+        return selected
+    
+    logging.info("Multiple GPT files found:")
+    for idx, gpt in enumerate(gpt_files, start=1):
+        logging.info(f"{idx}) {gpt.name}")
+    
+    while True:
+        try:
+            choice = input(f"Enter the number of the GPT file you wish to restore (1-{len(gpt_files)}): ").strip()
+            if not choice.isdigit():
+                logging.warning("Invalid input. Please enter a number.")
+                continue
+            choice = int(choice)
+            if 1 <= choice <= len(gpt_files):
+                selected = gpt_files[choice - 1]
+                logging.info(f"Selected GPT file: '{selected.name}'.")
+                return selected
+            else:
+                logging.warning(f"Please enter a number between 1 and {len(gpt_files)}.")
+        except Exception as e:
+            logging.error(f"Error during selection: {e}")
+
+def confirm_overwrite() -> None:
+    """
+    Prompts the user to confirm overwriting scripts by typing "I am sure".
+    Repeats until the user inputs the exact phrase.
+    """
+    prompt = 'Are you sure you want to overwrite the existing scripts with the ones in the selected GPT file? Type "I am sure" to proceed: '
+    while True:
+        confirmation = input(prompt).strip()
+        if confirmation == "I am sure":
+            logging.info("Confirmation received. Proceeding with script replacement.")
+            break
+        else:
+            logging.warning('Confirmation failed. Please type "I am sure" to proceed.')
+
 def parse_gpt_file(gpt_filepath: Path):
     """
     Parses the GPT file and extracts scripts with their filenames and target directories.
@@ -27,22 +101,30 @@ def parse_gpt_file(gpt_filepath: Path):
     with gpt_filepath.open('r', encoding='utf-8') as file:
         content = file.read()
     
-    # Split the content into sections based on separators
+    # Split the content into sections based on separators (5 or more equal signs)
     sections = re.split(r'={5,}', content)
     
     scripts = []
     
-    script_pattern = re.compile(
-        r'^\s*\d+\)\s+([^\s]+)\s+\(located in the (working directory|\'([^\']+)\' subdirectory)\):\s*\n', 
+    # Pattern to match script headers, e.g.,
+    # 1) launch.py (located in the working directory):
+    # or
+    # 2) backup_cleanup.py (located in the 'scripts' subdirectory):
+    script_header_pattern = re.compile(
+        r'^\s*\d+\)\s+([^\s]+)\s+\(located in the (working directory|\'([^\']+)\' subdirectory)\):\s*\n',
         re.MULTILINE
     )
     
     for section in sections:
-        match = script_pattern.search(section)
+        match = script_header_pattern.search(section)
         if match:
             filename = match.group(1).strip()
             location = match.group(2).strip()
             subdirectory = match.group(3)  # This will be None if location is 'working directory'
+            
+            if filename in EXCLUDED_FILES:
+                logging.info(f"Skipping excluded file: '{filename}'.")
+                continue
             
             if subdirectory:
                 target_dir = Path(subdirectory)
@@ -67,7 +149,7 @@ def parse_gpt_file(gpt_filepath: Path):
     
     return scripts
 
-def replace_scripts(scripts):
+def replace_scripts(scripts: list):
     """
     Replaces existing scripts with the provided scripts.
 
@@ -83,42 +165,62 @@ def replace_scripts(scripts):
         if not target_dir.is_absolute():
             target_dir = Path.cwd() / target_dir
         
-        target_dir.mkdir(parents=True, exist_ok=True)
+        # Exclude certain files
+        if filename in EXCLUDED_FILES:
+            logging.info(f"Skipping excluded file: '{filename}'.")
+            continue
+        
+        # Ensure target directory exists
+        try:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            logging.info(f"Ensured directory exists: {target_dir}")
+        except Exception as e:
+            logging.error(f"Failed to create directory '{target_dir}': {e}")
+            continue
         
         target_file = target_dir / filename
         
+        # Delete existing script if it exists
+        try:
+            if target_file.exists():
+                target_file.unlink()
+                logging.info(f"Deleted existing script: {target_file}")
+        except Exception as e:
+            logging.error(f"Failed to delete existing script '{target_file}': {e}")
+            continue
+        
+        # Write new script content
         try:
             with target_file.open('w', encoding='utf-8') as f:
                 f.write(content)
-            logging.info(f"Replaced script: {target_file}")
+            logging.info(f"Created/updated script: {target_file}")
         except Exception as e:
-            logging.error(f"Failed to write to {target_file}: {e}")
+            logging.error(f"Failed to write to '{target_file}': {e}")
 
 def main():
     """
     Main function to execute the script replacement.
     """
-    # Determine the GPT file path
-    if len(sys.argv) > 1:
-        gpt_filename = sys.argv[1]
-    else:
-        gpt_filename = 'scripts.gpt'  # Default GPT filename
+    working_dir = Path.cwd()
+    gpt_files = list_gpt_files(working_dir)
     
-    gpt_filepath = Path.cwd() / gpt_filename
+    selected_gpt = prompt_user_to_select_gpt(gpt_files)
     
-    logging.info(f"Parsing GPT file: {gpt_filepath}")
+    confirm_overwrite()
     
-    scripts = parse_gpt_file(gpt_filepath)
+    logging.info(f"Parsing GPT file: {selected_gpt}")
+    
+    scripts = parse_gpt_file(selected_gpt)
     
     if not scripts:
-        logging.warning("No scripts found in the GPT file.")
+        logging.warning("No valid scripts found in the GPT file.")
         sys.exit(0)
     
     logging.info(f"Found {len(scripts)} scripts to replace.")
     
     replace_scripts(scripts)
     
-    logging.info("All scripts have been replaced successfully.")
+    logging.info("Script replacement completed successfully.")
 
 if __name__ == "__main__":
     main()
