@@ -1,7 +1,5 @@
 import os
 import sys
-import tokenize
-from io import StringIO
 
 def process_python_files(directory, excluded_files=None):
     if excluded_files is None:
@@ -18,45 +16,43 @@ def process_file(file_path, filename):
     try:
         # Read original content
         with open(file_path, 'r', encoding='utf-8') as f:
-            original_content = f.read()
-            original_length = len(original_content)
+            lines = f.readlines()
         
-        # Token processing
-        with tokenize.open(file_path) as f:
-            tokens = list(tokenize.generate_tokens(f.readline))
-        
-        new_tokens = []
-        previous_token_type = None
-        in_comment = False
-        in_string = False
-        last_non_newline_token = None
+        new_lines = []
+        previous_line_blank = False
 
-        for token in tokens:
-            if token.type == tokenize.COMMENT:
-                in_comment = True
-            elif token.type == tokenize.STRING:
-                in_string = True
-            elif token.type == tokenize.NEWLINE:
-                # Check if the previous token was also a NEWLINE or if it was an INDENT/DEDENT
-                if last_non_newline_token is None or last_non_newline_token.type in (tokenize.NEWLINE, tokenize.INDENT, tokenize.DEDENT):
-                    continue  # Skip this NEWLINE token
-            elif token.type == tokenize.INDENT or token.type == tokenize.DEDENT:
-                # Manage indentation
-                pass
-            # Reset flags for non-string/comment tokens
-            if token.type not in (tokenize.STRING, tokenize.COMMENT):
-                in_comment = False
-                in_string = False
-            new_tokens.append(token)
-            last_non_newline_token = token if token.type != tokenize.NEWLINE else last_non_newline_token
-            previous_token_type = token.type
+        for line in lines:
+            stripped_line = line.strip()
+            if stripped_line:
+                new_lines.append(line)
+                previous_line_blank = False
+            else:
+                if not previous_line_blank:
+                    new_lines.append('\n')
+                    previous_line_blank = True
         
-        # Rebuild the file content
-        content = tokenize.untokenize(new_tokens)
-        if isinstance(content, bytes):
-            new_content = content.decode('utf-8')
-        else:
-            new_content = content
+        # Ensure no trailing newline
+        if new_lines and new_lines[-1] == '\n':
+            new_lines.pop()
+        
+        # Ensure no blank lines between code blocks
+        final_lines = []
+        previous_line_blank = False
+
+        for line in new_lines:
+            stripped_line = line.strip()
+            if stripped_line:
+                final_lines.append(line)
+                previous_line_blank = False
+            else:
+                if not previous_line_blank and final_lines and final_lines[-1] != '\n':
+                    final_lines.append('\n')
+                    previous_line_blank = True
+        
+        new_content = ''.join(final_lines)
+        original_content = ''.join(lines)
+        original_length = len(original_content)
+        new_length = len(new_content)
         
         # Write the new content back to the file
         with open(file_path, 'w', encoding='utf-8') as f:
@@ -67,7 +63,6 @@ def process_file(file_path, filename):
             content_after = f.read()
         assert content_after == new_content, "File content was not written correctly"
         
-        new_length = len(new_content)
         characters_deleted = original_length - new_length
         print(f"Deleted {characters_deleted} characters from {file_path}.")
         return characters_deleted
