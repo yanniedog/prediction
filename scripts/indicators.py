@@ -135,7 +135,7 @@ def compute_all_indicators(data: pd.DataFrame) -> pd.DataFrame:
         logging.debug("Computed OBV.")
         
         try:
-            indicators['fi'] = pta.force_index(data['close'], data['volume'], append=False)
+            indicators['fi'] = pta.fi(data['close'], data['volume'], append=False)
             logging.debug("Computed FI using pandas_ta.")
         except Exception as e:
             logging.warning(f"Failed to compute FI using pandas_ta: {e}")
@@ -148,6 +148,8 @@ def compute_all_indicators(data: pd.DataFrame) -> pd.DataFrame:
         
         try:
             ichimoku = pta.ichimoku(data['high'], data['low'], data['close'], append=False)
+            if isinstance(ichimoku, tuple):
+                ichimoku = ichimoku[0]  # Access the DataFrame if a tuple is returned
             for col in ['ISA_9', 'ISB_26', 'ITS_9', 'IKS_26']:
                 if col not in ichimoku.columns:
                     raise KeyError(f"Missing column '{col}' in Ichimoku data.")
@@ -161,6 +163,8 @@ def compute_all_indicators(data: pd.DataFrame) -> pd.DataFrame:
         
         try:
             kc = pta.kc(data['high'], data['low'], data['close'], append=False)
+            if isinstance(kc, tuple):
+                kc = kc[0]  # Access the DataFrame if a tuple is returned
             for col in ['KCU_20_2.0', 'KCM_20_2.0', 'KCL_20_2.0']:
                 if col not in kc.columns:
                     raise KeyError(f"Missing column '{col}' in Keltner Channels data.")
@@ -173,6 +177,8 @@ def compute_all_indicators(data: pd.DataFrame) -> pd.DataFrame:
         
         try:
             vortex = pta.vortex(data['high'], data['low'], data['close'], append=False)
+            if isinstance(vortex, tuple):
+                vortex = vortex[0]  # Access the DataFrame if a tuple is returned
             for col in ['VI+_14', 'VI-_14']:
                 if col not in vortex.columns:
                     raise KeyError(f"Missing column '{col}' in Vortex Indicator data.")
