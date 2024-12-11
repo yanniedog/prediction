@@ -21,23 +21,54 @@ def process_file(file_path, filename):
             tokens = list(tokenize.generate_tokens(f.readline))
         
         correct_comment = f'# {filename}'
-        if tokens and tokens[0].type == tokenize.COMMENT and tokens[0].string.strip() == correct_comment:
-            new_tokens = [token for token in tokens if token.type != tokenize.COMMENT or token == tokens[0]]
-            if new_tokens != tokens:
-                new_content = tokenize.untokenize(new_tokens).decode('utf-8')
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(new_content)
-                print(f"Modified {file_path}: Removed extra comments.")
+        new_tokens = []
+        encoding_declared = False
+        filename_remark_added = False
+        
+        for token in tokens:
+            if token.type == tokenize.COMMENT:
+                if not encoding_declared:
+                    # Preserve encoding declaration
+                    new_tokens.append(token)
+                    encoding_declared = True
+                    if token.string.strip() == correct_comment:
+                        filename_remark_added = True
+                elif not filename_remark_added:
+                    # Check if the comment is the filename remark
+                    if token.string.strip() == correct_comment:
+                        new_tokens.append(token)
+                        filename_remark_added = True
+                    # Skip other comments
+                    continue
+                else:
+                    # Skip additional comments
+                    continue
             else:
-                print(f"No changes needed in {file_path}.")
-            return
-        new_tokens = [token for token in tokens if token.type != tokenize.COMMENT]
-        filename_token = tokenize.TokenInfo(type=tokenize.COMMENT, string=f'#{correct_comment}', start=(1, 0), end=(1, len(correct_comment)+1), line=f'{correct_comment}\n')
-        new_tokens.insert(0, filename_token)
+                new_tokens.append(token)
+        
+        # If filename remark is not added, insert it
+        if not filename_remark_added:
+            # Determine where to insert the filename remark
+            if encoding_declared:
+                # Insert after the encoding declaration
+                insert_pos = 1
+            else:
+                # Insert at the beginning
+                insert_pos = 0
+            filename_token = tokenize.TokenInfo(
+                type=tokenize.COMMENT,
+                string=f'#{correct_comment}',
+                start=(1, 0),
+                end=(1, len(correct_comment)+1),
+                line=f'{correct_comment}\n'
+            )
+            new_tokens.insert(insert_pos, filename_token)
+        
+        # Rebuild the file content
         new_content = tokenize.untokenize(new_tokens).decode('utf-8')
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(new_content)
-        print(f"Modified {file_path}: Added correct filename remark and removed comments.")
+        print(f"Modified {file_path}: Preserved encoding declaration and set correct filename remark.")
     except Exception as e:
         print(f"Error processing {file_path}: {e}")
         print(f"Exception type: {type(e)}, Exception args: {e.args}")
