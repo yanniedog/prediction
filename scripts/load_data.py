@@ -6,6 +6,7 @@ import logging
 import pandas as pd
 from config import DB_PATH
 from sqlite_data_manager import create_connection, create_tables
+
 def load_data(symbol, timeframe):
     logging.basicConfig(level=logging.INFO)
     db_path = DB_PATH
@@ -37,10 +38,10 @@ def load_data(symbol, timeframe):
         return data, False, os.path.basename(db_path)
     is_reverse_chronological = data['open_time'].is_monotonic_decreasing
     if is_reverse_chronological:
-        data=data.sort_values('open_time').reset_index(drop=True)
+        data = data.sort_values('open_time').reset_index(drop=True)
     data.dropna(inplace=True)
-    data['open_time']=data['open_time'].dt.tz_localize(None)
-    data['close_time']=data['close_time'].dt.tz_localize(None)
-    data['TimeDiff']=data['open_time'].diff().dt.total_seconds()
-    data['TimeDiff'].fillna(0,inplace=True)
+    data['open_time'] = data['open_time'].dt.tz_localize(None)
+    data['close_time'] = data['close_time'].dt.tz_localize(None)
+    data['TimeDiff'] = data['open_time'].diff().dt.total_seconds()
+    data['TimeDiff'].fillna(0, inplace=True)
     return data, is_reverse_chronological, os.path.basename(db_path)

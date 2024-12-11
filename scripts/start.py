@@ -193,7 +193,7 @@ def main() -> None:
     data = compute_all_indicators(data)
     logging.info("Computed all indicators.")
     
-    required_columns = ['Volume', 'Open', 'High', 'Low']
+    required_columns = ['volume', 'open', 'high', 'low']
     missing_columns = [col for col in required_columns if col not in data.columns]
     if missing_columns:
         logging.error(f"Missing required columns in data: {missing_columns}")
@@ -206,7 +206,7 @@ def main() -> None:
     original_indicators = handle_missing_indicators(
         get_original_indicators(feature_names, data), 
         data, 
-        ['FI', 'KCU_20_2.0', 'STOCHRSI_14_5_3_slowk', 'VI+_14']
+        ['fi', 'kcu_20_2.0', 'stochrsi_14_5_3_slowk', 'vi+_14']
     )
     if not original_indicators:
         logging.error("No valid original indicators found.")

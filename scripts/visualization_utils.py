@@ -128,7 +128,7 @@ def visualize_data(
     try:
         generate_combined_correlation_chart(
             correlations=correlations,
-            max_lag=len(next(iter(correlations.values()))) if correlations else 0,
+            max_lag=max(correlations[next(iter(correlations))]) if correlations else 0,
             time_interval=time_interval,
             timestamp=timestamp,
             base_csv_filename=base_csv_filename
