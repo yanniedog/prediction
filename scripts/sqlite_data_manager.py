@@ -3,13 +3,11 @@ import os
 import sqlite3
 import pandas as pd
 from config import DB_PATH
-
 def create_connection(db_file):
     try:
         return sqlite3.connect(db_file)
     except:
         return None
-
 def create_tables(conn):
     c=conn.cursor()
     c.execute("CREATE TABLE IF NOT EXISTS symbols (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT UNIQUE);")
@@ -54,7 +52,6 @@ def create_tables(conn):
     for q in indexes:
         c.execute(q)
     conn.commit()
-
 def save_to_sqlite(df,db_path,symbol,timeframe):
     os.makedirs(os.path.dirname(db_path),exist_ok=True)
     conn=create_connection(db_path)

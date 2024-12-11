@@ -1,4 +1,5 @@
 # data_utils.py
+
 import os
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
@@ -7,19 +8,35 @@ import numpy as np
 from load_data import load_data
 from indicators import compute_all_indicators
 
-def clear_screen()->None:
-    os.system('cls' if os.name=='nt' else 'clear')
+def clear_screen() -> None:
+    os.system('cls' if os.name == 'nt' else 'clear')
 
-def prepare_data(data: pd.DataFrame) -> Tuple[pd.DataFrame,List[str]]:
-    feature_columns = data.columns.difference(['date','open','high','low','close','volume','Date','Open','High','Low','Close','Volume'])
+def prepare_data(data: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
+    """
+    Prepare data by scaling numerical features.
+
+    Ensures that 'Volume', 'Open', 'High', 'Low' are retained for downstream processes.
+    
+    Returns:
+        X_scaled_df: Scaled features DataFrame.
+        numeric_features: List of feature column names.
+    """
+    excluded_columns = ['date', 'Date']
+    feature_columns = [col for col in data.columns if col not in excluded_columns and col.lower() not in ['close']]
+    
     X = data[feature_columns]
     numeric_features = X.select_dtypes(include=[np.number]).columns.tolist()
     X = X[numeric_features]
+    
     scaler = StandardScaler()
     X_scaled_df = pd.DataFrame(scaler.fit_transform(X), columns=numeric_features, index=data.index)
+    
     return X_scaled_df, numeric_features
 
 def determine_time_interval(data: pd.DataFrame) -> str:
+    """
+    Determine the time interval of the data based on 'Date' or 'open_time' column.
+    """
     date_col = 'Date' if 'Date' in data.columns else 'open_time' if 'open_time' in data.columns else None
     if date_col is None:
         raise ValueError("No 'Date' or 'open_time' column found.")
@@ -31,14 +48,25 @@ def determine_time_interval(data: pd.DataFrame) -> str:
     if time_diffs.empty:
         raise ValueError("No time differences found.")
     diff = time_diffs.mode().iloc[0]
-    if diff < 60: return 'second'
-    elif diff < 3600: return 'minute'
-    elif diff < 86400: return 'hour'
-    elif diff < 604800: return 'day'
-    else: return 'week'
+    if diff < 60:
+        return 'second'
+    elif diff < 3600:
+        return 'minute'
+    elif diff < 86400:
+        return 'hour'
+    elif diff < 604800:
+        return 'day'
+    else:
+        return 'week'
 
 def get_original_indicators(feature_names: List[str], data: pd.DataFrame) -> List[str]:
-    return [col for col in feature_names if col.lower() not in ['open','high','low','close','volume'] and data[col].notna().any() and data[col].var()>1e-6]
+    """
+    Retrieve original indicator names from feature names.
+    """
+    return [col for col in feature_names if col.lower() not in ['open','high','low','close','volume'] and data[col].notna().any() and data[col].var() > 1e-6]
 
 def handle_missing_indicators(original_indicators: List[str], data: pd.DataFrame, expected_indicators: List[str]) -> List[str]:
+    """
+    Handle indicators that might be missing after processing.
+    """
     return [col for col in original_indicators if col not in expected_indicators or col in data.columns]
