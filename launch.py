@@ -1,86 +1,91 @@
-# launch.py
+# repair-remarks.py
 import os
 import sys
-from pathlib import Path
-from datetime import datetime
-import logging
-import runpy
+import tokenize
+from io import StringIO
 
-# Check if virtual environment is already activated
-if 'VIRTUAL_ENV' not in os.environ:
-    # Locate the virtual environment directory
-    venv_path = Path.cwd() / 'venv'
-    if not venv_path.is_dir():
-        print("Virtual environment not found. Please create it using 'python -m venv venv'.")
-        sys.exit(1)
-    
-    # Activation script path differs by OS
-    if sys.platform == 'win32':
-        activate_script = venv_path / 'Scripts' / 'activate.bat'
-    else:
-        activate_script = venv_path / 'bin' / 'activate'
-    
-    # Activate the virtual environment
-    if sys.platform == 'win32':
-        os.system(f'call {activate_script}')
-    else:
-        os.system(f'source {activate_script}')
-    
-    print("Virtual environment activated.")
+def process_python_files(directory, excluded_files=None):
+    if excluded_files is None:
+        excluded_files = []
+    for root, dirs, files in os.walk(directory):
+        if root != directory:
+            continue
+        for file in files:
+            if file.endswith('.py') and file not in excluded_files:
+                file_path = os.path.join(root, file)
+                process_file(file_path, file)
 
-# Add the scripts directory to the Python path
-sys.path.append(str(Path.cwd() / 'scripts'))
+def process_file(file_path, filename):
+    try:
+        with tokenize.open(file_path) as f:
+            tokens = list(tokenize.generate_tokens(f.readline))
+        
+        correct_comment = f'# {filename}'
+        new_tokens = []
+        encoding_declared = False
+        filename_remark_added = False
+        
+        for token in tokens:
+            if token.type == tokenize.COMMENT:
+                if not encoding_declared:
+                    # Preserve encoding declaration
+                    new_tokens.append(token)
+                    encoding_declared = True
+                    if token.string.strip() == correct_comment:
+                        filename_remark_added = True
+                elif not filename_remark_added:
+                    # Check if the comment is the filename remark
+                    if token.string.strip() == correct_comment:
+                        new_tokens.append(token)
+                        filename_remark_added = True
+                    # Skip other comments
+                    continue
+                else:
+                    # Skip additional comments
+                    continue
+            else:
+                new_tokens.append(token)
+        
+        # If filename remark is not added, insert it
+        if not filename_remark_added:
+            # Determine where to insert the filename remark
+            if encoding_declared:
+                # Insert after the encoding declaration
+                insert_pos = 1
+            else:
+                # Insert at the beginning
+                insert_pos = 0
+            filename_token = tokenize.TokenInfo(
+                type=tokenize.COMMENT,
+                string=f'#{correct_comment}',
+                start=(1, 0),
+                end=(1, len(correct_comment)+1),
+                line=f'{correct_comment}\n'
+            )
+            new_tokens.insert(insert_pos, filename_token)
+        
+        # Rebuild the file content
+        content = tokenize.untokenize(new_tokens)
+        if isinstance(content, bytes):
+            new_content = content.decode('utf-8')
+        else:
+            new_content = content
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(new_content)
+        print(f"Modified {file_path}: Preserved encoding declaration and set correct filename remark.")
+    except Exception as e:
+        print(f"Error processing {file_path}: {e}")
+        print(f"Exception type: {type(e)}, Exception args: {e.args}")
 
-# Clean up old log files
-for f in Path.cwd().glob('*.log'):
-    f.unlink()
+def main():
+    script_path = sys.argv[0]
+    excluded_files = ['copyscripts.py', 'repair-remarks.py']
+    directories = [os.getcwd()]
+    scripts_dir = os.path.join(os.getcwd(), 'scripts')
+    if os.path.isdir(scripts_dir):
+        directories.append(scripts_dir)
+    for dir_path in directories:
+        process_python_files(dir_path, excluded_files)
 
-timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-working_dir_name = Path.cwd().name
-log_filename = f"{working_dir_name}_{timestamp}.log"
-
-# Configure the main logger
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
-for h in logger.handlers[:]:
-    logger.removeHandler(h)
-file_handler = logging.FileHandler(log_filename, mode='w')
-file_handler.setLevel(logging.DEBUG)
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-logger.addHandler(file_handler)
-
-# Suppress debug messages from matplotlib.font_manager
-font_manager_logger = logging.getLogger('matplotlib.font_manager')
-font_manager_logger.setLevel(logging.WARNING)
-
-class DoubleWriter:
-    def __init__(self, stdout, stderr, logger):
-        self.stdout = stdout
-        self.stderr = stderr
-        self.logger = logger
-    def write(self, msg):
-        if msg.strip():
-            self.logger.info(msg.strip())
-        self.stdout.write(msg)
-    def flush(self):
-        self.stdout.flush()
-    def isatty(self):
-        return self.stdout.isatty()
-
-sys.stdout = DoubleWriter(sys.__stdout__, sys.__stderr__, logger)
-sys.stderr = DoubleWriter(sys.__stderr__, sys.__stderr__, logger)
-
-try:
-    # Run start.py from the scripts directory
-    start_path = str(Path.cwd() / 'scripts' / 'start.py')
-    runpy.run_path(start_path, run_name='__main__')
-except SystemExit as e:
-    sys.exit(e.code)
-except Exception as e:
-    logger.exception("An error occurred while running the script.")
-    sys.exit(1)
-    
-    
-    # hellfewfwe
-    # ewfhuwefhewiufhewf
-    
+if __name__ == "__main__":
+    main()
