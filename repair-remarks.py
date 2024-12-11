@@ -1,94 +1,78 @@
+# repair-remarks.py
 import os
 import sys
 
-def process_python_files(directory, excluded_files=None):
-    if excluded_files is None:
-        excluded_files = []
+def process_python_files(directory, exclude_file=None, exclude_dirs=None):
+    if exclude_dirs is None:
+        exclude_dirs = []
+    # Walk through the directory and its subdirectories
     for root, dirs, files in os.walk(directory):
-        if root != directory:
-            continue
+        # Exclude directories whose names are in exclude_dirs
+        dirs[:] = [d for d in dirs if d not in exclude_dirs]
         for file in files:
-            if file.endswith('.py') and file not in excluded_files:
+            if file.endswith('.py'):
                 file_path = os.path.join(root, file)
-                yield file_path, file
+                # Exclude the script itself if specified
+                if exclude_file and file_path == exclude_file:
+                    continue
+                process_file(file_path, file)
 
 def process_file(file_path, filename):
     try:
-        # Read original content
         with open(file_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
-        
-        new_lines = []
-        previous_line_blank = False
 
-        for line in lines:
-            stripped_line = line.strip()
-            if stripped_line:
-                new_lines.append(line)
-                previous_line_blank = False
-            else:
-                if not previous_line_blank:
-                    new_lines.append('\n')
-                    previous_line_blank = True
-        
-        # Ensure no trailing newline
-        if new_lines and new_lines[-1] == '\n':
-            new_lines.pop()
-        
-        # Ensure no blank lines between code blocks
-        final_lines = []
-        previous_line_blank = False
+        # Read first three lines
+        first_three = lines[:3]
+        # Check if the correct comment is already present
+        correct_comment = f'# {filename}'
+        if any(line.strip().startswith(correct_comment) for line in first_three):
+            print(f"Correct comment already present in {file_path}. No changes made.")
+            return
 
-        for line in new_lines:
+        # Check for lines in the first three that end with '.py'
+        # and are not the correct comment
+        modified_lines = []
+        found_py_line = False
+        for line in first_three:
             stripped_line = line.strip()
-            if stripped_line:
-                final_lines.append(line)
-                previous_line_blank = False
-            else:
-                if not previous_line_blank and final_lines and final_lines[-1] != '\n':
-                    final_lines.append('\n')
-                    previous_line_blank = True
-        
-        new_content = ''.join(final_lines)
-        original_content = ''.join(lines)
-        original_length = len(original_content)
-        new_length = len(new_content)
-        
-        # Write the new content back to the file
+            if stripped_line.endswith('.py'):
+                # Check if it's the correct comment
+                if not stripped_line.startswith(correct_comment):
+                    # Skip this line (remove it)
+                    found_py_line = True
+                    continue
+            modified_lines.append(line)
+        # Add any remaining lines
+        modified_lines += lines[3:]
+
+        # If a .py line was found in the first three, insert the correct comment
+        if found_py_line:
+            modified_lines.insert(0, f'{correct_comment}\n')
+            print(f"Modified {file_path}: Removed incorrect .py comment and added correct one.")
+        else:
+            # If correct comment not present, add it at the beginning
+            modified_lines.insert(0, f'{correct_comment}\n')
+            print(f"Modified {file_path}: Added correct comment.")
+
+        # Write the modified content back to the file
         with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(new_content)
-        
-        # Verify the file was written correctly
-        with open(file_path, 'r', encoding='utf-8') as f:
-            content_after = f.read()
-        assert content_after == new_content, "File content was not written correctly"
-        
-        characters_deleted = original_length - new_length
-        print(f"Deleted {characters_deleted} characters from {file_path}.")
-        return characters_deleted
+            f.writelines(modified_lines)
     except Exception as e:
         print(f"Error processing {file_path}: {e}")
-        print(f"Exception type: {type(e)}, Exception args: {e.args}")
-        return 0
 
 def main():
-    script_path = os.path.abspath(sys.argv[0])
-    excluded_files = ['copyscripts.py', 'repair-remarks.py']
-    directories = [os.getcwd()]
-    scripts_dir = os.path.join(os.getcwd(), 'scripts')
-    if os.path.isdir(scripts_dir):
-        directories.append(scripts_dir)
-    
-    total_characters_deleted = 0
+    # Get the script's own file path to exclude it from processing
+    script_path = sys.argv[0]
+    # List of directories to search
+    directories = [os.getcwd(), os.path.join(os.getcwd(), 'scripts')]
+    # List of directories to exclude
+    exclude_dirs = ['.venv']
     for dir_path in directories:
-        for file_path, filename in process_python_files(dir_path, excluded_files):
-            # Exclude the script itself
-            if os.path.abspath(file_path) == script_path:
-                continue
-            deleted = process_file(file_path, filename)
-            total_characters_deleted += deleted
-    
-    print(f"Total characters deleted: {total_characters_deleted}")
+        if os.path.exists(dir_path):
+            process_python_files(dir_path, exclude_file=script_path, exclude_dirs=exclude_dirs)
+        else:
+            print(f"Directory {dir_path} does not exist.")
 
 if __name__ == "__main__":
     main()
