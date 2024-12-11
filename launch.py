@@ -1,3 +1,4 @@
+# launch.py
 import os
 import sys
 from pathlib import Path
@@ -5,9 +6,32 @@ from datetime import datetime
 import logging
 import runpy
 
-# Add the scripts directory to the Python path
-sys.path.append('scripts')
+# Check if virtual environment is already activated
+if 'VIRTUAL_ENV' not in os.environ:
+    # Locate the virtual environment directory
+    venv_path = Path.cwd() / 'venv'
+    if not venv_path.is_dir():
+        print("Virtual environment not found. Please create it using 'python -m venv venv'.")
+        sys.exit(1)
+    
+    # Activation script path differs by OS
+    if sys.platform == 'win32':
+        activate_script = venv_path / 'Scripts' / 'activate.bat'
+    else:
+        activate_script = venv_path / 'bin' / 'activate'
+    
+    # Activate the virtual environment
+    if sys.platform == 'win32':
+        os.system(f'call {activate_script}')
+    else:
+        os.system(f'source {activate_script}')
+    
+    print("Virtual environment activated.")
 
+# Add the scripts directory to the Python path
+sys.path.append(str(Path.cwd() / 'scripts'))
+
+# Clean up old log files
 for f in Path.cwd().glob('*.log'):
     f.unlink()
 
@@ -42,8 +66,11 @@ sys.stdout = DoubleWriter(sys.__stdout__, sys.__stderr__, logger)
 sys.stderr = DoubleWriter(sys.__stderr__, sys.__stderr__, logger)
 
 try:
-    runpy.run_path("start.py", run_name="__main__")
+    # Run start.py from the scripts directory
+    start_path = str(Path.cwd() / 'scripts' / 'start.py')
+    runpy.run_path(start_path, run_name='__main__')
 except SystemExit as e:
     sys.exit(e.code)
-except:
-    raise
+except Exception as e:
+    logger.exception("An error occurred while running the script.")
+    sys.exit(1)
