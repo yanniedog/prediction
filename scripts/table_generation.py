@@ -1,9 +1,10 @@
 # table_generation.py
+# table_generation.py
+# table_generation.py
 import os
 import pandas as pd
 import numpy as np
 import logging
-
 def generate_statistical_summary(correlations: dict, max_lag: int) -> pd.DataFrame:
     summary = {}
     for indicator, values in correlations.items():
@@ -12,14 +13,12 @@ def generate_statistical_summary(correlations: dict, max_lag: int) -> pd.DataFra
             continue
         summary[indicator] = {'mean': np.mean(clean_values),'std': np.std(clean_values),'min': np.min(clean_values),'max': np.max(clean_values)}
     return pd.DataFrame(summary).T
-
 def generate_best_indicator_table(correlations: dict, max_lag: int) -> pd.DataFrame:
     summary_df = generate_statistical_summary(correlations, max_lag)
     if summary_df.empty:
         return pd.DataFrame()
     summary_df_sorted = summary_df.sort_values(by='mean', ascending=False)
     return summary_df_sorted.head(10)
-
 def generate_correlation_csv(correlations: dict, max_lag: int, base_filename: str, csv_dir: str) -> None:
     correlation_df = pd.DataFrame(correlations)
     correlation_df.index = range(1, max_lag + 1)

@@ -1,4 +1,5 @@
 # launch.py
+# launch.py
 import os
 import sys
 from pathlib import Path
@@ -55,5 +56,3 @@ except SystemExit as e:
 except Exception as e:
     logging.exception("An error occurred while running the script.") #testing # testing 123456
     sys.exit(1)
-    
-    # hello

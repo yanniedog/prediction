@@ -1,4 +1,5 @@
 # repair-remarks.py
+# repair-remarks.py
 import os
 import sys
 def process_python_files(directory, exclude_file=None, exclude_dirs=None):
@@ -16,21 +17,22 @@ def process_file(file_path, filename):
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             lines = f.readlines()
-        first_three = lines[:3]
         correct_comment = f'# {filename}'
-        if any(line.strip().startswith(correct_comment) for line in first_three):
-            print(f"Correct comment already present in {file_path}. No changes made.")
-            return
         modified_lines = []
         found_py_line = False
-        for line in first_three:
+        specific_remarks = [
+            "#testing # testing 123456",
+            "# hello"
+        ]
+        for line in lines:
             stripped_line = line.strip()
+            if stripped_line in specific_remarks:
+                continue
             if stripped_line.endswith('.py'):
                 if not stripped_line.startswith(correct_comment):
                     found_py_line = True
                     continue
             modified_lines.append(line)
-        modified_lines += lines[3:]
         if found_py_line:
             modified_lines.insert(0, f'{correct_comment}\n')
             print(f"Modified {file_path}: Removed incorrect .py comment and added correct one.")

@@ -1,4 +1,6 @@
 # load_data.py
+# load_data.py
+# load_data.py
 import os
 import sys
 import sqlite3
@@ -6,7 +8,6 @@ import logging
 import pandas as pd
 from config import DB_PATH
 from sqlite_data_manager import create_connection, create_tables
-
 def load_data(symbol, timeframe):
     logging.basicConfig(level=logging.INFO)
     db_path = DB_PATH

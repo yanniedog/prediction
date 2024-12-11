@@ -1,4 +1,6 @@
 # generate_heatmaps.py
+# generate_heatmaps.py
+# generate_heatmaps.py
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -6,7 +8,6 @@ import pandas as pd
 import numpy as np
 from joblib import Parallel,delayed
 from typing import Callable,Dict,List
-
 def generate_heatmaps(data:pd.DataFrame,timestamp:str,time_interval:str,generate_heatmaps_flag:bool,cache:Dict[str,List[float]],calculate_correlation:Callable[[pd.DataFrame,str,int,bool],float],base_csv_filename:str)->None:
     if not generate_heatmaps_flag:
         return
@@ -32,15 +33,12 @@ def generate_heatmaps(data:pd.DataFrame,timestamp:str,time_interval:str,generate
         cache[col] = corr_list
         correlations[col]=corr_list
     corr_df=pd.DataFrame(correlations,index=range(1,max_lag+1)).dropna(how='all',axis=0).dropna(how='all',axis=1)
-
     def standardize_row(row):
         rng=row.max()-row.min()
         return (row-row.min())/rng*2-1 if rng!=0 else row*0
-
     standardized_corr_df=corr_df.apply(standardize_row,axis=1)
     filtered_indicators=[col for col in standardized_corr_df.columns if standardized_corr_df[col].max()>0.25]
     standardized_corr_df=standardized_corr_df[filtered_indicators]
-
     def plot_heatmap(df, title, filename):
         plt.figure(figsize=(20,15),dpi=300)
         sns.heatmap(df.T, annot=False, cmap='coolwarm', cbar=True, xticklabels=True, yticklabels=True)
@@ -52,14 +50,11 @@ def generate_heatmaps(data:pd.DataFrame,timestamp:str,time_interval:str,generate
         plt.tight_layout()
         plt.savefig(os.path.join(heatmaps_dir,filename), bbox_inches='tight')
         plt.close()
-
     sorted_indicators_1=sorted(filtered_indicators,key=lambda col:next((i for i,x in enumerate(standardized_corr_df[col],start=1)if x==1.0),max_lag+1))
     sorted_standardized_corr_df_1=standardized_corr_df[sorted_indicators_1]
     plot_heatmap(sorted_standardized_corr_df_1,'Standardized Correlation (Earliest 1.0)','{}_{}_combined_correlation_heatmap_1.png'.format(timestamp,base_csv_filename))
-
     sorted_indicators_2=sorted(filtered_indicators,key=lambda col:standardized_corr_df[col].iloc[0],reverse=True)
     plot_heatmap(standardized_corr_df[sorted_indicators_2],'Standardized Correlation (Highest at Lag 1)','{}_{}_combined_correlation_heatmap_2.png'.format(timestamp,base_csv_filename))
-
     raw_corr_df=corr_df[filtered_indicators]
     sorted_indicators_3=sorted(filtered_indicators,key=lambda col:raw_corr_df[col].iloc[0],reverse=True)
     plot_heatmap(raw_corr_df[sorted_indicators_3],'Raw Correlation (Highest at Lag 1)','{}_{}_combined_correlation_heatmap_3.png'.format(timestamp,base_csv_filename))

@@ -1,4 +1,6 @@
 # correlation_utils.py
+# correlation_utils.py
+# correlation_utils.py
 import sqlite3
 import numpy as np
 import pandas as pd
@@ -6,9 +8,7 @@ from typing import List
 from config import DB_PATH
 from tqdm import tqdm
 import logging
-
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 def calculate_correlation(data: pd.DataFrame, indicator_name: str, lag: int, is_reverse_chronological: bool) -> float:
     if indicator_name.lower() == 'close':
         return np.nan
@@ -16,10 +16,8 @@ def calculate_correlation(data: pd.DataFrame, indicator_name: str, lag: int, is_
     shifted_col = data[indicator_name].shift(shift_value)
     valid_data = pd.concat([shifted_col, data['Close']], axis=1).dropna()
     return valid_data[indicator_name].corr(valid_data['Close']) if not valid_data.empty else np.nan
-
 def is_valid_indicator(series: pd.Series) -> bool:
     return not series.isna().all() and series.nunique() > 1
-
 def get_symbol_id(conn: sqlite3.Connection, symbol: str) -> int:
     c = conn.cursor()
     c.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
@@ -28,7 +26,6 @@ def get_symbol_id(conn: sqlite3.Connection, symbol: str) -> int:
     c.execute("INSERT INTO symbols (symbol) VALUES (?)", (symbol,))
     conn.commit()
     return c.lastrowid
-
 def get_timeframe_id(conn: sqlite3.Connection, timeframe: str) -> int:
     c = conn.cursor()
     c.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
@@ -37,7 +34,6 @@ def get_timeframe_id(conn: sqlite3.Connection, timeframe: str) -> int:
     c.execute("INSERT INTO timeframes (timeframe) VALUES (?)", (timeframe,))
     conn.commit()
     return c.lastrowid
-
 def get_indicator_id(conn: sqlite3.Connection, indicator_name: str) -> int:
     c = conn.cursor()
     c.execute("SELECT id FROM indicators WHERE name = ?", (indicator_name,))
@@ -46,7 +42,6 @@ def get_indicator_id(conn: sqlite3.Connection, indicator_name: str) -> int:
     c.execute("INSERT INTO indicators (name) VALUES (?)", (indicator_name,))
     conn.commit()
     return c.lastrowid
-
 def load_or_calculate_correlations(data: pd.DataFrame, original_indicators: List[str], max_lag: int, is_reverse_chronological: bool, symbol: str, timeframe: str) -> None:
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
@@ -68,7 +63,6 @@ def load_or_calculate_correlations(data: pd.DataFrame, original_indicators: List
                 logging.error(f"Database error while inserting correlation: {e}")
         conn.commit()
     conn.close()
-
 def get_all_correlations(conn: sqlite3.Connection, symbol_id: int, timeframe_id: int, indicator_id: int, max_lag: int) -> List[float]:
     c = conn.cursor()
     c.execute("SELECT correlation_value FROM correlations WHERE symbol_id=? AND timeframe_id=? AND indicator_id=? AND lag BETWEEN 1 AND ? ORDER BY lag ASC", (symbol_id, timeframe_id, indicator_id, max_lag))

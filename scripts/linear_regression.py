@@ -1,4 +1,6 @@
 # linear_regression.py
+# linear_regression.py
+# linear_regression.py
 import pandas as pd
 import numpy as np
 import os
@@ -8,7 +10,6 @@ from sklearn.metrics import mean_squared_error,mean_absolute_error
 from sklearn.utils import resample
 from joblib import Parallel,delayed
 import matplotlib.pyplot as plt
-
 def perform_linear_regression(data,correlations,max_lag,time_interval,timestamp,base_csv_filename,future_datetime,lag_periods):
     max_user_lag=lag_periods
     calc_all_lags=input(f"Calculate predictions for every lag up to {max_user_lag} {time_interval}(s)? (y/n): ").strip().lower()=='y'
@@ -30,12 +31,10 @@ def perform_linear_regression(data,correlations,max_lag,time_interval,timestamp,
     csv_filepath=os.path.join(csv_dir,csv_filename)
     json_filepath=os.path.join(json_dir,json_filename)
     plot_filepath=os.path.join(plots_dir,plot_filename)
-
     plot_dates=[]
     plot_predictions=[]
     plot_lower_bounds=[]
     plot_upper_bounds=[]
-
     for lag in lag_range:
         lag_timedelta=timedelta(seconds=lag*time_interval_seconds(time_interval))
         prediction_datetime=data['Date'].max()+lag_timedelta
@@ -63,13 +62,11 @@ def perform_linear_regression(data,correlations,max_lag,time_interval,timestamp,
         future_features=X.iloc[[-1]]
         predicted_price=model.predict(future_features)[0]
         predicted_price_formatted=format_significant_figures(predicted_price,sig_figs)
-
         def bootstrap_prediction(seed):
             np.random.seed(seed)
             X_res,y_res=resample(X_train,y_train)
             m=LinearRegression().fit(X_res,y_res)
             return m.predict(future_features)[0]
-
         num_bootstraps=1000
         seeds=np.random.randint(0,1000000,size=num_bootstraps)
         boot_predictions=Parallel(n_jobs=-1)(delayed(bootstrap_prediction)(seed)for seed in seeds)
@@ -84,7 +81,6 @@ def perform_linear_regression(data,correlations,max_lag,time_interval,timestamp,
         variance=np.var(y_test)
         mse_variance_ratio=mse/variance if variance!=0 else np.nan
         mse_interpretation=interpret_mse(mse_variance_ratio)
-
         coefficients=pd.DataFrame({'Feature':['Intercept']+feature_columns,'Coefficient':[model.intercept_]+list(model.coef_)})
         coefficients['Lag']=lag
         coefficients['Prediction_DateTime']=prediction_datetime
@@ -95,7 +91,6 @@ def perform_linear_regression(data,correlations,max_lag,time_interval,timestamp,
         plot_predictions.append(predicted_price)
         plot_lower_bounds.append(lower_bound)
         plot_upper_bounds.append(upper_bound)
-
     if not predictions_data:
         return
     recent_data=data.tail(50)
@@ -114,17 +109,14 @@ def perform_linear_regression(data,correlations,max_lag,time_interval,timestamp,
     plt.tight_layout()
     plt.savefig(plot_filepath)
     plt.close()
-
 def time_interval_seconds(time_interval):
     intervals={'second':1,'minute':60,'hour':3600,'day':86400,'week':604800}
     return intervals.get(time_interval.lower(),None)
-
 def format_significant_figures(value,sig_figs):
     if value==0 or pd.isna(value):
         return '0'
     decimals=sig_figs - int(np.floor(np.log10(abs(value)))) - 1
     return f"{value:.{decimals}f}" if decimals>0 else f"{round(value,-decimals)}"
-
 def interpret_mse(mse_variance_ratio):
     if np.isnan(mse_variance_ratio):
         return "Variance is zero; cannot interpret MSE."
@@ -136,7 +128,6 @@ def interpret_mse(mse_variance_ratio):
         return "Average MSE relative to variance."
     else:
         return "Large MSE relative to variance."
-
 def save_predictions_and_coefficients(predictions_data,coefficients_data,csv_filepath,json_filepath):
     predictions_df=pd.DataFrame(predictions_data).sort_values('Lag')
     coefficients_df=pd.concat(coefficients_data,ignore_index=True)

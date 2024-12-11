@@ -1,4 +1,6 @@
 # visualization_utils.py
+# visualization_utils.py
+# visualization_utils.py
 import os
 import matplotlib
 matplotlib.use('Agg')
@@ -7,7 +9,6 @@ import numpy as np
 from typing import Dict,List,Any,Callable
 from scipy.stats import t
 import pandas as pd
-
 def generate_combined_correlation_chart(correlations:Dict[str,List[float]],max_lag:int,time_interval:str,timestamp:str,base_csv_filename:str,output_dir:str='combined_charts')->None:
     os.makedirs(output_dir,exist_ok=True)
     max_positive_correlations=[]
@@ -38,7 +39,6 @@ def generate_combined_correlation_chart(correlations:Dict[str,List[float]],max_l
     combined_filename=f"{timestamp}_{base_csv_filename}_max_correlation.png"
     plt.savefig(os.path.join(output_dir,combined_filename),bbox_inches='tight')
     plt.close()
-
 def visualize_data(data:pd.DataFrame,features:pd.DataFrame,feature_columns:List[str],timestamp:str,is_reverse_chronological:bool,time_interval:str,generate_charts:bool,cache:Dict[str,Any],calculate_correlation_func:Callable[...,float],base_csv_filename:str)->None:
     if not generate_charts:
         return
@@ -92,7 +92,6 @@ def visualize_data(data:pd.DataFrame,features:pd.DataFrame,feature_columns:List[
     combined_filepath=os.path.join(combined_charts_dir,f"{timestamp}_{base_csv_filename}_combined_correlation.png")
     plt.savefig(combined_filepath,bbox_inches='tight')
     plt.close()
-
     max_positive_correlations=[]
     max_negative_correlations=[]
     max_absolute_correlations=[]

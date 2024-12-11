@@ -1,10 +1,11 @@
 # backup_cleanup.py
+# backup_cleanup.py
+# backup_cleanup.py
 import os
 import shutil
 import zipfile
 from pathlib import Path
 from datetime import datetime
-
 def backup_cleanup():
     try:
         cwd = Path.cwd()
@@ -42,6 +43,5 @@ def backup_cleanup():
                 pass
     except:
         pass
-
 if __name__ == "__main__":
     backup_cleanup()
