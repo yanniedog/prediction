@@ -39,6 +39,7 @@ timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
 working_dir_name = Path.cwd().name
 log_filename = f"{working_dir_name}_{timestamp}.log"
 
+# Configure the main logger
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 for h in logger.handlers[:]:
@@ -47,6 +48,10 @@ file_handler = logging.FileHandler(log_filename, mode='w')
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 logger.addHandler(file_handler)
+
+# Suppress debug messages from matplotlib.font_manager
+font_manager_logger = logging.getLogger('matplotlib.font_manager')
+font_manager_logger.setLevel(logging.WARNING)
 
 class DoubleWriter:
     def __init__(self, stdout, stderr, logger):
