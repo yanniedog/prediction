@@ -28,48 +28,28 @@ def process_file(file_path, filename):
         
         correct_comment = f'# {filename}'
         new_tokens = []
-        has_shebang = False
-        encoding_declared = False
-        filename_remark_added = False
-        
+        previous_token_type = None
+        in_comment = False
+        in_string = False
+
         for token in tokens:
             if token.type == tokenize.COMMENT:
-                if not has_shebang:
-                    if token.string.lstrip().startswith('#!'):
-                        new_tokens.append(token)
-                        has_shebang = True
-                    elif not encoding_declared:
-                        new_tokens.append(token)
-                        encoding_declared = True
-                        if token.string.strip() == correct_comment:
-                            filename_remark_added = True
-                    elif not filename_remark_added:
-                        if token.string.strip() == correct_comment:
-                            new_tokens.append(token)
-                            filename_remark_added = True
-                        # Skip other comments
-                        continue
-                else:
-                    # Skip additional comments
+                in_comment = True
+            elif token.type == tokenize.STRING:
+                in_string = True
+            elif token.type == tokenize.NEWLINE:
+                if previous_token_type == tokenize.NEWLINE and not in_comment and not in_string:
+                    # Skip blank line in code
                     continue
-            else:
-                new_tokens.append(token)
-        
-        # Insert filename remark if not added
-        if not filename_remark_added:
-            insert_pos = 0
-            if has_shebang:
-                insert_pos += 1
-            if encoding_declared:
-                insert_pos += 1
-            filename_token = tokenize.TokenInfo(
-                type=tokenize.COMMENT,
-                string=f'#{correct_comment}',
-                start=(1, 0),
-                end=(1, len(correct_comment) + 1),
-                line=f'{correct_comment}\n'
-            )
-            new_tokens.insert(insert_pos, filename_token)
+            elif token.type == tokenize.INDENT or token.type == tokenize.DEDENT:
+                # Manage indentation
+                pass
+            # Reset flags for non-string/comment tokens
+            if token.type not in (tokenize.STRING, tokenize.COMMENT):
+                in_comment = False
+                in_string = False
+            new_tokens.append(token)
+            previous_token_type = token.type
         
         # Rebuild the file content
         content = tokenize.untokenize(new_tokens)
