@@ -30,7 +30,7 @@ working_dir_name = Path.cwd().name
 log_filename = f"{working_dir_name}_{timestamp}.log"
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,  # Set the logging level to INFO
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler(log_filename, mode='w'),
