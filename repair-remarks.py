@@ -4,19 +4,15 @@ import sys
 import tokenize
 from io import StringIO
 
-def process_python_files(directory, exclude_file=None, exclude_dirs=None):
-    if exclude_dirs is None:
-        exclude_dirs = []
-    # Walk through the directory and its subdirectories
+def process_python_files(directory):
+    # Walk through the directory and process .py files
     for root, dirs, files in os.walk(directory):
-        # Exclude directories whose names are in exclude_dirs
-        dirs[:] = [d for d in dirs if d not in exclude_dirs]
+        # Only process the current directory, no subdirectories
+        if root != directory:
+            continue
         for file in files:
             if file.endswith('.py'):
                 file_path = os.path.join(root, file)
-                # Exclude the script itself if specified
-                if exclude_file and file_path == exclude_file:
-                    continue
                 process_file(file_path, file)
 
 def process_file(file_path, filename):
@@ -56,15 +52,14 @@ def process_file(file_path, filename):
 def main():
     # Get the script's own file path to exclude it from processing
     script_path = sys.argv[0]
-    # List of directories to search
-    directories = [os.getcwd(), os.path.join(os.getcwd(), 'scripts')]
-    # List of directories to exclude
-    exclude_dirs = ['.venv']
+    # List of directories to search: working directory and 'scripts' subdirectory
+    directories = [os.getcwd()]
+    scripts_dir = os.path.join(os.getcwd(), 'scripts')
+    if os.path.isdir(scripts_dir):
+        directories.append(scripts_dir)
+    # Process each specified directory
     for dir_path in directories:
-        if os.path.exists(dir_path):
-            process_python_files(dir_path, exclude_file=script_path, exclude_dirs=exclude_dirs)
-        else:
-            print(f"Directory {dir_path} does not exist.")
+        process_python_files(dir_path)
 
 if __name__ == "__main__":
     main()
