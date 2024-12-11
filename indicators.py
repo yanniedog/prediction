@@ -1,3 +1,4 @@
+# filename: indicators.py
 import pandas as pd
 import numpy as np
 import talib as ta
@@ -14,19 +15,33 @@ def compute_obv_price_divergence(data,method="Difference",obv_method="SMA",obv_p
         selected_price=data['low']
     elif price_input_type.lower()=="hl/2":
         selected_price=(data['high']+data['low'])/2
-    else:
+    elif price_input_type.lower()=="ohlc/4":
         selected_price=(data['open']+data['high']+data['low']+data['close'])/4
+    else:
+        raise ValueError(f"Unsupported price input type: {price_input_type}")
     obv=ta.OBV(data['close'],data['volume'])
-    obv_ma=ta.SMA(obv,timeperiod=obv_period) if obv_method=="SMA" else (ta.EMA(obv,timeperiod=obv_period) if obv_method=="EMA" else obv)
-    price_ma=ta.SMA(selected_price,timeperiod=price_period) if price_method=="SMA" else (ta.EMA(selected_price,timeperiod=price_period) if price_method=="EMA" else selected_price)
+    if obv_method=="SMA":
+        obv_ma=ta.SMA(obv,timeperiod=obv_period)
+    elif obv_method=="EMA":
+        obv_ma=ta.EMA(obv,timeperiod=obv_period)
+    else:
+        obv_ma=obv
+    if price_method=="SMA":
+        price_ma=ta.SMA(selected_price,timeperiod=price_period)
+    elif price_method=="EMA":
+        price_ma=ta.EMA(selected_price,timeperiod=price_period)
+    else:
+        price_ma=selected_price
     obv_change_percent=(obv_ma - obv_ma.shift(1))/obv_ma.shift(1)*100
     price_change_percent=(price_ma - price_ma.shift(1))/price_ma.shift(1)*100
     if method=="Difference":
         metric=obv_change_percent - price_change_percent
     elif method=="Ratio":
         metric=obv_change_percent/np.maximum(smoothing,np.abs(price_change_percent))
-    else:
+    elif method=="Log Ratio":
         metric=np.log(np.maximum(smoothing,np.abs(obv_change_percent))/np.maximum(smoothing,np.abs(price_change_percent)))
+    else:
+        raise ValueError(f"Unsupported method: {method}")
     data['obv_price_divergence']=metric
     return data
 
@@ -56,9 +71,9 @@ def compute_all_indicators(data):
     indicators['cci']=ta.CCI(data['high'],data['low'],data['close'],timeperiod=14)
     indicators['cmo']=ta.CMO(data['close'],timeperiod=14)
     indicators['dx']=ta.DX(data['high'],data['low'],data['close'],timeperiod=14)
-    indicators['macd'],indicators['macd_signal'],indicators['macd_hist']=ta.MACD(data['close'],12,26,9)
-    indicators['macdext'],indicators['macdext_signal'],indicators['macdext_hist']=ta.MACDEXT(data['close'],12,0,26,0,9,0)
-    indicators['macdfix'],indicators['macdfix_signal'],indicators['macdfix_hist']=ta.MACDFIX(data['close'],9)
+    indicators['macd'],indicators['macd_signal'],indicators['macd_hist']=ta.MACD(data['close'],fastperiod=12,slowperiod=26,signalperiod=9)
+    indicators['macdext'],indicators['macdext_signal'],indicators['macdext_hist']=ta.MACDEXT(data['close'],fastperiod=12,fastmatype=0,slowperiod=26,slowmatype=0,signalperiod=9,signalmatype=0)
+    indicators['macdfix'],indicators['macdfix_signal'],indicators['macdfix_hist']=ta.MACDFIX(data['close'],signalperiod=9)
     indicators['minus_di']=ta.MINUS_DI(data['high'],data['low'],data['close'],timeperiod=14)
     indicators['minus_dm']=ta.MINUS_DM(data['high'],data['low'],timeperiod=14)
     indicators['mom']=ta.MOM(data['close'],timeperiod=10)
@@ -70,14 +85,14 @@ def compute_all_indicators(data):
     indicators['rocr']=ta.ROCR(data['close'],timeperiod=10)
     indicators['rocr100']=ta.ROCR100(data['close'],timeperiod=10)
     indicators['rsi']=ta.RSI(data['close'],timeperiod=14)
-    indicators['stoch_slowk'],indicators['stoch_slowd']=ta.STOCH(data['high'],data['low'],data['close'],5,3,0,3,0)
-    indicators['stochf_fastk'],indicators['stochf_fastd']=ta.STOCHF(data['high'],data['low'],data['close'],5,3,0)
-    indicators['stochrsi_fastk'],indicators['stochrsi_fastd']=ta.STOCHRSI(data['close'],14,5,3,0)
+    indicators['stoch_slowk'],indicators['stoch_slowd']=ta.STOCH(data['high'],data['low'],data['close'],fastk_period=5,slowk_period=3,slowk_matype=0,slowd_period=3,slowd_matype=0)
+    indicators['stochf_fastk'],indicators['stochf_fastd']=ta.STOCHF(data['high'],data['low'],data['close'],fastk_period=5,fastd_period=3,fastd_matype=0)
+    indicators['stochrsi_fastk'],indicators['stochrsi_fastd']=ta.STOCHRSI(data['close'],timeperiod=14,fastk_period=5,fastd_period=3,fastd_matype=0)
     indicators['trix']=ta.TRIX(data['close'],timeperiod=30)
-    indicators['ultosc']=ta.ULTOSC(data['high'],data['low'],data['close'],7,14,28)
+    indicators['ultosc']=ta.ULTOSC(data['high'],data['low'],data['close'],timeperiod1=7,timeperiod2=14,timeperiod3=28)
     indicators['willr']=ta.WILLR(data['high'],data['low'],data['close'],timeperiod=14)
     indicators['ad']=ta.AD(data['high'],data['low'],data['close'],data['volume'])
-    indicators['adosc']=ta.ADOSC(data['high'],data['low'],data['close'],data['volume'],3,10)
+    indicators['adosc']=ta.ADOSC(data['high'],data['low'],data['close'],data['volume'],fastperiod=3,slowperiod=10)
     indicators['obv']=ta.OBV(data['close'],data['volume'])
     indicators['volume_osc']=(data['volume']-data['volume'].rolling(window=20).mean())/data['volume'].rolling(window=20).mean()
     indicators['vwap']=(data['close']*data['volume']).cumsum()/data['volume'].cumsum()
@@ -103,18 +118,20 @@ def compute_all_indicators(data):
     try:
         ao=pta.ao(data['high'],data['low'])
         indicators['ao']=ao
-    except:
+    except AttributeError:
         pass
     try:
         fi=pta.fi(data['close'],data['volume'])
         indicators['fi']=fi
-    except:
+    except AttributeError:
         data['fi']=(data['close']-data['close'].shift(1))*data['volume']
         indicators['fi']=data['fi']
     try:
         ichimoku=data.ta.ichimoku(append=False)
-        for col in ['isa_9','isb_26','its_9','iks_26']:
-            if col not in ichimoku.columns: raise KeyError
+        expected_columns=['isa_9','isb_26','its_9','iks_26']
+        for col in expected_columns:
+            if col not in ichimoku.columns:
+                raise KeyError(col)
         indicators['ichimoku_conversion']=ichimoku['isa_9']
         indicators['ichimoku_base']=ichimoku['isb_26']
         indicators['ichimoku_span_a']=ichimoku['its_9']
@@ -123,8 +140,10 @@ def compute_all_indicators(data):
         pass
     try:
         kc=data.ta.kc(append=False)
-        for col in ['kcu_20_2.0','kcm_20_2.0','kcl_20_2.0']:
-            if col not in kc.columns: raise KeyError
+        expected_columns=['kcu_20_2.0','kcm_20_2.0','kcl_20_2.0']
+        for col in expected_columns:
+            if col not in kc.columns:
+                raise KeyError(col)
         indicators['kc_upper']=kc['kcu_20_2.0']
         indicators['kc_middle']=kc['kcm_20_2.0']
         indicators['kc_lower']=kc['kcl_20_2.0']
@@ -142,8 +161,10 @@ def compute_all_indicators(data):
         pass
     try:
         stochrsi=data.ta.stochrsi(append=False)
-        for col in ['stochrsi_14_5_3_slowk','stochrsi_14_5_3_slowd']:
-            if col not in stochrsi.columns: raise KeyError
+        expected_columns=['stochrsi_14_5_3_slowk','stochrsi_14_5_3_slowd']
+        for col in expected_columns:
+            if col not in stochrsi.columns:
+                raise KeyError(col)
         indicators['stochrsi_slowk']=stochrsi['stochrsi_14_5_3_slowk']
         indicators['stochrsi_slowd']=stochrsi['stochrsi_14_5_3_slowd']
     except:
@@ -156,14 +177,16 @@ def compute_all_indicators(data):
         pass
     try:
         vortex=data.ta.vortex(append=False)
-        for col in ['vi+_14','vi-_14']:
-            if col not in vortex.columns: raise KeyError
+        expected_columns=['vi+_14','vi-_14']
+        for col in expected_columns:
+            if col not in vortex.columns:
+                raise KeyError(col)
         indicators['vi_plus']=vortex['vi+_14']
         indicators['vi_minus']=vortex['vi-_14']
     except:
         pass
     data=compute_obv_price_divergence(data)
-    for k,v in indicators.items():
-        data[k]=v
+    for key,value in indicators.items():
+        data[key]=value
     data.dropna(inplace=True)
     return data
