@@ -1,7 +1,6 @@
 # backup_utils.py
 import sys
 import logging
-from pathlib import Path
 from backup_cleanup import backup_cleanup  # Import the function directly
 
 def run_backup_cleanup():
