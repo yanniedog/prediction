@@ -1,4 +1,10 @@
-import os, sys, requests, pandas as pd, time, datetime
+# binance_historical_data_downloader.py
+import os
+import sys
+import requests
+import pandas as pd
+import time
+import datetime
 from config import DB_PATH
 from sqlite_data_manager import save_to_sqlite, create_connection, create_tables
 
@@ -7,7 +13,13 @@ BASE_URL = 'https://api.binance.com'
 def get_historical_klines(symbol, interval, start_time, end_time):
     klines = []
     while True:
-        params = {'symbol': symbol, 'interval': interval, 'startTime': start_time, 'endTime': end_time, 'limit': 1000}
+        params = {
+            'symbol': symbol,
+            'interval': interval,
+            'startTime': start_time,
+            'endTime': end_time,
+            'limit': 1000
+        }
         response = requests.get(f"{BASE_URL}/api/v3/klines", params=params)
         if response.status_code != 200:
             print(f"Error fetching klines: {response.text}")
@@ -20,10 +32,10 @@ def get_historical_klines(symbol, interval, start_time, end_time):
         start_time = data[-1][0] + 1
         if len(data) < 1000:
             break
-        time.sleep(0.5)
+        time.sleep(0.5)  # To respect API rate limits
     return klines
 
-def download_binance_data(symbol=None, interval=None):
+def download_binance_data(symbol=None, interval=None, db_path=DB_PATH):
     print("Starting Binance data download.")
     if not symbol:
         base = input("Base currency (Default: USDT): ").strip().upper() or 'USDT'
@@ -32,8 +44,9 @@ def download_binance_data(symbol=None, interval=None):
     symbol = symbol.upper()
     if not interval:
         intervals = ['1m','3m','5m','15m','30m','1h','2h','4h','6h','8h','12h','1d','3d','1w','1M']
-        print("Intervals:")
-        for i, iv in enumerate(intervals, 1): print(f"{i}. {iv}")
+        print("Available Intervals:")
+        for i, iv in enumerate(intervals, 1):
+            print(f"{i}. {iv}")
         choice = input("Select interval (Default: 12 for '1d'): ").strip()
         interval = intervals[int(choice)-1] if choice.isdigit() and 1 <= int(choice) <= len(intervals) else '1d'
     start_str = input("Start date (YYYYMMDD) or blank for earliest: ").strip()
@@ -52,14 +65,14 @@ def download_binance_data(symbol=None, interval=None):
     csv_file = f"csv/{symbol}_{interval}_{timestamp}.csv"
     df.to_csv(csv_file, index=False)
     print(f"Saved to CSV: {csv_file}")
-    save_dataframe_to_sqlite(df, DB_PATH, symbol, interval)
-    print(f"Inserted {len(df)} records into DB at {DB_PATH}.")
+    save_to_sqlite(df, db_path, symbol, interval)
+    print(f"Inserted {len(df)} records into DB at {db_path}.")
 
 def date_to_milliseconds(date_str):
     try:
         return int(datetime.datetime.strptime(date_str, '%Y%m%d').timestamp() * 1000)
     except ValueError:
-        print(f"Invalid date format: {date_str}")
+        print(f"Invalid date format: {date_str}. Expected YYYYMMDD.")
         return None
 
 def get_earliest_timestamp(symbol, interval):
@@ -91,3 +104,6 @@ def process_klines(klines):
     df[num_cols] = df[num_cols].apply(pd.to_numeric, errors='coerce')
     df['number_of_trades'] = df['number_of_trades'].astype(int)
     return df
+
+if __name__ == "__main__":
+    download_binance_data()
