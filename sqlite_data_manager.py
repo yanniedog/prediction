@@ -1,3 +1,4 @@
+# sqlite_data_manager.py
 import sqlite3
 from pathlib import Path
 import pandas as pd
@@ -158,6 +159,14 @@ def fetch_correlations(conn, symbol, timeframe, indicator_name):
     except sqlite3.Error as e:
         print(f"SQLite fetch error: {e}")
         return []
+
+def save_to_sqlite(df, db_path, symbol, timeframe):
+    conn = create_connection(db_path)
+    if conn:
+        insert_klines(conn, df, symbol, timeframe)
+        conn.close()
+    else:
+        print("Cannot connect to the database.")
 
 def main():
     db_path = "database.db"
