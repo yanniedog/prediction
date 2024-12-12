@@ -3,7 +3,20 @@ import os, sys, logging, runpy
 from pathlib import Path
 from datetime import datetime
 
-log_filename = f"{Path.cwd().name}_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
+# Function to delete old log files
+def delete_old_logs(log_dir: Path, log_extension: str = ".log"):
+    for log_file in log_dir.glob(f"*{log_extension}"):
+        try:
+            log_file.unlink()
+        except Exception as e:
+            print(f"Error deleting log file {log_file}: {e}")
+
+# Clean up old logs
+current_dir = Path.cwd()
+delete_old_logs(current_dir)
+
+# Configure logging
+log_filename = f"{current_dir.name}_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
 logger = logging.getLogger("unique_logger")
 if not logger.hasHandlers():
     logger.setLevel(logging.DEBUG)
