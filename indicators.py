@@ -11,8 +11,8 @@ def z_score(x):
     mean = np.mean(x)
     std = np.std(x)
     if std == 0:
-        return np.zeros_like(x)
-    return (x - mean) / std
+        return 0
+    return (x[-1] - mean) / std
 
 def compute_obv_price_divergence(data, method="Difference", obv_method="SMA", obv_period=14, price_input_type="OHLC/4", price_method="SMA", price_period=14, bearish_threshold=-0.8, bullish_threshold=0.8, smoothing=0.01):
     price_map = {"close": data['close'], "open": data['open'], "high": data['high'], "low": data['low'], "hl/2": (data['high'] + data['low']) / 2, "ohlc/4": (data[['open','high','low','close']].sum(axis=1) / 4)}
