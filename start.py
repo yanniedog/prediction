@@ -14,18 +14,8 @@ from config import DB_PATH
 from indicators import compute_all_indicators
 from tweak_indicator import fetch_available_indicators, insert_tweaked_configs, generate_configurations
 
-# Remove the following logging setup to prevent duplication
-# LOG_FILE = f"prediction_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
 
-# def configure_logging():
-#     logger = logging.getLogger()
-#     if not logger.hasHandlers():
-#         logger.setLevel(logging.DEBUG)
-#         handler = logging.FileHandler(LOG_FILE, mode='w')
-#         handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-#         logger.addHandler(handler)
 
-# configure_logging()
 logger = logging.getLogger()
 
 def log_and_print(message, level="info"):

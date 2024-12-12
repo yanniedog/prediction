@@ -18,17 +18,14 @@ def delete_old_logs(log_dir: Path, log_extension: str = ".log"):
             print(f"Error deleting log file {log_file}: {e}")
 
 def main():
-    # Delete old logs
     current_dir = Path.cwd()
     delete_old_logs(current_dir)
 
-    # Configure logging
     log_file = f"{current_dir.name}_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
     configure_logging(log_file)
     logger = logging.getLogger()
 
     try:
-        # Run backup and initialize database
         run_backup_cleanup()
         logger.info("Backup executed successfully.")
         logger.info("Backup completed.")
@@ -36,7 +33,6 @@ def main():
         initialize_database(DB_PATH)
         logger.info("Database initialized.")
 
-        # Run the main script
         runpy.run_path("start.py", run_name="__main__")
     except SystemExit as e:
         sys.exit(e.code)

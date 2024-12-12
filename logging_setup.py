@@ -6,7 +6,6 @@ import inspect
 
 class TaskAwareFormatter(logging.Formatter):
     def format(self, record):
-        # Trace the actual caller in the stack to avoid capturing the logging library frames
         for frame in inspect.stack():
             module = inspect.getmodule(frame[0])
             if module and not module.__name__.startswith('logging'):
@@ -18,7 +17,7 @@ class TaskAwareFormatter(logging.Formatter):
 
 def configure_logging(log_file='prediction.log'):
     logger = logging.getLogger()
-    logger.handlers = []  # Remove existing handlers to prevent duplication
+    logger.handlers = []
     logger.setLevel(logging.DEBUG)
     log_path = Path.cwd() / log_file
 
@@ -29,7 +28,6 @@ def configure_logging(log_file='prediction.log'):
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
-        # Redirect stdout and stderr to logger
         class StreamToLogger:
             def __init__(self, stream, log_func):
                 self.stream = stream
@@ -46,11 +44,9 @@ def configure_logging(log_file='prediction.log'):
         sys.stdout = StreamToLogger(sys.stdout, logger.info)
         sys.stderr = StreamToLogger(sys.stderr, logger.error)
 
-        # Suppress unwanted logs
         logging.getLogger('matplotlib').setLevel(logging.WARNING)
         logging.getLogger('font_manager').setLevel(logging.WARNING)
 
-        # Handle uncaught exceptions
         def exception_handler(exc_type, exc_value, exc_traceback):
             if not issubclass(exc_type, KeyboardInterrupt):
                 logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))

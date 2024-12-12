@@ -72,7 +72,7 @@ def main():
     selected_indicator = indicators[choice]
     print(f"Selected indicator: {selected_indicator}")
 
-    default_params = {"timeperiod": 14}  # Default parameters for tweaking
+    default_params = {"timeperiod": 14}
     configurations = generate_configurations(default_params.keys(), default_params)
     insert_tweaked_configs(selected_indicator, configurations)
     print(f"Configurations for {selected_indicator} added to the database.")
