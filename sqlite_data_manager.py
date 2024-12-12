@@ -92,7 +92,8 @@ def insert_indicator_configs(conn, indicator_name, configs):
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
         for config in configs:
-            config_name = f"{indicator_name}_" + "_".join([f"{k}{v}" for k, v in config.items()])
+            config_name = f"{indicator_name}_"
+            config_name += "_".join([f"{k}{v}" for k, v in config.items()])
             cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (config_name,))
         conn.commit()
     except sqlite3.Error as e:

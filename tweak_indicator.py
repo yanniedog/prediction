@@ -16,11 +16,10 @@ def fetch_available_indicators():
         'volume': np.random.randint(1, 1000, 200)
     })
     try:
+        # Compute all default indicators
         processed_data = compute_all_indicators(dummy_data)
-        if isinstance(processed_data, pd.DataFrame):
-            return sorted(processed_data.columns)
-        else:
-            raise ValueError("`compute_all_indicators` did not return a DataFrame.")
+        # Now, extract indicator names
+        return sorted(processed_data.columns)
     except Exception as e:
         print(f"Error fetching indicators: {e}")
         return []
