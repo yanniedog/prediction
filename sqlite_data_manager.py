@@ -77,7 +77,7 @@ def create_tables(conn):
         conn.commit()
     except sqlite3.Error as e:
         print(f"SQLite table creation error: {e}")
-        
+
 def initialize_database(db_path):
     conn = create_connection(db_path)
     if conn:
@@ -86,25 +86,26 @@ def initialize_database(db_path):
     else:
         print("Failed to initialize the database.")
 
-     
-
 def insert_indicator_configs(conn, indicator_name, configs):
     try:
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
-        cursor.execute("SELECT id FROM indicators WHERE name = ?", (indicator_name,))
-        indicator_id = cursor.fetchone()[0]
-
         for config in configs:
             config_name = f"{indicator_name}_{'_'.join([f'{k}{v}' for k, v in config.items()])}"
             cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (config_name,))
-
         conn.commit()
     except sqlite3.Error as e:
         print(f"SQLite insertion error: {e}")
 
 def insert_klines(conn, df, symbol, timeframe):
     try:
+        required_columns = [
+            'open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time',
+            'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume'
+        ]
+        if not all(col in df.columns for col in required_columns):
+            raise ValueError(f"DataFrame missing required columns: {set(required_columns) - set(df.columns)}")
+
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol,))
         cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
@@ -114,8 +115,8 @@ def insert_klines(conn, df, symbol, timeframe):
         cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
         timeframe_id = cursor.fetchone()[0]
 
-        df['open_time'] = df['open_time'].dt.strftime('%Y-%m-%d %H:%M:%S')
-        df['close_time'] = df['close_time'].dt.strftime('%Y-%m-%d %H:%M:%S')
+        df['open_time'] = pd.to_datetime(df['open_time']).dt.strftime('%Y-%m-%d %H:%M:%S')
+        df['close_time'] = pd.to_datetime(df['close_time']).dt.strftime('%Y-%m-%d %H:%M:%S')
 
         insert_query = """
             INSERT INTO klines (
@@ -138,7 +139,7 @@ def insert_klines(conn, df, symbol, timeframe):
         cursor.executemany(insert_query, data)
         conn.commit()
         print(f"Successfully inserted {len(data)} records into klines.")
-    except sqlite3.Error as e:
+    except (sqlite3.Error, ValueError) as e:
         print(f"SQLite insertion error: {e}")
 
 def fetch_correlations(conn, symbol, timeframe, indicator_name):
@@ -160,11 +161,7 @@ def fetch_correlations(conn, symbol, timeframe, indicator_name):
 
 def main():
     db_path = "database.db"
-    conn = create_connection(db_path)
-    if conn:
-        create_tables(conn)
-        conn.close()
+    initialize_database(db_path)
 
 if __name__ == "__main__":
-    db_path = "database.db"
-    initialize_database(db_path)   
+    main()
