@@ -13,7 +13,8 @@ from datetime import datetime
 from config import DB_PATH
 from indicators import compute_all_indicators
 from tweak_indicator import fetch_available_indicators, insert_tweaked_configs, generate_configurations
-from sqlite_data_manager import create_connection
+from sqlite_data_manager import initialize_database, create_connection, create_tables
+from correlation_utils import load_or_calculate_correlations
 
 logger = logging.getLogger()
 
@@ -81,6 +82,7 @@ def get_selected_indicator_configs(indicator_name: str):
     if not conn:
         log_and_print("Database connection failed.", "error")
         sys.exit(1)
+    create_tables(conn)  # Ensure tables are present
     cursor = conn.cursor()
     cursor.execute("SELECT name FROM indicators WHERE name LIKE ?", (f"{indicator_name}_%",))
     rows = cursor.fetchall()
@@ -88,22 +90,27 @@ def get_selected_indicator_configs(indicator_name: str):
     return [row[0] for row in rows]
 
 def main():
+    initialize_database(DB_PATH)  # Ensure database is initialized
     delete_previous_output()
     selected_indicator = None
+    symbol = None
+    timeframe = None
     if input_yes_no("Do you want to tweak indicator settings? (y/n): ") == 'y':
         symbol = input_with_default("Enter symbol (e.g., 'BTCUSDT'): ", "BTCUSDT")
         timeframe = input_with_default("Enter timeframe (e.g., '1w'): ", "1w")
         selected_indicator = run_tweak_indicator(symbol, timeframe)
     log_and_print("Proceeding with main execution.")
     # Continue with price data steps...
-    # After price data steps, handle correlation computations
+    # Example: Load data
+    from binance_historical_data_downloader import download_binance_data
+    download_binance_data(symbol, timeframe, DB_PATH)
+    log_and_print("Price data steps completed.")
     if selected_indicator:
         configs = get_selected_indicator_configs(selected_indicator)
         if not configs:
             log_and_print("No configurations found for the selected indicator.", "error")
             sys.exit(1)
         # Proceed to calculate correlations only for the selected indicator's configurations
-        from correlation_utils import load_or_calculate_correlations
         # Assuming you have the data loaded as 'data' DataFrame
         from load_data import load_data
         data, is_rev, db_fn = load_data(symbol, timeframe)

@@ -27,7 +27,6 @@ def main():
 
     try:
         run_backup_cleanup()
-        # Removed redundant logger.info("Backup executed successfully.")
         initialize_database(DB_PATH)
         logger.info("Database initialized.")
 
@@ -37,7 +36,6 @@ def main():
     except Exception as e:
         logger.exception("Uncaught exception during execution")
         raise
-
 
 if __name__ == "__main__":
     main()

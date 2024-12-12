@@ -92,7 +92,7 @@ def insert_indicator_configs(conn, indicator_name, configs):
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
         for config in configs:
-            config_name = f"{indicator_name}_{'_'.join([f'{k}{v}' for k, v in config.items()])}"
+            config_name = f"{indicator_name}_" + "_".join([f"{k}{v}" for k, v in config.items()])
             cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (config_name,))
         conn.commit()
     except sqlite3.Error as e:
@@ -169,7 +169,7 @@ def save_to_sqlite(df, db_path, symbol, timeframe):
         print("Cannot connect to the database.")
 
 def main():
-    db_path = "database.db"
+    db_path = "database/klines.db"
     initialize_database(db_path)
 
 if __name__ == "__main__":

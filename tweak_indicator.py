@@ -5,14 +5,7 @@ import pandas as pd
 import numpy as np
 from indicators import compute_all_indicators
 from config import DB_PATH
-from sqlite_data_manager import initialize_database
-
-def create_connection(db_file):
-    try:
-        return sqlite3.connect(db_file)
-    except sqlite3.Error as e:
-        print(f"SQLite connection error: {e}")
-        return None
+from sqlite_data_manager import initialize_database, insert_indicator_configs, create_connection, create_tables
 
 def fetch_available_indicators():
     dummy_data = pd.DataFrame({
@@ -39,24 +32,25 @@ def generate_configurations(params, defaults):
     ]
 
 def insert_tweaked_configs(indicator_name, configurations):
+    initialize_database(DB_PATH)  # Ensure tables are created
     conn = create_connection(DB_PATH)
     if not conn:
         print("Database connection failed.")
         sys.exit(1)
-    cursor = conn.cursor()
-    cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
-    for config in configurations:
-        config_str = f"{indicator_name}_" + "_".join(f"{k}{v}" for k, v in config.items())
-        cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (config_str,))
-    conn.commit()
-    conn.close()
+    create_tables(conn)  # Ensure tables are present
+    try:
+        insert_indicator_configs(conn, indicator_name, configurations)
+    except Exception as e:
+        print(f"Error inserting configurations: {e}")
+    finally:
+        conn.close()
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python tweak-indicator.py <SYMBOL> <TIMEFRAME>")
+        print("Usage: python tweak_indicator.py <SYMBOL> <TIMEFRAME>")
         sys.exit(1)
     symbol, timeframe = sys.argv[1:3]
-    initialize_database(DB_PATH)
+    initialize_database(DB_PATH)  # Ensure database is initialized
     indicators = fetch_available_indicators()
     if not indicators:
         print("No indicators available. Check `indicators.py` or `compute_all_indicators`.")
