@@ -1,98 +1,140 @@
 # filename: sqlite_data_manager.py
+import os
 import sqlite3
+import pandas as pd
 from pathlib import Path
+from config import DB_PATH
 
-def create_connection(db_path):
+def create_connection(db_file):
     try:
-        conn = sqlite3.connect(db_path)
-        return conn
+        return sqlite3.connect(db_file)
     except sqlite3.Error as e:
-        print(f"Error connecting to database: {e}")
+        print(f"SQLite connection error: {e}")
         return None
 
 def create_tables(conn):
     try:
         cursor = conn.cursor()
-
-        # Create the indicators table
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS indicators (
-                id INTEGER PRIMARY KEY,
-                name TEXT UNIQUE NOT NULL
-            )
-            """
-        )
-
-        # Create the klines table
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS klines (
-                id INTEGER PRIMARY KEY,
-                symbol_id INTEGER NOT NULL,
-                timeframe_id INTEGER NOT NULL,
-                open_time DATETIME NOT NULL,
-                high REAL NOT NULL,
-                low REAL NOT NULL,
-                close REAL NOT NULL,
-                volume REAL NOT NULL,
-                FOREIGN KEY (symbol_id) REFERENCES symbols(id),
-                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
-            )
-            """
-        )
-
-        # Create the symbols table
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS symbols (
-                id INTEGER PRIMARY KEY,
-                symbol TEXT UNIQUE NOT NULL
-            )
-            """
-        )
-
-        # Create the timeframes table
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS timeframes (
-                id INTEGER PRIMARY KEY,
-                timeframe TEXT UNIQUE NOT NULL
-            )
-            """
-        )
-
-        # Create the correlations table
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS correlations (
-                id INTEGER PRIMARY KEY,
-                symbol TEXT NOT NULL,
-                timeframe TEXT NOT NULL,
-                indicator TEXT NOT NULL,
-                lag INTEGER NOT NULL,
-                correlation REAL NOT NULL,
-                FOREIGN KEY (indicator) REFERENCES indicators(name)
-            )
-            """
-        )
-
+        tables = {
+            'symbols': """
+                CREATE TABLE IF NOT EXISTS symbols (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT UNIQUE
+                );""",
+            'timeframes': """
+                CREATE TABLE IF NOT EXISTS timeframes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timeframe TEXT UNIQUE
+                );""",
+            'indicators': """
+                CREATE TABLE IF NOT EXISTS indicators (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE
+                );""",
+            'klines': """
+                CREATE TABLE IF NOT EXISTS klines (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol_id INTEGER,
+                    timeframe_id INTEGER,
+                    open_time TEXT,
+                    open REAL,
+                    high REAL,
+                    low REAL,
+                    close REAL,
+                    volume REAL,
+                    close_time TEXT,
+                    quote_asset_volume REAL,
+                    number_of_trades INTEGER,
+                    taker_buy_base_asset_volume REAL,
+                    taker_buy_quote_asset_volume REAL,
+                    correlation_computed BOOLEAN DEFAULT FALSE,
+                    FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+                    FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
+                );""",
+            'correlations': """
+                CREATE TABLE IF NOT EXISTS correlations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol_id INTEGER,
+                    timeframe_id INTEGER,
+                    indicator_id INTEGER,
+                    lag INTEGER,
+                    correlation_value REAL,
+                    FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+                    FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
+                    FOREIGN KEY (indicator_id) REFERENCES indicators(id),
+                    UNIQUE(symbol_id, timeframe_id, indicator_id, lag)
+                );"""
+        }
+        for table, q in tables.items():
+            cursor.execute(q)
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_open_time ON klines (open_time);",
+            "CREATE INDEX IF NOT EXISTS idx_close_time ON klines (close_time);",
+            "CREATE INDEX IF NOT EXISTS idx_correlation_computed ON klines (correlation_computed);",
+            "CREATE INDEX IF NOT EXISTS idx_correlations ON correlations (symbol_id, timeframe_id, indicator_id, lag);"
+        ]
+        for idx_q in indexes:
+            cursor.execute(idx_q)
         conn.commit()
     except sqlite3.Error as e:
-        print(f"Error creating tables: {e}")
+        print(f"SQLite table creation error: {e}")
 
-def initialize_database(db_path):
-    conn = create_connection(db_path)
-    if conn:
-        create_tables(conn)
-        conn.close()
-
-if __name__ == "__main__":
-    DB_PATH = "correlation_database.db"
-    db_file = Path(DB_PATH)
-
-    if not db_file.exists():
-        print("Database not found. Creating a new one...")
-
-    initialize_database(DB_PATH)
-    print("Database initialized successfully.")
+def save_to_sqlite(df, db_path, symbol, timeframe):
+    try:
+        os.makedirs(Path(db_path).parent, exist_ok=True)
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        # Insert or ignore symbol
+        cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol,))
+        cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
+        sym_id_row = cursor.fetchone()
+        if not sym_id_row:
+            print(f"Failed to retrieve symbol_id for symbol: {symbol}")
+            return
+        sym_id = sym_id_row[0]
+        # Insert or ignore timeframe
+        cursor.execute("INSERT OR IGNORE INTO timeframes (timeframe) VALUES (?)", (timeframe,))
+        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
+        tf_id_row = cursor.fetchone()
+        if not tf_id_row:
+            print(f"Failed to retrieve timeframe_id for timeframe: {timeframe}")
+            return
+        tf_id = tf_id_row[0]
+        # Format datetime columns as strings
+        df['open_time'] = df['open_time'].dt.strftime('%Y-%m-%d %H:%M:%S')
+        df['close_time'] = df['close_time'].dt.strftime('%Y-%m-%d %H:%M:%S')
+        insert_q = """
+            INSERT INTO klines (
+                symbol_id, timeframe_id, open_time, open, high, low, close, volume, close_time, 
+                quote_asset_volume, number_of_trades, taker_buy_base_asset_volume, taker_buy_quote_asset_volume
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+        data_to_insert = [
+            (
+                sym_id,
+                tf_id,
+                row['open_time'],
+                row['open'],
+                row['high'],
+                row['low'],
+                row['close'],
+                row['volume'],
+                row['close_time'],
+                row['quote_asset_volume'],
+                row['number_of_trades'],
+                row['taker_buy_base_asset_volume'],
+                row['taker_buy_quote_asset_volume']
+            )
+            for index, row in df.iterrows()
+        ]
+        cursor.executemany(insert_q, data_to_insert)
+        conn.commit()
+        print(f"Successfully inserted {len(data_to_insert)} records into 'klines' table.")
+    except sqlite3.Error as e:
+        print(f"SQLite insertion error: {e}")
+    except Exception as ex:
+        print(f"Unexpected error during SQLite insertion: {ex}")
+    finally:
+        if conn:
+            conn.close()
