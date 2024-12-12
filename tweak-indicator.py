@@ -1,140 +1,56 @@
 # tweak-indicator.py
-import sys, itertools, pandas as pd, numpy as np, sqlite3, talib as ta, pandas_ta as pta
+import sys, itertools, pandas as pd, numpy as np, sqlite3, talib as ta
 from correlation_database import CorrelationDatabase
 from indicators import compute_all_indicators
 from config import DB_PATH
-import matplotlib.pyplot as plt, seaborn as sns
+import matplotlib.pyplot as plt
 
-default_parameters = {
-    'MACD': {'fastperiod': 12, 'slowperiod': 26, 'signalperiod': 9},
-    'EMA': {'timeperiod': 30},
-    'SMA': {'timeperiod': 30},
-    'RSI': {'timeperiod': 14},
-    'ATR': {'timeperiod': 14},
-    'ADX': {'timeperiod': 14},
-    'CCI': {'timeperiod': 14},
-    'MOM': {'timeperiod': 10},
-    'ROC': {'timeperiod': 10},
-    'TRIX': {'timeperiod': 30},
-    'ULTOSC': {'timeperiod1':7, 'timeperiod2':14, 'timeperiod3':28},
-    'EyeX MFV Volume': {'range1':50, 'range2':75, 'range3':100, 'range4':200},
-    'EyeX MFV S/R': {'range1':50, 'range2':75, 'range3':100, 'range4':200, 'pivot_lookback':5},
-    'OBV Price Divergence': {'obv_period':14},
-}
+default_parameters = {'MACD': {'fastperiod': 12, 'slowperiod': 26, 'signalperiod': 9}, 'EMA': {'timeperiod': 30}, 'SMA': {'timeperiod': 30}, 'RSI': {'timeperiod': 14}, 'ATR': {'timeperiod': 14}, 'ADX': {'timeperiod': 14}, 'CCI': {'timeperiod': 14}, 'MOM': {'timeperiod': 10}, 'ROC': {'timeperiod': 10}, 'TRIX': {'timeperiod': 30}, 'ULTOSC': {'timeperiod1': 7, 'timeperiod2': 14, 'timeperiod3': 28}, 'EyeX MFV Volume': {'range1': 50, 'range2': 75, 'range3': 100, 'range4': 200}, 'EyeX MFV S/R': {'range1': 50, 'range2': 75, 'range3': 100, 'range4': 200, 'pivot_lookback': 5}, 'OBV Price Divergence': {'obv_period': 14}}
 
 def list_indicators():
     db = CorrelationDatabase(DB_PATH)
-    indicators = db.conn.execute("SELECT name FROM indicators").fetchall()
-    indicator_names = sorted([ind[0] for ind in indicators if ind[0] in default_parameters])
+    indicators = sorted([ind[0] for ind in db.conn.execute("SELECT name FROM indicators").fetchall() if ind[0] in default_parameters])
     db.close()
-    return indicator_names
+    return indicators
 
 def get_configurations(params, defaults):
-    config_ranges = {}
-    for param in params:
-        default = defaults.get(param, 1)
-        lower = max(1, default - 5)
-        upper = min(100, default + 5)
-        config_ranges[param] = range(lower, upper + 1)
-    return itertools.product(*config_ranges.values())
+    return itertools.product(*[range(max(1, defaults.get(p, 1) - 5), min(100, defaults.get(p, 1) + 5) + 1) for p in params])
 
 def compute_indicator(data, indicator, config, params):
     if indicator == 'MACD':
-        return ta.MACD(data['Close'], fastperiod=config['fastperiod'], slowperiod=config['slowperiod'], signalperiod=config['signalperiod'])[0]
-    elif indicator == 'EMA':
-        return ta.EMA(data['Close'], timeperiod=config['timeperiod'])
-    elif indicator == 'SMA':
-        return ta.SMA(data['Close'], timeperiod=config['timeperiod'])
-    elif indicator == 'RSI':
-        return ta.RSI(data['Close'], timeperiod=config['timeperiod'])
-    elif indicator == 'ATR':
-        return ta.ATR(data['high'], data['low'], data['Close'], timeperiod=config['timeperiod'])
-    elif indicator == 'ADX':
-        return ta.ADX(data['high'], data['low'], data['Close'], timeperiod=config['timeperiod'])
-    elif indicator == 'CCI':
-        return ta.CCI(data['high'], data['low'], data['Close'], timeperiod=config['timeperiod'])
-    elif indicator == 'MOM':
-        return ta.MOM(data['Close'], timeperiod=config['timeperiod'])
-    elif indicator == 'ROC':
-        return ta.ROC(data['Close'], timeperiod=config['timeperiod'])
-    elif indicator == 'TRIX':
-        return ta.TRIX(data['Close'], timeperiod=config['timeperiod'])
-    elif indicator == 'ULTOSC':
-        return ta.ULTOSC(data['high'], data['low'], data['Close'], timeperiod1=config['timeperiod1'], timeperiod2=config['timeperiod2'], timeperiod3=config['timeperiod3'])
-    elif indicator == 'EyeX MFV Volume':
-        mf_multiplier = ((data['Close'] - data['low']) - (data['high'] - data['Close'])) / (data['high'] - data['low'])
-        mf_multiplier = mf_multiplier.replace([np.inf, -np.inf], 0).fillna(0)
-        mf_volume = mf_multiplier * data['volume']
-        combined_mfv = sum([
-            (mf_volume.rolling(window=config[f'range{i}'], min_periods=1).sum() - mf_volume.shift(config[f'range{i}']).fillna(0))
-            .rolling(window=config[f'range{i}'], min_periods=1)
-            .apply(lambda x: (x[-1] - np.mean(x)) / np.std(x) * 10 if np.std(x) > 0 else 0, raw=True)
-            for i in range(1,5)
-        ]).clip(-400, 400)
-        return combined_mfv
-    elif indicator == 'EyeX MFV S/R':
-        mfv = sum([
-            ((data['Close'] - data['low']) - (data['high'] - data['Close'])) / (data['high'] - data['low']).replace([np.inf, -np.inf], 0).fillna(0) * data['volume']
-            .rolling(window=config[f'range{i}'], min_periods=1).sum().rolling(window=config[f'range{i}'], min_periods=1).apply(lambda x: (x[-1] - np.mean(x)) / np.std(x) * 10 if np.std(x) > 0 else 0)
-            for i in range(1,5)
-        ])
-        pivot_high = data['high'][(data['high'] == data['high'].rolling(window=config['pivot_lookback']*2+1, center=True).max())]
-        pivot_low = data['low'][(data['low'] == data['low'].rolling(window=config['pivot_lookback']*2+1, center=True).min())]
-        resistance_levels, support_levels = [], []
-        bull_attack, bear_attack = [], []
-        max_levels = 10
+        return ta.MACD(data['Close'], **config)[0]
+    if indicator in {'EMA', 'SMA', 'RSI', 'ATR', 'ADX', 'CCI', 'MOM', 'ROC', 'TRIX'}:
+        return getattr(ta, indicator)(data['Close'], **config)
+    if indicator == 'ULTOSC':
+        return ta.ULTOSC(data['high'], data['low'], data['Close'], **config)
+    if indicator == 'EyeX MFV Volume':
+        mfv = ((data['Close'] - data['low']) - (data['high'] - data['Close'])) / (data['high'] - data['low']).replace([np.inf, -np.inf], 0).fillna(0) * data['volume']
+        return sum([(mfv.rolling(window=config[f'range{i}']).sum() - mfv.shift(config[f'range{i}']).fillna(0)).rolling(window=config[f'range{i}']).apply(lambda x: (x[-1] - np.mean(x)) / np.std(x) * 10 if np.std(x) > 0 else 0, raw=True) for i in range(1, 5)]).clip(-400, 400)
+    if indicator == 'EyeX MFV S/R':
+        mfv = sum([((data['Close'] - data['low']) - (data['high'] - data['Close'])) / (data['high'] - data['low']).replace([np.inf, -np.inf], 0).fillna(0) * data['volume'].rolling(window=config[f'range{i}']).sum().rolling(window=config[f'range{i}']).apply(lambda x: (x[-1] - np.mean(x)) / np.std(x) * 10 if np.std(x) > 0 else 0) for i in range(1, 5)])
+        pivot_high = data['high'][(data['high'] == data['high'].rolling(window=config['pivot_lookback'] * 2 + 1, center=True).max())]
+        pivot_low = data['low'][(data['low'] == data['low'].rolling(window=config['pivot_lookback'] * 2 + 1, center=True).min())]
+        res, sup, bull, bear = [], [], [], []
         for i in range(len(data)):
-            if i in pivot_high.index:
-                resistance_levels.insert(0, data['high'].iloc[i])
-                resistance_levels = resistance_levels[:max_levels]
-            if i in pivot_low.index:
-                support_levels.insert(0, data['low'].iloc[i])
-                support_levels = support_levels[:max_levels]
+            if i in pivot_high.index: res.insert(0, data['high'].iloc[i]); res = res[:10]
+            if i in pivot_low.index: sup.insert(0, data['low'].iloc[i]); sup = sup[:10]
             close = data['Close'].iloc[i]
-            near_res = any(abs(close - res)/res <= 0.00001 for res in resistance_levels)
-            near_sup = any(abs(close - sup)/sup <= 0.00001 for sup in support_levels)
-            bull_attack.append(near_res and mfv.iloc[i] > 0)
-            bear_attack.append(near_sup and mfv.iloc[i] < 0)
-        data['EyeX MFV S/R Bull'] = bull_attack
-        data['EyeX MFV S/R Bear'] = bear_attack
+            bull.append(any(abs(close - r) / r <= 0.00001 for r in res) and mfv.iloc[i] > 0)
+            bear.append(any(abs(close - s) / s <= 0.00001 for s in sup) and mfv.iloc[i] < 0)
+        data['EyeX MFV S/R Bull'], data['EyeX MFV S/R Bear'] = bull, bear
         return data['EyeX MFV S/R Bull']
-    elif indicator == 'OBV Price Divergence':
+    if indicator == 'OBV Price Divergence':
         obv = ta.OBV(data['Close'], data['volume'])
-        obv_ma = ta.SMA(obv, timeperiod=config['obv_period'])
-        price_ma = ta.SMA(data['Close'], timeperiod=config['obv_period'])
-        return (obv_ma - price_ma).fillna(0)
-    else:
-        return None
+        return (ta.SMA(obv, timeperiod=config['obv_period']) - ta.SMA(data['Close'], timeperiod=config['obv_period'])).fillna(0)
 
 def main():
-    if len(sys.argv) != 3:
-        print("Usage: python tweak-indicator.py SYMBOL TIMEFRAME")
-        sys.exit(1)
-    symbol, timeframe = sys.argv[1], sys.argv[2]
-    db = CorrelationDatabase(DB_PATH)
-    indicators = list_indicators()
-    print("Do you want to experiment with tweaking the settings for a specific indicator? (y/n) [n]: ", end='')
-    choice = input().strip().lower()
-    if choice != 'y':
-        sys.exit(0)
-    print("Select an indicator to tweak:")
-    for idx, ind in enumerate(indicators, 1):
-        print(f"{idx}. {ind}")
-    selection = input(f"Enter number (Default: 1): ").strip()
-    try:
-        selected_indicator = indicators[int(selection)-1] if selection else indicators[0]
-    except:
-        selected_indicator = indicators[0]
-    params = default_parameters.get(selected_indicator, {})
-    if not params:
-        print("Selected indicator has no configurable parameters.")
-        sys.exit(0)
-    print(f"Configurable parameters for {selected_indicator}: {list(params.keys())}")
-    config_combinations = get_configurations(params, default_parameters[selected_indicator])
-    total_configs = 1
-    for param in params:
-        total_configs *= len(range(max(1, default_parameters[selected_indicator][param] -5), min(100, default_parameters[selected_indicator][param] +5) +1))
-    print(f"Total configurations to process: {total_configs}")
+    if len(sys.argv) != 3: print("Usage: python tweak-indicator.py SYMBOL TIMEFRAME"); sys.exit(1)
+    symbol, timeframe = sys.argv[1:]
+    db, indicators = CorrelationDatabase(DB_PATH), list_indicators()
+    if input("Do you want to experiment with tweaking the settings for a specific indicator? (y/n) [n]: ").strip().lower() != 'y': sys.exit(0)
+    print("Select an indicator to tweak:", *[f"{i + 1}. {ind}" for i, ind in enumerate(indicators)], sep='\n')
+    selected_indicator = indicators[int(input(f"Enter number (Default: 1): ") or 1) - 1]
+    params, configs = default_parameters.get(selected_indicator, {}), list(get_configurations(default_parameters[selected_indicator], default_parameters[selected_indicator]))
     data = pd.read_sql_query("""
         SELECT klines.*, symbols.symbol, timeframes.timeframe FROM klines
         JOIN symbols ON klines.symbol_id = symbols.id
@@ -142,35 +58,24 @@ def main():
         WHERE symbols.symbol = ? AND timeframes.timeframe = ?
         ORDER BY open_time ASC
     """, db.conn, params=(symbol, timeframe))
-    if data.empty:
-        print("No data found for the given symbol and timeframe.")
-        sys.exit(1)
-    data = compute_all_indicators(data)
-    correlations = []
-    param_names = list(params.keys())
-    processed = 0
-    for config in config_combinations:
-        config_dict = dict(zip(param_names, config))
-        indicator_name = f"{selected_indicator}_" + "_".join([f"{k}{v}" for k,v in config_dict.items()])
-        existing = db.conn.execute("SELECT id FROM indicators WHERE name = ?", (indicator_name,)).fetchone()
-        if not existing:
+    if data.empty: print("No data found."); sys.exit(1)
+    data, correlations, processed = compute_all_indicators(data), [], 0
+    for config in configs:
+        config_dict, indicator_name = dict(zip(params.keys(), config)), f"{selected_indicator}_" + "_".join([f"{k}{v}" for k, v in zip(params.keys(), config)])
+        if not db.conn.execute("SELECT id FROM indicators WHERE name = ?", (indicator_name,)).fetchone():
             db.conn.execute("INSERT INTO indicators (name) VALUES (?)", (indicator_name,))
             db.conn.commit()
-        indicator_id = db.conn.execute("SELECT id FROM indicators WHERE name = ?", (indicator_name,)).fetchone()[0]
-        indicator_series = compute_indicator(data, selected_indicator, config_dict, param_names)
-        if indicator_series is None:
-            continue
+        indicator_series = compute_indicator(data, selected_indicator, config_dict, params)
+        if indicator_series is None: continue
         data[indicator_name] = indicator_series
         for lag in range(1, 101):
-            shifted = indicator_series.shift(lag)
-            valid = pd.concat([shifted, data['Close']], axis=1).dropna()
+            shifted, valid = indicator_series.shift(lag), pd.concat([indicator_series.shift(lag), data['Close']], axis=1).dropna()
             if not valid.empty:
-                corr = valid.iloc[:,0].corr(valid.iloc[:,1])
+                corr = valid.iloc[:, 0].corr(valid.iloc[:, 1])
                 db.insert_correlation(symbol, timeframe, indicator_name, lag, corr)
                 correlations.append({'indicator': indicator_name, 'config': config_dict, 'lag': lag, 'correlation': corr})
-        processed +=1
-        if processed % 100 ==0:
-            print(f"Processed {processed}/{total_configs} configurations...")
+        processed += 1
+        if processed % 100 == 0: print(f"Processed {processed}/{len(configs)} configurations...")
     df_corr = pd.DataFrame(correlations)
     df_corr.to_csv(f"csv/{selected_indicator}_correlations.csv", index=False)
     plt.figure(figsize=(15, 10))
