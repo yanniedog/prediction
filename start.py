@@ -40,15 +40,12 @@ def configure_logging():
         handler = logging.FileHandler(LOG_FILE, mode='w')
         handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         logger.addHandler(handler)
-        # Only output logs to the file, not the console, to avoid duplication.
 
-# Configure logging once at the start of the script
 configure_logging()
 logger = logging.getLogger()
 
 warnings.filterwarnings('ignore')
 
-# Wrapper for all print statements to ensure no duplicates
 def log_and_print(message, level="info"):
     if level == "info":
         logger.info(message)
@@ -133,9 +130,6 @@ def main():
 
     delete_previous_output()
 
-    gen_charts = input_yes_no("Generate individual charts? (y/n): ") == 'y'
-    gen_heatmaps = input_yes_no("Generate heatmaps? (y/n): ") == 'y'
-    save_corr_csv = input_yes_no("Save correlation CSV? (y/n): ") == 'y'
     tweak = input_yes_no("Do you want to tweak indicator settings? (y/n): ") == 'y'
 
     symbol = input_with_default("Enter symbol (e.g., 'BTCUSDT'): ", "BTCUSDT").upper()
@@ -161,6 +155,12 @@ def main():
         log_and_print("No data available.", "error")
         sys.exit(0)
 
+    if tweak:
+        result = subprocess.run([sys.executable, 'tweak-indicator.py', symbol, timeframe], capture_output=True, text=True)
+        log_and_print(result.stdout)
+        if result.stderr:
+            log_and_print(result.stderr, "error")
+
     data = compute_all_indicators(data)
     data['Date'] = pd.to_datetime(data.get('Date') or data.get('open_time'), errors='coerce').dt.tz_localize(None)
     if 'close' in data.columns:
@@ -178,27 +178,31 @@ def main():
         log_and_print("Insufficient data.", "error")
         sys.exit(1)
 
-    load_or_calculate_correlations(data, original_inds, max_lag, is_rev, symbol, timeframe)
-    db = CorrelationDatabase(DB_PATH)
-    correlations = {ind: [db.get_correlation(symbol, timeframe, ind, lag) for lag in range(1, max_lag + 1)] for ind in original_inds}
-    db.close()
+    if tweak:
+        log_and_print("Computing correlations for tweaked indicator...")
+        db = CorrelationDatabase(DB_PATH)
+        selected_indicator = result.stdout.splitlines()[-1]
+        correlations = {selected_indicator: [db.get_correlation(symbol, timeframe, selected_indicator, lag) for lag in range(1, max_lag + 1)]}
+        db.close()
+    else:
+        load_or_calculate_correlations(data, original_inds, max_lag, is_rev, symbol, timeframe)
+        db = CorrelationDatabase(DB_PATH)
+        correlations = {ind: [db.get_correlation(symbol, timeframe, ind, lag) for lag in range(1, max_lag + 1)] for ind in original_inds}
+        db.close()
 
     summary_df = generate_statistical_summary(correlations, max_lag)
     summary_df.to_csv(f"csv/{timestamp}_{symbol}_{timeframe}_stat_summary.csv")
 
     generate_combined_correlation_chart(correlations, max_lag, time_interval, timestamp, f"{symbol}_{timeframe}")
 
-    if gen_charts:
-        visualize_data(data, X_scaled, feature_cols, timestamp, is_rev, time_interval, gen_charts, correlations, calculate_correlation, f"{symbol}_{timeframe}")
+    visualize_data(data, X_scaled, feature_cols, timestamp, is_rev, time_interval, True, correlations, calculate_correlation, f"{symbol}_{timeframe}")
 
-    if gen_heatmaps:
-        generate_heatmaps(data, timestamp, time_interval, gen_heatmaps, correlations, calculate_correlation, f"{symbol}_{timeframe}")
+    generate_heatmaps(data, timestamp, time_interval, True, correlations, calculate_correlation, f"{symbol}_{timeframe}")
 
     best_df = generate_best_indicator_table(correlations, max_lag)
     best_df.to_csv(f"csv/{timestamp}_{symbol}_{timeframe}_best_indicators.csv", index=False)
 
-    if save_corr_csv:
-        generate_correlation_csv(correlations, max_lag, f"{symbol}_{timeframe}", 'csv')
+    generate_correlation_csv(correlations, max_lag, f"{symbol}_{timeframe}", 'csv')
 
     log_and_print("Script completed successfully.")
 
