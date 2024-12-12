@@ -84,7 +84,6 @@ def save_to_sqlite(df, db_path, symbol, timeframe):
         os.makedirs(Path(db_path).parent, exist_ok=True)
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        # Insert or ignore symbol
         cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol,))
         cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
         sym_id_row = cursor.fetchone()
@@ -92,7 +91,6 @@ def save_to_sqlite(df, db_path, symbol, timeframe):
             print(f"Failed to retrieve symbol_id for symbol: {symbol}")
             return
         sym_id = sym_id_row[0]
-        # Insert or ignore timeframe
         cursor.execute("INSERT OR IGNORE INTO timeframes (timeframe) VALUES (?)", (timeframe,))
         cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
         tf_id_row = cursor.fetchone()
@@ -100,7 +98,6 @@ def save_to_sqlite(df, db_path, symbol, timeframe):
             print(f"Failed to retrieve timeframe_id for timeframe: {timeframe}")
             return
         tf_id = tf_id_row[0]
-        # Format datetime columns as strings
         df['open_time'] = df['open_time'].dt.strftime('%Y-%m-%d %H:%M:%S')
         df['close_time'] = df['close_time'].dt.strftime('%Y-%m-%d %H:%M:%S')
         insert_q = """
@@ -138,3 +135,9 @@ def save_to_sqlite(df, db_path, symbol, timeframe):
     finally:
         if conn:
             conn.close()
+
+def initialize_database(db_path):
+    conn = create_connection(db_path)
+    if conn:
+        create_tables(conn)
+        conn.close()
