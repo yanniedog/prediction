@@ -1,45 +1,39 @@
 # logging_setup.py
-import logging, sys
+import logging
+import sys
 from pathlib import Path
-from logging import StreamHandler
 
 def configure_logging(log_file='prediction.log'):
+    log_path = Path.cwd() / log_file
+    if log_path.exists():
+        log_path.unlink()
     logger = logging.getLogger()
     logger.handlers = []
     logger.setLevel(logging.DEBUG)
-    log_path = Path.cwd() / log_file
-    try:
-        f_handler = logging.FileHandler(log_path, 'w')
-        f_handler.setLevel(logging.DEBUG)
-        c_handler = StreamHandler(sys.stdout)
-        c_handler.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        for handler in [f_handler, c_handler]:
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
+    file_handler = logging.FileHandler(log_path, 'w')
+    file_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(funcName)s - Line %(lineno)d - %(message)s')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
 
-        class StreamToLogger:
-            def __init__(self, logger, level):
-                self.logger, self.level = logger, level
+    class StreamToLogger:
+        def __init__(self, logger, level):
+            self.logger = logger
+            self.level = level
 
-            def write(self, msg):
-                if msg.strip():
-                    self.logger.log(self.level, msg.strip())
+        def write(self, message):
+            if message.strip():
+                self.logger.log(self.level, message.strip())
 
-            def flush(self): pass
+        def flush(self):
+            pass
 
-        sys.stdout = StreamToLogger(logger, logging.INFO)
-        sys.stderr = StreamToLogger(logger, logging.ERROR)
+    sys.stdout = StreamToLogger(logger, logging.INFO)
+    sys.stderr = StreamToLogger(logger, logging.ERROR)
 
-        def exception_handler(exc_type, exc_value, exc_traceback):
-            if issubclass(exc_type, KeyboardInterrupt):
-                sys.__excepthook__(exc_type, exc_value, exc_traceback)
-                return
+    def exception_handler(exc_type, exc_value, exc_traceback):
+        if not issubclass(exc_type, KeyboardInterrupt):
             logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+    sys.excepthook = exception_handler
 
-        sys.excepthook = exception_handler
-
-        logger.info(f"Logging configured. Log file at: {log_path.resolve()}")
-    except Exception as e:
-        print(f"Logging setup failed: {e}")
-        sys.exit(1)
+    return log_path
