@@ -13,14 +13,19 @@ def configure_logging(log_file='prediction.log'):
         # Configure file handler
         file_handler = logging.FileHandler(log_path, 'w')
         file_handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(funcName)s - Line %(lineno)d - %(message)s')
+        formatter = logging.Formatter(
+            '%(levelname)s - [%(filename)s:%(lineno)d(%(funcName)s)]: %(message)s'
+        )
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
-        # Suppress console logging
+        # Handle uncaught exceptions
         def exception_handler(exc_type, exc_value, exc_traceback):
             if not issubclass(exc_type, KeyboardInterrupt):
-                logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+                logger.error(
+                    "Uncaught exception",
+                    exc_info=(exc_type, exc_value, exc_traceback),
+                )
 
         sys.excepthook = exception_handler
 
