@@ -66,6 +66,10 @@ def input_yes_no_no_default(prompt: str) -> str:
         print("Invalid input, enter 'y' or 'n'.")
 
 def delete_previous_output():
+    from pathlib import Path
+    import shutil
+    import os
+
     output_dirs = ['csv', 'heatmaps', 'combined_charts', 'reports']
     db_dir = Path("database")
 
@@ -74,17 +78,29 @@ def delete_previous_output():
         for folder in output_dirs:
             folder_path = Path(folder)
             if folder_path.exists() and folder_path.is_dir():
-                shutil.rmtree(folder_path)
-                print(f"Deleted: {folder_path}")
+                try:
+                    for root, dirs, files in os.walk(folder_path):
+                        for dir_name in dirs:
+                            os.chmod(Path(root) / dir_name, 0o777)
+                        for file_name in files:
+                            os.chmod(Path(root) / file_name, 0o777)
+                    shutil.rmtree(folder_path)
+                    print(f"Deleted: {folder_path}")
+                except Exception as e:
+                    print(f"Error deleting {folder_path}: {e}")
 
         if db_dir.exists() and db_dir.is_dir():
             delete_db = input(f"Do you also wish to delete the database directory '{db_dir}'? (y/n): ").strip().lower()
             if delete_db == 'y':
-                shutil.rmtree(db_dir)
-                print(f"Deleted database directory: {db_dir}")
+                try:
+                    shutil.rmtree(db_dir)
+                    print(f"Deleted database directory: {db_dir}")
+                except Exception as e:
+                    print(f"Error deleting database directory {db_dir}: {e}")
         print("All selected outputs have been cleared.")
     else:
         print("Outputs not cleared.")
+
 
 def recreate_database(db_path: str):
     print("Recreating database...")
