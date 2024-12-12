@@ -4,7 +4,7 @@ from pathlib import Path
 from datetime import datetime
 
 log_filename = f"{Path.cwd().name}_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
-logger = logging.getLogger()
+logger = logging.getLogger("unique_logger")
 if not logger.hasHandlers():
     logger.setLevel(logging.DEBUG)
     file_handler = logging.FileHandler(log_filename, 'w')
@@ -22,8 +22,10 @@ class StreamLogger:
     def flush(self):
         self.stream.flush()
 
-sys.stdout = StreamLogger(sys.__stdout__, logger.info)
-sys.stderr = StreamLogger(sys.__stderr__, logger.error)
+if not isinstance(sys.stdout, StreamLogger):
+    sys.stdout = StreamLogger(sys.__stdout__, logger.info)
+if not isinstance(sys.stderr, StreamLogger):
+    sys.stderr = StreamLogger(sys.__stderr__, logger.error)
 
 try:
     from sqlite_data_manager import initialize_database
