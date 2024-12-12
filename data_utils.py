@@ -9,12 +9,15 @@ from indicators import compute_all_indicators
 def clear_screen():
     os.system('cls' if os.name=='nt' else 'clear')
 
-def prepare_data(data: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
-    features = data.columns.difference(['date','open','high','low','close','volume'])
-    X = data[features.select_dtypes(include=[np.number])]
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+
+def prepare_data(data):
+    numeric_features = data.select_dtypes(include=[np.number])
+    feature_cols = numeric_features.columns
     scaler = StandardScaler()
-    X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=X.columns, index=data.index)
-    return X_scaled, X.columns.tolist()
+    X_scaled = scaler.fit_transform(numeric_features)
+    return X_scaled, feature_cols
 
 def determine_time_interval(data: pd.DataFrame) -> str:
     date_col = 'Date' if 'Date' in data else 'open_time' if 'open_time' in data else None
