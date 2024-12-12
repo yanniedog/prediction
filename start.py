@@ -41,6 +41,7 @@ def configure_logging():
         handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         logger.addHandler(handler)
 
+# Call this once to configure logging
 configure_logging()
 logger = logging.getLogger()
 
@@ -115,6 +116,7 @@ def recreate_database(db_path: str):
         sys.exit(1)
 
 def main():
+    # Ensure logger does not duplicate stdout
     clear_screen()
     run_backup_cleanup()
     timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
