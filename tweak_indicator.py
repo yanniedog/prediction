@@ -1,6 +1,5 @@
 # tweak_indicator.py
 import sys
-import sqlite3
 import itertools
 from pathlib import Path
 import pandas as pd
@@ -115,11 +114,15 @@ def generate_configurations(parameters):
             param_ranges[param] = [default]
 
     # Generate all possible combinations
-    keys, values = zip(*param_ranges.items())
-    configurations = [dict(zip(keys, v)) for v in itertools.product(*values)]
+    if param_ranges:
+        keys, values = zip(*param_ranges.items())
+        configurations = [dict(zip(keys, v)) for v in itertools.product(*values)]
+    else:
+        configurations = []
+
     return configurations
 
-def insert_configurations_into_db(indicator_name, configurations):
+def insert_tweaked_configs(indicator_name, configurations):
     """
     Insert the generated configurations into the SQLite database.
     """
@@ -187,10 +190,13 @@ def main():
         print(f"Parameters for '{indicator_name}': {parameters}")
 
         configurations = generate_configurations(parameters)
+        if not configurations:
+            print(f"No configurations generated for '{indicator_name}'.")
+            continue
         print(f"Generated {len(configurations)} configurations for '{indicator_name}'.")
 
         # Insert configurations into the database
-        insert_configurations_into_db(indicator_name, configurations)
+        insert_tweaked_configs(indicator_name, configurations)
         print(f"Configurations for '{indicator_name}' have been added to the database.")
 
     print("\nAll selected indicators have been processed.")

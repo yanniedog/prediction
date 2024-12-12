@@ -5,10 +5,13 @@ import pandas as pd
 from config import DB_PATH
 
 def create_connection():
-    """Create a SQLite database connection."""
+    """Create a SQLite database connection and return the connection object."""
     try:
         conn = sqlite3.connect(DB_PATH)
-        print(f"Connected to SQLite database at {DB_PATH}. SQLite version: {sqlite3.version}")
+        cursor = conn.cursor()
+        cursor.execute("SELECT sqlite_version();")
+        version = cursor.fetchone()[0]
+        print(f"Connected to SQLite database at {DB_PATH}. SQLite version: {version}")
         return conn
     except sqlite3.Error as e:
         print(f"SQLite connection error: {e}")
