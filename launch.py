@@ -17,19 +17,6 @@ def delete_old_logs(log_dir: Path, log_extension: str = ".log"):
         except Exception as e:
             print(f"Error deleting log file {log_file}: {e}")
 
-class StreamLogger:
-    def __init__(self, stream, log_func):
-        self.stream = stream
-        self.log_func = log_func
-
-    def write(self, message):
-        if message.strip():
-            self.log_func(message.strip())
-        self.stream.write(message)
-
-    def flush(self):
-        self.stream.flush()
-
 def main():
     # Delete old logs
     current_dir = Path.cwd()
@@ -37,19 +24,16 @@ def main():
 
     # Configure logging
     log_file = f"{current_dir.name}_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
-    log_path = configure_logging(log_file)
+    configure_logging(log_file)
     logger = logging.getLogger()
-    logger.info(f"Logging initialized. Log file: {log_path}")
-
-    # Redirect stdout and stderr to logger
-    sys.stdout = StreamLogger(sys.__stdout__, logger.info)
-    sys.stderr = StreamLogger(sys.__stderr__, logger.error)
 
     try:
         # Run backup and initialize database
         run_backup_cleanup()
+        print("Backup completed.")  # Screen output only
         logger.info("Backup cleanup completed.")
         initialize_database(DB_PATH)
+        logger.info("Database initialized.")
 
         # Run the main script
         runpy.run_path("start.py", run_name="__main__")
