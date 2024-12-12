@@ -9,28 +9,14 @@ import chardet
 
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(
-        description="Generate a .GPT file containing contents of specified scripts."
-    )
-    parser.add_argument(
-        '-e', '--extensions',
-        nargs='+',
-        help='Additional file extensions to include (e.g., -e txt md)'
-    )
-    parser.add_argument(
-        '-f', '--folders',
-        nargs='+',
-        help='Additional subdirectories to search for files (e.g., -f utils helpers)'
-    )
+    parser = argparse.ArgumentParser(description="Generate a .GPT file containing contents of specified scripts.")
+    parser.add_argument('-e', '--extensions', nargs='+', help='Additional file extensions to include (e.g., -e txt md)')
+    parser.add_argument('-f', '--folders', nargs='+', help='Additional subdirectories to search for files (e.g., -f utils helpers)')
     return parser.parse_args()
 
 
 def get_current_directory():
     return os.getcwd()
-
-
-def get_directory_name(path):
-    return os.path.basename(os.path.normpath(path))
 
 
 def get_timestamp():
@@ -44,7 +30,7 @@ def backup_existing_gpt_files(current_dir, work_dir_name):
         os.makedirs(backup_dir, exist_ok=True)
         print(f"Backup directory ensured at '{backup_dir}'.")
     except Exception as e:
-        print(f"Error creating backup directory '{backup_dir}': {e}")
+        print(f"Error creating directory '{backup_dir}': {e}")
         sys.exit(1)
     for item in os.listdir(current_dir):
         if item.lower().endswith('.gpt'):
@@ -71,14 +57,10 @@ def collect_files(base_dirs, extensions, excluded_filenames, exclude_subdirs_map
         for root, dirs, files in os.walk(base_dir):
             dirs[:] = [d for d in dirs if d not in exclude_subdirs and not d.startswith('.')]
             for file in files:
-                if file.startswith('.'):
-                    continue
-                if file.lower() in excluded_filenames:
-                    print(f"Excluding file: {file}")  # Debug statement
+                if file.startswith('.') or file.lower() in excluded_filenames:
                     continue
                 if any(file.lower().endswith(ext.lower()) for ext in extensions) or file.lower() == 'requirements.txt':
-                    full_path = os.path.join(root, file)
-                    filename_map[file.lower()].append(full_path)
+                    filename_map[file.lower()].append(os.path.join(root, file))
     return filename_map
 
 
@@ -93,8 +75,7 @@ def alert_duplicate_filenames(duplicate_files):
                 ctime = datetime.fromtimestamp(os.path.getctime(path)).strftime('%Y-%m-%d %H:%M:%S')
                 mtime = datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d %H:%M:%S')
                 with open(path, 'r', encoding='utf-8', errors='ignore') as f:
-                    lines = f.readlines()
-                    num_lines = len(lines)
+                    num_lines = len(f.readlines())
             except Exception as e:
                 print(f"Error retrieving information for '{path}': {e}")
                 size = 'N/A'
@@ -118,8 +99,7 @@ def read_file_contents(file_path):
             raw_data = f.read()
         result = chardet.detect(raw_data)
         encoding = result['encoding']
-        content = raw_data.decode(encoding, errors='replace')
-        return content.replace('\r\n', '\n')
+        return raw_data.decode(encoding, errors='replace').replace('\r\n', '\n')
     except Exception as e:
         print(f"Error reading file '{file_path}': {e}")
         return "[Error reading file]"
@@ -127,11 +107,11 @@ def read_file_contents(file_path):
 
 def generate_output(collected_files, log_content=None):
     header = (
-        "I encounter the following error when running my script. Below, I’ve included the output I received, "
-        "followed by all the scripts in my project. Please provide a complete and working fix for any scripts "
-        "requiring revision. Do not truncate or omit any code; provide full, functional, and production-ready "
-        "revisions. Ensure all code you provide is complete, error-free, and ready for deployment, with no "
-        "placeholders, hypothetical examples, or omissions.\n\n"
+        "I’m encountering an error in my script, and I’ve included the output along with all related project scripts below. "
+        "Please review and provide a complete fix. Ensure your response includes a fully functional, error-free, and "
+        "deployment-ready script, with no placeholders or omissions. Additionally, any revised code should be as compact as "
+        "possible, without remarks or docstrings, while maintaining full functionality, compatibility, and interoperability. "
+        "If no changes are needed, there’s no need to include the script in your response.\n\n"
     )
     error_header = ""
     if log_content:
@@ -142,20 +122,11 @@ def generate_output(collected_files, log_content=None):
     sections = [header + error_header]
     for idx, (filename, path) in enumerate(collected_files, start=1):
         relative_path = os.path.relpath(path, start=current_dir)
-        location = (
-            "located in the 'scripts' subdirectory"
-            if os.path.commonpath([path, scripts_dir]) == scripts_dir
-            else "located in the working directory"
-        )
+        location = "located in the 'scripts' subdirectory" if os.path.commonpath([path, scripts_dir]) == scripts_dir else "located in the working directory"
         file_contents = read_file_contents(path)
-        section = (
-            f"{idx}) {os.path.basename(relative_path)} ({location}):\n"
-            f"{file_contents}"
-            f"\n===================="
-        )
+        section = f"{idx}) {os.path.basename(relative_path)} ({location}):\n{file_contents}\n===================="
         sections.append(section)
-    content = '\n'.join(sections)
-    return content
+    return '\n'.join(sections)
 
 
 def write_output_file(output_path, content):
@@ -169,7 +140,7 @@ def write_output_file(output_path, content):
 
 if __name__ == "__main__":
     current_dir = get_current_directory()
-    work_dir_name = get_directory_name(current_dir)
+    work_dir_name = os.path.basename(os.path.normpath(current_dir))
     scripts_dir = os.path.join(current_dir, "scripts")
     backup_existing_gpt_files(current_dir, work_dir_name)
     args = parse_arguments()
@@ -180,18 +151,12 @@ if __name__ == "__main__":
     excluded_filenames = {script_filename, 'parsetab.py', 'copyscripts.py', 'repair-remarks.py', 'cspell.json', 'revert-to-gpt-scripts.py'}
     extensions = ['.py', '.ps']
     if args.extensions:
-        additional_ext = [ext.lower() if ext.startswith('.') else f".{ext.lower()}" for ext in args.extensions]
-        extensions.extend(additional_ext)
+        extensions.extend([ext.lower() if ext.startswith('.') else f".{ext.lower()}" for ext in args.extensions])
     base_dirs = [current_dir, scripts_dir]
     base_dirs = list(dict.fromkeys(base_dirs))
     if args.folders:
-        for folder in args.folders:
-            additional_dir = os.path.join(current_dir, folder)
-            if additional_dir not in base_dirs:
-                base_dirs.append(additional_dir)
-    exclude_subdirs_map = {
-        current_dir: ['scripts']
-    }
+        base_dirs.extend([os.path.join(current_dir, folder) for folder in args.folders if os.path.join(current_dir, folder) not in base_dirs])
+    exclude_subdirs_map = {current_dir: ['scripts']}
     always_excluded_subdirs = ['venv', '.venv']
     filename_map = collect_files(base_dirs, extensions, excluded_filenames, exclude_subdirs_map, always_excluded_subdirs)
     duplicate_filenames = {fname: paths for fname, paths in filename_map.items() if len(paths) > 1}
