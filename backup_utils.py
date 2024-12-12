@@ -1,27 +1,21 @@
-# backup_utils.py
-import os
-import sys
-import subprocess
+import subprocess, sys
 from pathlib import Path
 
-def run_backup_cleanup() -> None:
+def run_backup_cleanup():
     try:
         backup_script = Path(__file__).resolve().parent / 'backup_cleanup.py'
         if not backup_script.exists():
-            print(f"Backup script '{backup_script}' not found.")
+            print(f"Backup script not found: {backup_script}")
             sys.exit(1)
         print(f"Executing backup script: {backup_script}")
-        result = subprocess.run([sys.executable, str(backup_script)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if result.stdout:
-            for line in result.stdout.splitlines():
-                print(line)
+        result = subprocess.run([sys.executable, str(backup_script)], capture_output=True, text=True)
+        print(result.stdout)
         if result.stderr:
-            for line in result.stderr.splitlines():
-                print(line, file=sys.stderr)
+            print(result.stderr, file=sys.stderr)
         if result.returncode != 0:
-            print(f"Backup cleanup failed with return code {result.returncode}")
+            print(f"Backup failed with code {result.returncode}")
             sys.exit(result.returncode)
-        print("Backup cleanup executed successfully.")
+        print("Backup executed successfully.")
     except Exception as e:
-        print(f"Unexpected error during backup cleanup: {e}")
+        print(f"Backup utils error: {e}")
         sys.exit(1)
