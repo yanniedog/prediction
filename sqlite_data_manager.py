@@ -137,3 +137,25 @@ def save_to_sqlite(df, db_path, symbol, timeframe):
     finally:
         if conn:
             conn.close()
+
+def insert_indicator(conn, indicator_name):
+    """Insert a new indicator into the 'indicators' table if it doesn't already exist."""
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
+    conn.commit()
+
+def get_indicator_id(conn, indicator_name):
+    """Retrieve the ID of an indicator from the 'indicators' table."""
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM indicators WHERE name = ?", (indicator_name,))
+    result = cursor.fetchone()
+    return result[0] if result else None
+
+def insert_correlation(conn, symbol_id, timeframe_id, indicator_id, lag, correlation_value):
+    """Insert or update a correlation value into the 'correlations' table."""
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT OR REPLACE INTO correlations (symbol_id, timeframe_id, indicator_id, lag, correlation_value)
+        VALUES (?, ?, ?, ?, ?)
+    """, (symbol_id, timeframe_id, indicator_id, lag, correlation_value))
+    conn.commit()
