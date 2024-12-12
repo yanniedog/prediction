@@ -27,18 +27,17 @@ def main():
 
     try:
         run_backup_cleanup()
-        logger.info("Backup executed successfully.")
-        
+        # Removed redundant logger.info("Backup executed successfully.")
         initialize_database(DB_PATH)
         logger.info("Database initialized.")
 
-        # Run the main application script
         runpy.run_path("start.py", run_name="__main__")
     except SystemExit as e:
         sys.exit(e.code)
     except Exception as e:
         logger.exception("Uncaught exception during execution")
         raise
+
 
 if __name__ == "__main__":
     main()
