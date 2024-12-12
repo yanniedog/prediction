@@ -22,17 +22,17 @@ def main():
     delete_old_logs(current_dir)
 
     log_file = f"{current_dir.name}_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
-    configure_logging(log_file)
+    configure_logging(log_file)  # Centralized logging configuration
     logger = logging.getLogger()
 
     try:
         run_backup_cleanup()
         logger.info("Backup executed successfully.")
-        logger.info("Backup completed.")
-        logger.info("Backup cleanup completed.")
+        
         initialize_database(DB_PATH)
         logger.info("Database initialized.")
 
+        # Run the main application script
         runpy.run_path("start.py", run_name="__main__")
     except SystemExit as e:
         sys.exit(e.code)
