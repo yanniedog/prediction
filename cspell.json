@@ -70,6 +70,7 @@
         "linestyle",
         "linewidth",
         "localzone",
+        "lookback",
         "MACD",
         "MACDEXT",
         "MACDFIX",

@@ -20,12 +20,12 @@ def compute_eyeX_MFV_volume(data, ranges=[50,75,100,200]):
     mf_multiplier = ((data['close'] - data['low']) - (data['high'] - data['close'])) / (data['high'] - data['low'])
     mf_multiplier = mf_multiplier.replace([np.inf, -np.inf], 0).fillna(0)
     mf_volume = mf_multiplier * data['volume']
-    combined_mfv = pd.concat([
+    combined_mfv = sum([
         (mf_volume.rolling(window=br, min_periods=1).sum() - mf_volume.shift(br).fillna(0))
         .rolling(window=br, min_periods=1)
-        .apply(lambda x: (x - x.mean()) / (x.std() if x.std() != 0 else 1), raw=True) * 10
+        .apply(lambda x: (x - np.mean(x)) / (np.std(x) if np.std(x) != 0 else 1), raw=True) * 10
         for br in ranges
-    ], axis=1).sum(axis=1).clip(-400, 400)
+    ]).clip(-400, 400)
     data['EyeX MFV Volume'] = combined_mfv
     return data
 
@@ -33,12 +33,12 @@ def compute_eyeX_MFV_support_resistance(data, ranges=[50,75,100,200], pivot_look
     mf_multiplier = ((data['close'] - data['low']) - (data['high'] - data['close'])) / (data['high'] - data['low'])
     mf_multiplier = mf_multiplier.replace([np.inf, -np.inf], 0).fillna(0)
     mf_volume = mf_multiplier * data['volume']
-    combined_mfv = pd.concat([
+    combined_mfv = sum([
         (mf_volume.rolling(window=br, min_periods=1).sum() - mf_volume.shift(br).fillna(0))
         .rolling(window=br, min_periods=1)
-        .apply(lambda x: (x - x.mean()) / (x.std() if x.std() != 0 else 1), raw=True) * 10
+        .apply(lambda x: (x - np.mean(x)) / (np.std(x) if np.std(x) != 0 else 1), raw=True) * 10
         for br in ranges
-    ], axis=1).sum(axis=1)
+    ])
     pivot_high = data['high'][(data['high'] == data['high'].rolling(window=pivot_lookback*2+1, center=True).max())]
     pivot_low = data['low'][(data['low'] == data['low'].rolling(window=pivot_lookback*2+1, center=True).min())]
     resistance_levels, support_levels = [], []
@@ -80,8 +80,8 @@ def compute_all_indicators(data):
     indicators['adx'] = ta.ADX(data['high'], data['low'], data['close'], timeperiod=14)
     indicators['adxr'] = ta.ADXR(data['high'], data['low'], data['close'], timeperiod=14)
     indicators['apo'] = ta.APO(data['close'], fastperiod=12, slowperiod=26, matype=0)
-    indicators['aroon_down'], indicators['aroon_up'] = ta.AROON(data['high'], data['low'], timeperiod=14)
-    indicators['aroonosc'] = ta.AROONOSC(data['high'], data['low'], timeperiod=14)
+    indicators['aroon_down'], indicators['aroon_up'] = ta.AROON(data['high'], data['low'], data['close'], timeperiod=14)
+    indicators['aroonosc'] = ta.AROONOSC(data['high'], data['low'], data['close'], timeperiod=14)
     indicators['bop'] = ta.BOP(data['open'], data['high'], data['low'], data['close'])
     indicators['cci'] = ta.CCI(data['high'], data['low'], data['close'], timeperiod=14)
     indicators['cmo'] = ta.CMO(data['close'], timeperiod=14)
