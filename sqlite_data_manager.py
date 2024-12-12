@@ -1,3 +1,4 @@
+# sqlite_data_manager.py
 import sqlite3, os
 from pathlib import Path
 

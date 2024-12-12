@@ -1,3 +1,4 @@
+# table_generation.py
 import os, pandas as pd, numpy as np, logging
 
 def generate_statistical_summary(correlations: dict, max_lag: int) -> pd.DataFrame:
