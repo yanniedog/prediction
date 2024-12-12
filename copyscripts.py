@@ -176,7 +176,7 @@ if __name__ == "__main__":
     output_filename = f"{work_dir_name}-{timestamp}.GPT"
     output_path = os.path.join(current_dir, output_filename)
     script_filename = os.path.basename(__file__).lower()
-    excluded_filenames = {script_filename, 'parsetab.py', 'copyscripts.py', 'REVERT-to-GPT-scripts.py', 'repair-remarks.py', 'cspell.json', 'REVERT-to-GPT-scripts.py'}
+    excluded_filenames = {script_filename, 'parsetab.py', 'copyscripts.py', 'repair-remarks.py', 'cspell.json', 'REVERT-to-GPT-scripts.py'}
     extensions = ['.py', '.ps']
     if args.extensions:
         additional_ext = [ext.lower() if ext.startswith('.') else f".{ext.lower()}" for ext in args.extensions]
