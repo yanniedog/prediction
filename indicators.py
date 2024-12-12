@@ -80,8 +80,9 @@ def compute_all_indicators(data):
     indicators['adx'] = ta.ADX(data['high'], data['low'], data['close'], timeperiod=14)
     indicators['adxr'] = ta.ADXR(data['high'], data['low'], data['close'], timeperiod=14)
     indicators['apo'] = ta.APO(data['close'], fastperiod=12, slowperiod=26, matype=0)
-    indicators['aroon_down'], indicators['aroon_up'] = ta.AROON(data['high'], data['low'], data['close'], timeperiod=14)
-    indicators['aroonosc'] = ta.AROONOSC(data['high'], data['low'], data['close'], timeperiod=14)
+    # Corrected call to ta.AROON
+    indicators['aroon_down'], indicators['aroon_up'] = ta.AROON(data['high'], data['low'], timeperiod=14)
+    indicators['aroonosc'] = ta.AROONOSC(data['high'], data['low'], timeperiod=14)
     indicators['bop'] = ta.BOP(data['open'], data['high'], data['low'], data['close'])
     indicators['cci'] = ta.CCI(data['high'], data['low'], data['close'], timeperiod=14)
     indicators['cmo'] = ta.CMO(data['close'], timeperiod=14)
