@@ -24,15 +24,26 @@ class DoubleWriter:
     def __init__(self, stdout, stderr, logger):
         self.stdout, self.stderr, self.logger = stdout, stderr, logger
     def write(self, msg):
-        if msg.strip(): self.logger.info(msg.strip())
+        if msg.strip():
+            self.logger.info(msg.strip())
         self.stdout.write(msg)
+        self.stderr.write(msg)
     def flush(self):
         self.stdout.flush()
+        self.stderr.flush()
     def isatty(self):
         return self.stdout.isatty()
 
 sys.stdout = DoubleWriter(sys.__stdout__, sys.__stderr__, logger)
 sys.stderr = DoubleWriter(sys.__stderr__, sys.__stderr__, logger)
+
+def exception_handler(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+sys.excepthook = exception_handler
 
 try:
     runpy.run_path("start.py", run_name="__main__")
