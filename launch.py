@@ -5,11 +5,11 @@ from datetime import datetime
 
 log_filename = f"{Path.cwd().name}_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
 logger = logging.getLogger()
-logger.handlers = []  # Ensure no duplicate handlers
-logger.setLevel(logging.DEBUG)
-file_handler = logging.FileHandler(log_filename, 'w')
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
-logger.addHandler(file_handler)
+if not logger.hasHandlers():
+    logger.setLevel(logging.DEBUG)
+    file_handler = logging.FileHandler(log_filename, 'w')
+    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    logger.addHandler(file_handler)
 
 class StreamLogger:
     def __init__(self, stream, log_func):
@@ -26,6 +26,9 @@ sys.stdout = StreamLogger(sys.__stdout__, logger.info)
 sys.stderr = StreamLogger(sys.__stderr__, logger.error)
 
 try:
+    from sqlite_data_manager import initialize_database
+    from config import DB_PATH
+    initialize_database(DB_PATH)
     runpy.run_path("start.py", run_name="__main__")
 except SystemExit as e:
     sys.exit(e.code)
