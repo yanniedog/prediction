@@ -67,39 +67,33 @@ def input_yes_no_no_default(prompt: str) -> str:
 
 def delete_previous_output():
     from pathlib import Path
-    import shutil
     import os
 
-    output_dirs = ['csv', 'heatmaps', 'combined_charts', 'reports']
-    db_dir = Path("database")
+    target_dirs = ['csv', 'heatmaps', 'combined_charts', 'reports', 'database']
+    delete_outputs = input("Delete contents of output directories? (y/n): ").strip().lower()
 
-    delete_outputs = input("Delete previous output? (y/n): ").strip().lower()
     if delete_outputs == 'y':
-        for folder in output_dirs:
+        for folder in target_dirs:
             folder_path = Path(folder)
             if folder_path.exists() and folder_path.is_dir():
                 try:
-                    for root, dirs, files in os.walk(folder_path):
-                        for dir_name in dirs:
-                            os.chmod(Path(root) / dir_name, 0o777)
-                        for file_name in files:
-                            os.chmod(Path(root) / file_name, 0o777)
-                    shutil.rmtree(folder_path)
-                    print(f"Deleted: {folder_path}")
+                    for item in folder_path.iterdir():
+                        if item.is_file():
+                            item.unlink()
+                        elif item.is_dir():
+                            for sub_item in item.rglob('*'):
+                                if sub_item.is_file():
+                                    sub_item.unlink()
+                                elif sub_item.is_dir():
+                                    sub_item.rmdir()
+                            item.rmdir()
+                    print(f"Cleared contents of: {folder_path}")
                 except Exception as e:
-                    print(f"Error deleting {folder_path}: {e}")
-
-        if db_dir.exists() and db_dir.is_dir():
-            delete_db = input(f"Do you also wish to delete the database directory '{db_dir}'? (y/n): ").strip().lower()
-            if delete_db == 'y':
-                try:
-                    shutil.rmtree(db_dir)
-                    print(f"Deleted database directory: {db_dir}")
-                except Exception as e:
-                    print(f"Error deleting database directory {db_dir}: {e}")
-        print("All selected outputs have been cleared.")
+                    print(f"Error clearing contents of {folder_path}: {e}")
+        print("All selected directory contents have been cleared.")
     else:
-        print("Outputs not cleared.")
+        print("Directory contents not cleared.")
+
 
 
 def recreate_database(db_path: str):
