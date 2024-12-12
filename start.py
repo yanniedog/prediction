@@ -88,7 +88,7 @@ def main():
     gen_heatmaps = input_yes_no("Generate heatmaps? (y/n): ") == 'y'
     save_corr_csv = input_yes_no("Save correlation CSV? (y/n): ") == 'y'
     symbol = input_with_default("Enter symbol (e.g., 'BTCUSDT'): ", "BTCUSDT").upper()
-    timeframe = input_with_default("Enter timeframe (e.g., '1d'): ", "1d")
+    timeframe = input_with_default("Enter timeframe (e.g., '1w'): ", "1w")
     print(f"Symbol: {symbol}, Timeframe: {timeframe}")
     data, is_rev, db_fn = load_data(symbol, timeframe)
     if not preview_database(DB_PATH):

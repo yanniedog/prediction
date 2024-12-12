@@ -4,6 +4,16 @@ import numpy as np
 import talib as ta
 import pandas_ta as pta
 
+def z_score(x):
+    """
+    Calculate the z-score for a given array.
+    """
+    mean = np.mean(x)
+    std = np.std(x)
+    if std == 0:
+        return np.zeros_like(x)
+    return (x - mean) / std
+
 def compute_obv_price_divergence(data, method="Difference", obv_method="SMA", obv_period=14, price_input_type="OHLC/4", price_method="SMA", price_period=14, bearish_threshold=-0.8, bullish_threshold=0.8, smoothing=0.01):
     price_map = {"close": data['close'], "open": data['open'], "high": data['high'], "low": data['low'], "hl/2": (data['high'] + data['low']) / 2, "ohlc/4": (data[['open','high','low','close']].sum(axis=1) / 4)}
     selected_price = price_map.get(price_input_type.lower(), (data['open'] + data['high'] + data['low'] + data['close']) / 4)
@@ -23,7 +33,7 @@ def compute_eyeX_MFV_volume(data, ranges=[50,75,100,200]):
     combined_mfv = sum([
         (mf_volume.rolling(window=br, min_periods=1).sum() - mf_volume.shift(br).fillna(0))
         .rolling(window=br, min_periods=1)
-        .apply(lambda x: (x - np.mean(x)) / (np.std(x) if np.std(x) != 0 else 1), raw=True) * 10
+        .apply(z_score, raw=True) * 10
         for br in ranges
     ]).clip(-400, 400)
     data['EyeX MFV Volume'] = combined_mfv
@@ -36,7 +46,7 @@ def compute_eyeX_MFV_support_resistance(data, ranges=[50,75,100,200], pivot_look
     combined_mfv = sum([
         (mf_volume.rolling(window=br, min_periods=1).sum() - mf_volume.shift(br).fillna(0))
         .rolling(window=br, min_periods=1)
-        .apply(lambda x: (x - np.mean(x)) / (np.std(x) if np.std(x) != 0 else 1), raw=True) * 10
+        .apply(z_score, raw=True) * 10
         for br in ranges
     ])
     pivot_high = data['high'][(data['high'] == data['high'].rolling(window=pivot_lookback*2+1, center=True).max())]
@@ -80,7 +90,6 @@ def compute_all_indicators(data):
     indicators['adx'] = ta.ADX(data['high'], data['low'], data['close'], timeperiod=14)
     indicators['adxr'] = ta.ADXR(data['high'], data['low'], data['close'], timeperiod=14)
     indicators['apo'] = ta.APO(data['close'], fastperiod=12, slowperiod=26, matype=0)
-    # Corrected call to ta.AROON
     indicators['aroon_down'], indicators['aroon_up'] = ta.AROON(data['high'], data['low'], timeperiod=14)
     indicators['aroonosc'] = ta.AROONOSC(data['high'], data['low'], timeperiod=14)
     indicators['bop'] = ta.BOP(data['open'], data['high'], data['low'], data['close'])
