@@ -3,51 +3,31 @@ import os, sys, logging, runpy
 from pathlib import Path
 from datetime import datetime
 
-for f in Path.cwd().glob('*.log'): f.unlink()
-
-timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-log_filename = f"{Path.cwd().name}_{timestamp}.log"
-
+log_filename = f"{Path.cwd().name}_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
 logger = logging.getLogger()
+logger.handlers = []  # Ensure no duplicate handlers
 logger.setLevel(logging.DEBUG)
-logger.handlers = []
 file_handler = logging.FileHandler(log_filename, 'w')
-file_handler.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 logger.addHandler(file_handler)
 
-matplotlib_logger = logging.getLogger('matplotlib')
-matplotlib_logger.setLevel(logging.WARNING)
-
-class DoubleWriter:
-    def __init__(self, stdout, stderr, logger):
-        self.stdout, self.stderr, self.logger = stdout, stderr, logger
-    def write(self, msg):
-        if msg.strip():
-            self.logger.info(msg.strip())
-        self.stdout.write(msg)
-        self.stderr.write(msg)
+class StreamLogger:
+    def __init__(self, stream, log_func):
+        self.stream = stream
+        self.log_func = log_func
+    def write(self, message):
+        if message.strip():
+            self.log_func(message.strip())
+        self.stream.write(message)
     def flush(self):
-        self.stdout.flush()
-        self.stderr.flush()
-    def isatty(self):
-        return self.stdout.isatty()
+        self.stream.flush()
 
-sys.stdout = DoubleWriter(sys.__stdout__, sys.__stderr__, logger)
-sys.stderr = DoubleWriter(sys.__stderr__, sys.__stderr__, logger)
-
-def exception_handler(exc_type, exc_value, exc_traceback):
-    if issubclass(exc_type, KeyboardInterrupt):
-        sys.__excepthook__(exc_type, exc_value, exc_traceback)
-        return
-    logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
-
-sys.excepthook = exception_handler
+sys.stdout = StreamLogger(sys.__stdout__, logger.info)
+sys.stderr = StreamLogger(sys.__stderr__, logger.error)
 
 try:
     runpy.run_path("start.py", run_name="__main__")
 except SystemExit as e:
     sys.exit(e.code)
 except:
-    raise
+    logger.exception("Uncaught exception")
