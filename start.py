@@ -87,8 +87,8 @@ def load_data(symbol: str, timeframe: str):
     Load data from the SQLite database for the given symbol and timeframe.
     Returns a pandas DataFrame.
     """
-    from load_data import load_data
-    df, is_rev, db_fn = load_data(symbol, timeframe)
+    from load_data import load_data as load_db_data
+    df, is_rev, db_fn = load_db_data(symbol, timeframe)
     return df
 
 def compute_indicators(data, configurations):
@@ -151,9 +151,11 @@ def main():
                 sys.exit(1)
             cursor = conn.cursor()
             # Fetch indicator configurations that include parameters (assuming they have an underscore)
-            cursor.execute("SELECT name FROM indicators WHERE name LIKE ? ESCAPE '\\'", ('%\\_%',))
+            # Corrected the SQL LIKE pattern to ensure proper escaping
+            cursor.execute("SELECT name FROM indicators WHERE name LIKE '%\\_%' ESCAPE '\\'")
             rows = cursor.fetchall()
             conn.close()
+
             configurations = [row[0] for row in rows]
             if not configurations:
                 log_and_print("No configurations found after tweaking indicators.", "error")
