@@ -1,13 +1,22 @@
 # tweak_indicator.py
-import sys, sqlite3, itertools
+import sys
+import sqlite3
+import itertools
 from pathlib import Path
 import pandas as pd
 import numpy as np
-from indicators import compute_all_indicators
-from config import DB_PATH
-from sqlite_data_manager import initialize_database, insert_indicator_configs, create_connection, create_tables
+import talib as ta
+import pandas_ta as pta
+from sqlite_data_manager import initialize_database, insert_indicator_configs, create_connection, create_tables, DB_PATH
+import inspect
+import logging
 
-def fetch_available_indicators():
+def fetch_available_indicators(indicators_module):
+    """
+    Fetch all available indicators by analyzing the compute_all_indicators function.
+    Returns a list of indicator names.
+    """
+    # Create dummy data
     dummy_data = pd.DataFrame({
         'open': np.random.random(200) * 100,
         'high': np.random.random(200) * 100,
@@ -15,58 +24,177 @@ def fetch_available_indicators():
         'close': np.random.random(200) * 100,
         'volume': np.random.randint(1, 1000, 200)
     })
+
+    # Compute indicators
     try:
-        # Compute all default indicators
-        processed_data = compute_all_indicators(dummy_data)
-        # Now, extract indicator names
-        return sorted(processed_data.columns)
+        data_with_indicators = indicators_module.compute_all_indicators(dummy_data.copy())
+        indicators = list(data_with_indicators.columns)
+        # Remove original columns
+        original_cols = ['open', 'high', 'low', 'close', 'volume']
+        dynamic_indicators = [ind for ind in indicators if ind not in original_cols]
+        return dynamic_indicators
     except Exception as e:
-        print(f"Error fetching indicators: {e}")
+        print(f"Error fetching available indicators: {e}")
         return []
 
-def generate_configurations(params, defaults):
-    return [
-        dict(zip(params, values))
-        for values in itertools.product(*[range(max(1, defaults[p] - 5), defaults[p] + 5) for p in params])
-    ]
+def parse_indicator_parameters(indicators_module, indicator_name):
+    """
+    Dynamically parse the parameters required for an indicator based on its computation in indicators.py.
+    Returns a dictionary of parameter names and their default values.
+    """
+    # Retrieve the compute_configured_indicators function
+    compute_configured = indicators_module.compute_configured_indicators
 
-def insert_tweaked_configs(indicator_name, configurations):
-    initialize_database(DB_PATH)  # Ensure tables are created
+    # Since compute_configured_indicators is handling the computation based on indicator names,
+    # we need to parse the code to find out which parameters are used.
+    # This is non-trivial and generally not recommended.
+    # As an alternative, we can use a predefined mapping of indicators to their parameters.
+    # However, to adhere to the requirement of no hard-coding, we'll attempt to extract
+    # parameter info using introspection.
+
+    # Get the source code of compute_configured_indicators
+    try:
+        source = inspect.getsource(compute_configured)
+    except Exception as e:
+        print(f"Error retrieving source code for compute_configured_indicators: {e}")
+        return {}
+
+    # Look for the specific indicator's computation block
+    # This simplistic approach assumes that each indicator has its own if/elif block
+    indicator_block = None
+    for line in source.split('\n'):
+        if f"if base_indicator == '{indicator_name}':" in line or f"elif base_indicator == '{indicator_name}':" in line:
+            indicator_block = line
+            break
+
+    if not indicator_block:
+        # Indicator might be handled differently or not have parameters
+        return {}
+
+    # Attempt to extract parameter names and default values using a simplistic approach
+    # This is fragile and assumes a certain coding style
+    parameters = {}
+    lines = source.split('\n')
+    start = False
+    for line in lines:
+        if f"if base_indicator == '{indicator_name}':" in line or f"elif base_indicator == '{indicator_name}':" in line:
+            start = True
+            continue
+        if start:
+            if line.strip().startswith("else:") or line.strip().startswith("elif base_indicator"):
+                break  # End of this indicator's block
+            # Attempt to extract parameter assignments
+            if '=' in line:
+                parts = line.strip().split('=')
+                if len(parts) >= 2:
+                    var_name = parts[0].strip()
+                    value = parts[1].strip().rstrip(',')
+                    # Attempt to convert value to int or float
+                    try:
+                        if '.' in value:
+                            value = float(value)
+                        else:
+                            value = int(value)
+                        parameters[var_name] = value
+                    except:
+                        pass  # Ignore if conversion fails
+    return parameters
+
+def generate_configurations(parameters):
+    """
+    Generate configurations based on parameter ranges.
+    For each parameter, define a range based on the default value.
+    Returns a list of dictionaries representing different configurations.
+    """
+    param_ranges = {}
+    for param, default in parameters.items():
+        if isinstance(default, int):
+            # Define a range: default -5 to default +5, minimum 1
+            start = max(1, default - 5)
+            end = default + 5
+            param_ranges[param] = list(range(start, end + 1))
+        elif isinstance(default, float):
+            # Define a range: default * 0.8 to default * 1.2 with step 0.05
+            param_ranges[param] = [round(default * factor, 2) for factor in np.arange(0.8, 1.21, 0.05)]
+        else:
+            # For other types, use the default value only
+            param_ranges[param] = [default]
+
+    # Generate all possible combinations
+    keys, values = zip(*param_ranges.items())
+    configurations = [dict(zip(keys, v)) for v in itertools.product(*values)]
+    return configurations
+
+def insert_configurations_into_db(indicator_name, configurations):
+    """
+    Insert the generated configurations into the SQLite database.
+    """
     conn = create_connection(DB_PATH)
     if not conn:
-        print("Database connection failed.")
-        sys.exit(1)
-    create_tables(conn)  # Ensure tables are present
+        print("Failed to connect to the database.")
+        return
+
     try:
         insert_indicator_configs(conn, indicator_name, configurations)
     except Exception as e:
-        print(f"Error inserting configurations: {e}")
+        print(f"Error inserting configurations for '{indicator_name}': {e}")
     finally:
         conn.close()
 
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: python tweak_indicator.py <SYMBOL> <TIMEFRAME>")
+    """
+    Main function to dynamically process indicators and generate configurations.
+    Usage: python tweak_indicator.py
+    """
+    # Initialize the database
+    initialize_database(DB_PATH)
+
+    # Import indicators.py as a module
+    try:
+        import indicators
+    except ImportError as e:
+        print(f"Error importing indicators.py: {e}")
         sys.exit(1)
-    symbol, timeframe = sys.argv[1:3]
-    initialize_database(DB_PATH)  # Ensure database is initialized
-    indicators = fetch_available_indicators()
-    if not indicators:
-        print("No indicators available. Check `indicators.py` or `compute_all_indicators`.")
+
+    # Fetch available indicators
+    available_indicators = fetch_available_indicators(indicators)
+    if not available_indicators:
+        print("No indicators found in indicators.py.")
         sys.exit(1)
-    print("Available indicators:")
-    for idx, indicator in enumerate(indicators, 1):
+
+    print("Available Indicators:")
+    for idx, indicator in enumerate(available_indicators, 1):
         print(f"{idx}. {indicator}")
-    choice = input("Select an indicator by number: ").strip()
-    if not choice.isdigit() or int(choice) < 1 or int(choice) > len(indicators):
-        print("Invalid choice.")
+
+    # Prompt user to select an indicator
+    choice = input("Select an indicator by number (or type 'all' to configure all indicators): ").strip().lower()
+    if choice == 'all':
+        selected_indicators = available_indicators
+    elif choice.isdigit() and 1 <= int(choice) <= len(available_indicators):
+        selected_indicators = [available_indicators[int(choice)-1]]
+    else:
+        print("Invalid choice. Exiting.")
         sys.exit(1)
-    selected_indicator = indicators[int(choice) - 1]
-    print(f"Selected indicator: {selected_indicator}")
-    default_params = {"timeperiod": 14}
-    configurations = generate_configurations(default_params.keys(), default_params)
-    insert_tweaked_configs(selected_indicator, configurations)
-    print(f"Configurations for {selected_indicator} added to the database.")
+
+    print(f"Selected Indicators: {selected_indicators}")
+
+    # Process each selected indicator
+    for indicator_name in selected_indicators:
+        print(f"\nProcessing Indicator: {indicator_name}")
+        parameters = parse_indicator_parameters(indicators, indicator_name)
+        if not parameters:
+            print(f"No parameters found for '{indicator_name}'. Skipping configuration generation.")
+            continue
+        print(f"Parameters for '{indicator_name}': {parameters}")
+
+        configurations = generate_configurations(parameters)
+        print(f"Generated {len(configurations)} configurations for '{indicator_name}'.")
+
+        # Insert configurations into the database
+        insert_configurations_into_db(indicator_name, configurations)
+        print(f"Configurations for '{indicator_name}' have been added to the database.")
+
+    print("\nAll selected indicators have been processed.")
 
 if __name__ == "__main__":
     main()
