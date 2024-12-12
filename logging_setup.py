@@ -1,3 +1,4 @@
+# logging_setup.py
 import logging
 import sys
 from pathlib import Path
@@ -6,7 +7,7 @@ import inspect
 class TaskAwareFormatter(logging.Formatter):
     def format(self, record):
         # Trace the actual caller in the stack to avoid capturing the logging library frames
-        for frame in inspect.stack()[::-1]:
+        for frame in inspect.stack():
             module = inspect.getmodule(frame[0])
             if module and not module.__name__.startswith('logging'):
                 record.filename = Path(module.__file__).name
