@@ -1,4 +1,3 @@
-# filename: sqlite_data_manager.py
 import os
 import sqlite3
 import pandas as pd
