@@ -4,20 +4,9 @@ import sys
 from pathlib import Path
 import inspect
 
-class DeduplicationFilter(logging.Filter):
-    def __init__(self):
-        super().__init__()
-        self.logged_messages = set()
-
-    def filter(self, record):
-        message = f"{record.levelname} - {record.filename}:{record.lineno} - {record.funcName} - {record.getMessage()}"
-        if message in self.logged_messages:
-            return False
-        self.logged_messages.add(message)
-        return True
-
 class TaskAwareFormatter(logging.Formatter):
     def format(self, record):
+        # Trace the actual caller in the stack to avoid capturing the logging library frames
         for frame in inspect.stack():
             module = inspect.getmodule(frame[0])
             if module and not module.__name__.startswith('logging'):
@@ -29,7 +18,7 @@ class TaskAwareFormatter(logging.Formatter):
 
 def configure_logging(log_file='prediction.log'):
     logger = logging.getLogger()
-    logger.handlers = []
+    logger.handlers = []  # Remove existing handlers to prevent duplication
     logger.setLevel(logging.DEBUG)
     log_path = Path.cwd() / log_file
 
@@ -38,12 +27,7 @@ def configure_logging(log_file='prediction.log'):
         file_handler.setLevel(logging.DEBUG)
         formatter = TaskAwareFormatter('%(levelname)s - [%(filename)s:%(lineno)d(%(funcName)s)]: %(message)s')
         file_handler.setFormatter(formatter)
-        file_handler.addFilter(DeduplicationFilter())
         logger.addHandler(file_handler)
-
-        # Suppress unwanted logs
-        logging.getLogger('matplotlib').setLevel(logging.WARNING)
-        logging.getLogger('font_manager').setLevel(logging.WARNING)
 
         # Redirect stdout and stderr to logger
         class StreamToLogger:
@@ -54,12 +38,17 @@ def configure_logging(log_file='prediction.log'):
             def write(self, msg):
                 if msg.strip():
                     self.log_func(msg.strip())
+                self.stream.write(msg)
 
             def flush(self):
                 self.stream.flush()
 
         sys.stdout = StreamToLogger(sys.stdout, logger.info)
         sys.stderr = StreamToLogger(sys.stderr, logger.error)
+
+        # Suppress unwanted logs
+        logging.getLogger('matplotlib').setLevel(logging.WARNING)
+        logging.getLogger('font_manager').setLevel(logging.WARNING)
 
         # Handle uncaught exceptions
         def exception_handler(exc_type, exc_value, exc_traceback):

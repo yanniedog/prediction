@@ -30,7 +30,8 @@ def main():
     try:
         # Run backup and initialize database
         run_backup_cleanup()
-        print("Backup completed.")  # Screen output only
+        logger.info("Backup executed successfully.")
+        logger.info("Backup completed.")
         logger.info("Backup cleanup completed.")
         initialize_database(DB_PATH)
         logger.info("Database initialized.")
