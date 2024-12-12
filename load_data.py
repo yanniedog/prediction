@@ -16,16 +16,18 @@ def load_data(symbol, timeframe):
         conn.close()
         if df.empty:
             print("No data found for the specified symbol and timeframe.")
-        return df
+        is_rev = False  # Default value or logic based on the requirement
+        db_fn = str(DB_PATH)  # Path to the database
+        return df, is_rev, db_fn
     except Exception as e:
         print(f"Error querying database: {e}")
         conn.close()
-        return pd.DataFrame()
+        return pd.DataFrame(), False, str(DB_PATH)
 
 if __name__ == "__main__":
     symbol = input("Enter symbol (e.g., 'BTCUSDT'): ").strip().upper()
     timeframe = input("Enter timeframe (e.g., '1d'): ").strip()
-    df = load_data(symbol, timeframe)
+    df, is_rev, db_fn = load_data(symbol, timeframe)
     if not df.empty:
         print("Data loaded successfully.")
         print(df.head())
