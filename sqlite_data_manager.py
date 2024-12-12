@@ -2,21 +2,18 @@
 import sqlite3
 from pathlib import Path
 import pandas as pd
+from config import DB_PATH
 
-DB_PATH = Path('database/klines.db')
-
-def create_connection(db_file):
-    """Create a SQLite database connection."""
+def create_connection():
     try:
-        conn = sqlite3.connect(db_file)
-        print(f"Connected to SQLite database at {db_file}. SQLite version: {sqlite3.version}")
+        conn = sqlite3.connect(DB_PATH)
+        print(f"Connected to SQLite database at {DB_PATH}. SQLite version: {sqlite3.version}")
         return conn
     except sqlite3.Error as e:
         print(f"SQLite connection error: {e}")
         return None
 
 def create_tables(conn):
-    """Create necessary tables in the SQLite database."""
     try:
         cursor = conn.cursor()
         tables = {
@@ -69,31 +66,25 @@ def create_tables(conn):
                     UNIQUE(symbol_id, timeframe_id, indicator_id, lag)
                 );"""
         }
-
         for table_name, ddl in tables.items():
             cursor.execute(ddl)
             print(f"Table '{table_name}' ensured in database.")
-
-        # Create indexes to optimize queries
         indexes = [
             "CREATE INDEX IF NOT EXISTS idx_open_time ON klines (open_time);",
             "CREATE INDEX IF NOT EXISTS idx_close_time ON klines (close_time);",
             "CREATE INDEX IF NOT EXISTS idx_correlation_computed ON klines (correlation_computed);",
             "CREATE INDEX IF NOT EXISTS idx_correlations ON correlations (symbol_id, timeframe_id, indicator_id, lag);"
         ]
-
         for idx_query in indexes:
             cursor.execute(idx_query)
-            print(f"Index created or already exists: {idx_query.split()[2]}")
-
+            print(f"Index created or already exists.")
         conn.commit()
         print("All tables and indexes are set up successfully.")
     except sqlite3.Error as e:
         print(f"SQLite table creation error: {e}")
 
-def initialize_database(db_path):
-    """Initialize the SQLite database by creating tables."""
-    conn = create_connection(db_path)
+def initialize_database(db_path=DB_PATH):
+    conn = create_connection()
     if conn:
         create_tables(conn)
         conn.close()
@@ -101,7 +92,6 @@ def initialize_database(db_path):
         print("Failed to initialize the database.")
 
 def insert_indicator_configs(conn, indicator_name, configs):
-    """Insert indicator configurations into the indicators table."""
     try:
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
@@ -114,7 +104,6 @@ def insert_indicator_configs(conn, indicator_name, configs):
         print(f"SQLite insertion error: {e}")
 
 def insert_klines(conn, df, symbol, timeframe):
-    """Insert kline data into the klines table."""
     try:
         required_columns = [
             'open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time',
@@ -122,19 +111,15 @@ def insert_klines(conn, df, symbol, timeframe):
         ]
         if not all(col in df.columns for col in required_columns):
             raise ValueError(f"DataFrame missing required columns: {set(required_columns) - set(df.columns)}")
-
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol,))
         cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
         symbol_id = cursor.fetchone()[0]
-
         cursor.execute("INSERT OR IGNORE INTO timeframes (timeframe) VALUES (?)", (timeframe,))
         cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
         timeframe_id = cursor.fetchone()[0]
-
         df['open_time'] = pd.to_datetime(df['open_time']).dt.strftime('%Y-%m-%d %H:%M:%S')
         df['close_time'] = pd.to_datetime(df['close_time']).dt.strftime('%Y-%m-%d %H:%M:%S')
-
         insert_query = """
             INSERT INTO klines (
                 symbol_id, timeframe_id, open_time, open, high, low, close, volume, close_time,
@@ -142,7 +127,6 @@ def insert_klines(conn, df, symbol, timeframe):
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-
         data = [
             (
                 symbol_id, timeframe_id,
@@ -152,43 +136,16 @@ def insert_klines(conn, df, symbol, timeframe):
             )
             for _, row in df.iterrows()
         ]
-
         cursor.executemany(insert_query, data)
         conn.commit()
         print(f"Successfully inserted {len(data)} records into 'klines'.")
     except (sqlite3.Error, ValueError) as e:
         print(f"SQLite insertion error: {e}")
 
-def fetch_correlations(conn, symbol, timeframe, indicator_name):
-    """Fetch existing correlations for a specific indicator."""
-    try:
-        cursor = conn.cursor()
-        query = """
-            SELECT lag, correlation_value
-            FROM correlations
-            JOIN symbols ON correlations.symbol_id = symbols.id
-            JOIN timeframes ON correlations.timeframe_id = timeframes.id
-            JOIN indicators ON correlations.indicator_id = indicators.id
-            WHERE symbols.symbol = ? AND timeframes.timeframe = ? AND indicators.name = ?
-        """
-        cursor.execute(query, (symbol, timeframe, indicator_name))
-        return cursor.fetchall()
-    except sqlite3.Error as e:
-        print(f"SQLite fetch error: {e}")
-        return []
-
 def save_to_sqlite(df, db_path, symbol, timeframe):
-    """Save kline DataFrame to SQLite database."""
-    conn = create_connection(db_path)
+    conn = create_connection()
     if conn:
         insert_klines(conn, df, symbol, timeframe)
         conn.close()
     else:
         print("Cannot connect to the database.")
-
-def main():
-    """Initialize the database when running this script directly."""
-    initialize_database(DB_PATH)
-
-if __name__ == "__main__":
-    main()
