@@ -1,4 +1,6 @@
-import shutil, zipfile, os
+import shutil
+import zipfile
+import os
 from pathlib import Path
 from datetime import datetime
 
@@ -17,9 +19,9 @@ def backup_cleanup():
             bak = cwd / f"{py.stem}__{ts}.bak"
             if not bak.exists():
                 shutil.copy2(py, bak)
-                print(f"Created backup: {bak.name}")
-            else:
-                print(f"Backup exists: {bak.name}")
+                # Removed individual backup file logging
+            # else:
+                # Removed existing backup file logging
             bak_files.append(bak)
         if not bak_files:
             print("No backup files to zip. Exiting backup_cleanup.")
@@ -43,8 +45,10 @@ def backup_cleanup():
         if destination.exists():
             print(f"Zip stored in: {archive_dir}")
             for bak in bak_files:
-                try: bak.unlink()
-                except Exception as e: print(f"Delete error: {bak.name} - {e}")
+                try:
+                    bak.unlink()
+                except Exception as e:
+                    print(f"Delete error: {bak.name} - {e}")
             print("Backup cleanup completed successfully.")
         else:
             print("Error moving zip to archive.")

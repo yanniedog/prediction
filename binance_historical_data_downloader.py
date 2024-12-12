@@ -53,6 +53,9 @@ def download_binance_data(symbol=None, interval=None, db_path=DB_PATH):
     end_str = input("End date (YYYYMMDD) or blank for latest: ").strip()
     start_time = date_to_milliseconds(start_str) if start_str else get_earliest_timestamp(symbol, interval)
     end_time = date_to_milliseconds(end_str) if end_str else get_current_timestamp()
+    if start_time is None or end_time is None:
+        print("Invalid start or end time.")
+        sys.exit(1)
     print(f"Fetching {symbol} {interval} from {start_time} to {end_time}")
     klines = get_historical_klines(symbol, interval, start_time, end_time)
     print(f"Fetched {len(klines)} klines.")
@@ -60,6 +63,9 @@ def download_binance_data(symbol=None, interval=None, db_path=DB_PATH):
         print("No data fetched.")
         sys.exit(1)
     df = process_klines(klines)
+    if df.empty:
+        print("Processed data is empty.")
+        sys.exit(1)
     timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
     os.makedirs('csv', exist_ok=True)
     csv_file = f"csv/{symbol}_{interval}_{timestamp}.csv"
@@ -99,6 +105,12 @@ def get_current_timestamp():
 def process_klines(klines):
     cols = ['open_time','open','high','low','close','volume','close_time','quote_asset_volume','number_of_trades','taker_buy_base_asset_volume','taker_buy_quote_asset_volume','ignore']
     df = pd.DataFrame(klines, columns=cols).drop('ignore', axis=1)
+    # Ensure 'open_time' and 'close_time' are numeric
+    df['open_time'] = pd.to_numeric(df['open_time'], errors='coerce')
+    df['close_time'] = pd.to_numeric(df['close_time'], errors='coerce')
+    # Drop rows with NaN in 'open_time' or 'close_time'
+    df.dropna(subset=['open_time','close_time'], inplace=True)
+    # Convert to datetime
     df[['open_time','close_time']] = pd.to_datetime(df[['open_time','close_time']], unit='ms').dt.tz_localize(None)
     num_cols = ['open','high','low','close','volume','quote_asset_volume','taker_buy_base_asset_volume','taker_buy_quote_asset_volume']
     df[num_cols] = df[num_cols].apply(pd.to_numeric, errors='coerce')
