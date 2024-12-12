@@ -1,7 +1,7 @@
 # start.py
 import logging
 import os
-import subprocess
+import sqlite3
 import sys
 import shutil
 import pandas as pd
@@ -11,8 +11,8 @@ matplotlib.use('Agg')  # Use non-interactive backend
 from pathlib import Path
 from datetime import datetime
 from sqlite_data_manager import create_connection, initialize_database, create_tables, DB_PATH
-from tweak_indicator import fetch_available_indicators, insert_tweaked_configs, generate_configurations, compute_all_indicators, compute_configured_indicators
-from correlation_utils import load_or_calculate_correlations
+from tweak_indicator import fetch_available_indicators, parse_indicator_parameters, generate_configurations, insert_indicator_configs, DB_PATH as TWEAK_DB_PATH
+import subprocess
 
 # Configure logging
 def configure_logging(log_file):
@@ -76,25 +76,47 @@ def delete_previous_output():
     else:
         log_and_print("Directory contents not cleared.")
 
-def run_tweak_indicator(symbol: str, timeframe: str):
+def run_tweak_indicator():
     """
-    Run the tweak_indicator script to allow user to select and configure indicators.
+    Run the tweak_indicator.py script to generate configurations.
     """
-    from tweak_indicator import main as tweak_main
-    # Simulate command-line arguments
-    sys.argv = ['tweak_indicator.py', symbol, timeframe]
-    tweak_main()
-    # Retrieve selected configurations from the database
-    conn = create_connection(DB_PATH)
-    if not conn:
-        log_and_print("Database connection failed after tweaking indicators.", "error")
+    try:
+        subprocess.run([sys.executable, 'tweak_indicator.py'], check=True)
+    except subprocess.CalledProcessError as e:
+        log_and_print(f"Error running tweak_indicator.py: {e}", "error")
         sys.exit(1)
-    cursor = conn.cursor()
-    cursor.execute("SELECT name FROM indicators WHERE name LIKE ?", ('%_%',))  # Fetch all configured indicators
-    rows = cursor.fetchall()
-    conn.close()
-    configurations = [row[0] for row in rows]
-    return configurations
+
+def load_data(symbol: str, timeframe: str):
+    """
+    Load data from the SQLite database for the given symbol and timeframe.
+    Returns a pandas DataFrame.
+    """
+    from sqlite_data_manager import load_data
+    df, is_rev, db_fn = load_data(symbol, timeframe)
+    return df
+
+def compute_indicators(data, configurations):
+    """
+    Compute both default and configured indicators.
+    """
+    import indicators  # Assuming indicators.py is in the same directory and is a module
+    # Compute default indicators
+    try:
+        data = indicators.compute_all_indicators(data)
+        log_and_print("Default indicators computed successfully.")
+    except Exception as e:
+        log_and_print(f"Error computing default indicators: {e}", "error")
+        sys.exit(1)
+
+    # Compute configured indicators
+    try:
+        data = indicators.compute_configured_indicators(data, configurations)
+        log_and_print("Configured indicators computed successfully.")
+    except Exception as e:
+        log_and_print(f"Error computing configured indicators: {e}", "error")
+        sys.exit(1)
+
+    return data
 
 def main():
     """Main execution flow."""
@@ -112,56 +134,70 @@ def main():
         # Delete previous outputs if user chooses
         delete_previous_output()
 
-        selected_indicator = None
+        selected_indicators = []
+        configurations = []
         symbol = None
         timeframe = None
-        configurations = []
 
         # Prompt user to tweak indicator settings
         if input_yes_no("Do you want to tweak indicator settings? (y/n): ") == 'y':
             symbol = input_with_default("Enter symbol (e.g., 'BTCUSDT'): ", "BTCUSDT")
             timeframe = input_with_default("Enter timeframe (e.g., '1w'): ", "1w")
-            configurations = run_tweak_indicator(symbol, timeframe)
-            if configurations:
-                selected_indicator = configurations[0].split('_')[0]  # Assuming first config's base indicator
-                log_and_print(f"Selected indicator: {selected_indicator}")
-            else:
+            log_and_print(f"Symbol: {symbol}, Timeframe: {timeframe}")
+
+            # Run tweak_indicator.py to generate configurations
+            run_tweak_indicator()
+
+            # Fetch configurations from the database
+            conn = create_connection(DB_PATH)
+            if not conn:
+                log_and_print("Failed to connect to the database to fetch configurations.", "error")
+                sys.exit(1)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM indicators WHERE name LIKE '%\\_%'", (sqlite3.escape_like('%\\_%'),))
+            rows = cursor.fetchall()
+            conn.close()
+            configurations = [row[0] for row in rows]
+            if not configurations:
                 log_and_print("No configurations found after tweaking indicators.", "error")
                 sys.exit(1)
+            selected_indicators = [config.split('_')[0] for config in configurations]
+            selected_indicators = list(set(selected_indicators))  # Remove duplicates
+            log_and_print(f"Selected Indicators for Correlation: {selected_indicators}")
+
+        else:
+            log_and_print("Skipping indicator tweaking.")
 
         log_and_print("Proceeding with main execution.")
 
         # Download Binance data
         from binance_historical_data_downloader import download_binance_data
         download_binance_data(symbol, timeframe, DB_PATH)
-        log_and_print("Price data steps completed.")
+        log_and_print("Price data download and insertion completed.")
 
-        if selected_indicator and configurations:
+        if selected_indicators and configurations:
             # Load data from SQLite
-            from load_data import load_data
-            data, is_rev, db_fn = load_data(symbol, timeframe)
+            data = load_data(symbol, timeframe)
             if data.empty:
-                log_and_print("No data available for correlation computation.", "error")
+                log_and_print("No data available for the selected symbol and timeframe.", "error")
                 sys.exit(1)
 
-            # Compute default indicators
-            data = compute_all_indicators(data)
-            log_and_print("Default indicators computed.")
-
-            # Compute configured indicators
-            data = compute_configured_indicators(data, configurations)
-            log_and_print("Configured indicators computed.")
+            # Compute indicators
+            data = compute_indicators(data, configurations)
 
             # Perform correlation computations
+            from correlation_utils import load_or_calculate_correlations
             load_or_calculate_correlations(
-                data,
+                data=data,
                 indicators=configurations,
                 max_lag=30,
                 reverse=False,
                 symbol=symbol,
                 timeframe=timeframe
             )
-            log_and_print("Correlation computations completed for the selected indicator configurations.")
+            log_and_print("Correlation computations completed successfully.")
+        else:
+            log_and_print("No indicators selected for correlation computations.")
 
         log_and_print("Execution finished successfully.")
 
