@@ -1,3 +1,4 @@
+# backup_cleanup.py
 import shutil
 import zipfile
 import os
@@ -19,9 +20,6 @@ def backup_cleanup():
             bak = cwd / f"{py.stem}__{ts}.bak"
             if not bak.exists():
                 shutil.copy2(py, bak)
-                # Removed individual backup file logging
-            # else:
-                # Removed existing backup file logging
             bak_files.append(bak)
         if not bak_files:
             print("No backup files to zip. Exiting backup_cleanup.")

@@ -1,4 +1,4 @@
-# filename: binance_historical_data_downloader.py
+# binance_historical_data_downloader.py
 import os
 import sys
 import requests
@@ -34,7 +34,7 @@ def get_historical_klines(symbol, interval, start_time, end_time):
         start_time = data[-1][0] + 1
         if len(data) < limit:
             break
-        time.sleep(0.5)  # To respect API rate limits
+        time.sleep(0.5)
     return klines
 
 def download_binance_data(symbol=None, interval=None, db_path=DB_PATH):
@@ -47,7 +47,6 @@ def download_binance_data(symbol=None, interval=None, db_path=DB_PATH):
         if not quote_currency:
             quote_currency = 'BTC'
         symbol = f"{quote_currency}{base_currency}"
-    # Ensure symbol is uppercase
     symbol = symbol.upper()
 
     if not interval:
@@ -130,12 +129,9 @@ def get_current_timestamp():
 def process_klines(klines):
     cols = ['open_time','open','high','low','close','volume','close_time','quote_asset_volume','number_of_trades','taker_buy_base_asset_volume','taker_buy_quote_asset_volume','ignore']
     df = pd.DataFrame(klines, columns=cols).drop('ignore', axis=1)
-    # Ensure 'open_time' and 'close_time' are numeric
     df['open_time'] = pd.to_numeric(df['open_time'], errors='coerce')
     df['close_time'] = pd.to_numeric(df['close_time'], errors='coerce')
-    # Drop rows with NaN in 'open_time' or 'close_time'
     df.dropna(subset=['open_time','close_time'], inplace=True)
-    # Convert to datetime separately with error handling
     try:
         df['open_time'] = pd.to_datetime(df['open_time'], unit='ms', errors='raise').dt.tz_localize(None)
         df['close_time'] = pd.to_datetime(df['close_time'], unit='ms', errors='raise').dt.tz_localize(None)
@@ -144,7 +140,6 @@ def process_klines(klines):
         sys.exit(1)
     num_cols = ['open','high','low','close','volume','quote_asset_volume','taker_buy_base_asset_volume','taker_buy_quote_asset_volume']
     df[num_cols] = df[num_cols].apply(pd.to_numeric, errors='coerce')
-    # Handle 'number_of_trades' with error handling
     try:
         df['number_of_trades'] = df['number_of_trades'].astype(int)
     except ValueError as ve:
@@ -160,7 +155,6 @@ def save_dataframe_to_sqlite(df, db_path, symbol, timeframe):
     else:
         print(f"Cannot connect to the database at {db_path}.")
         sys.exit(1)
-    # Save with the symbol and timeframe exactly as given (symbol is already uppercase)
     save_to_sqlite(df, db_path, symbol, timeframe)
 
 if __name__ == "__main__":

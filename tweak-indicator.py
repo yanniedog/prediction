@@ -1,10 +1,10 @@
+# tweak-indicator.py
 import sys, itertools, pandas as pd, numpy as np, sqlite3, talib as ta, pandas_ta as pta
 from correlation_database import CorrelationDatabase
 from indicators import compute_all_indicators
 from config import DB_PATH
 import matplotlib.pyplot as plt, seaborn as sns
 
-# Define default values for each indicator's tweakable parameters
 default_parameters = {
     'MACD': {'fastperiod': 12, 'slowperiod': 26, 'signalperiod': 9},
     'EMA': {'timeperiod': 30},
@@ -20,13 +20,11 @@ default_parameters = {
     'EyeX MFV Volume': {'range1':50, 'range2':75, 'range3':100, 'range4':200},
     'EyeX MFV S/R': {'range1':50, 'range2':75, 'range3':100, 'range4':200, 'pivot_lookback':5},
     'OBV Price Divergence': {'obv_period':14},
-    # Add other indicators and their tweakable parameters as needed
 }
 
 def list_indicators():
     db = CorrelationDatabase(DB_PATH)
     indicators = db.conn.execute("SELECT name FROM indicators").fetchall()
-    # Exclude indicators without tweakable parameters
     indicator_names = sorted([ind[0] for ind in indicators if ind[0] in default_parameters])
     db.close()
     return indicator_names
@@ -133,7 +131,6 @@ def main():
         sys.exit(0)
     print(f"Configurable parameters for {selected_indicator}: {list(params.keys())}")
     config_combinations = get_configurations(params, default_parameters[selected_indicator])
-    # Calculate total number of configurations
     total_configs = 1
     for param in params:
         total_configs *= len(range(max(1, default_parameters[selected_indicator][param] -5), min(100, default_parameters[selected_indicator][param] +5) +1))
@@ -176,7 +173,6 @@ def main():
             print(f"Processed {processed}/{total_configs} configurations...")
     df_corr = pd.DataFrame(correlations)
     df_corr.to_csv(f"csv/{selected_indicator}_correlations.csv", index=False)
-    # Visualization
     plt.figure(figsize=(15, 10))
     for ind in df_corr['indicator'].unique():
         subset = df_corr[df_corr['indicator'] == ind]

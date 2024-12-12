@@ -1,3 +1,4 @@
+# launch.py
 import os, sys, logging, runpy
 from pathlib import Path
 from datetime import datetime
@@ -16,7 +17,6 @@ formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
-# Suppress matplotlib debug and info logs
 matplotlib_logger = logging.getLogger('matplotlib')
 matplotlib_logger.setLevel(logging.WARNING)
 

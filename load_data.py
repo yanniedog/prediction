@@ -1,3 +1,4 @@
+# load_data.py
 import os
 import pandas as pd
 from sqlite_data_manager import create_connection, initialize_database
@@ -16,8 +17,8 @@ def load_data(symbol, timeframe):
         conn.close()
         if df.empty:
             print("No data found for the specified symbol and timeframe.")
-        is_rev = False  # Default value or logic based on the requirement
-        db_fn = str(DB_PATH)  # Path to the database
+        is_rev = False
+        db_fn = str(DB_PATH)
         return df, is_rev, db_fn
     except Exception as e:
         print(f"Error querying database: {e}")
