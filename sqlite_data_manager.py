@@ -12,12 +12,25 @@ def create_tables(conn):
     tables = {
         'symbols': "CREATE TABLE IF NOT EXISTS symbols (id INTEGER PRIMARY KEY, symbol TEXT UNIQUE);",
         'timeframes': "CREATE TABLE IF NOT EXISTS timeframes (id INTEGER PRIMARY KEY, timeframe TEXT UNIQUE);",
+        'indicators': "CREATE TABLE IF NOT EXISTS indicators (id INTEGER PRIMARY KEY, name TEXT UNIQUE);",
         'klines': """CREATE TABLE IF NOT EXISTS klines (
             id INTEGER PRIMARY KEY, symbol_id INTEGER, timeframe_id INTEGER, open_time TEXT, open REAL, high REAL, low REAL,
             close REAL, volume REAL, close_time TEXT, quote_asset_volume REAL, number_of_trades INTEGER,
             taker_buy_base_asset_volume REAL, taker_buy_quote_asset_volume REAL,
             FOREIGN KEY (symbol_id) REFERENCES symbols(id),
             FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
+        );""",
+        'correlations': """CREATE TABLE IF NOT EXISTS correlations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol_id INTEGER NOT NULL,
+            timeframe_id INTEGER NOT NULL,
+            indicator_id INTEGER NOT NULL,
+            lag INTEGER NOT NULL,
+            correlation_value REAL NOT NULL,
+            FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+            FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
+            FOREIGN KEY (indicator_id) REFERENCES indicators(id),
+            UNIQUE(symbol_id, timeframe_id, indicator_id, lag)
         );"""
     }
     try:
