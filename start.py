@@ -30,15 +30,19 @@ from config import DB_PATH
 import sqlite3
 import logging
 
-# Configure logging
+# Configure logging to a single log file
+LOG_FILE = f"prediction_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
+
+def configure_logging():
+    logger = logging.getLogger()
+    if not logger.hasHandlers():
+        logger.setLevel(logging.DEBUG)
+        handler = logging.FileHandler(LOG_FILE, mode='w')
+        handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+        logger.addHandler(handler)
+
+configure_logging()
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
-log_file = f"start_log_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
-file_handler = logging.FileHandler(log_file, mode='w')
-file_handler.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
 
 warnings.filterwarnings('ignore')
 
