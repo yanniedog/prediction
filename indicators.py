@@ -1,5 +1,9 @@
 # filename: indicators.py
-import pandas as pd, numpy as np, talib as ta, pandas_ta as pta
+import pandas as pd
+import numpy as np
+import talib as ta
+import pandas_ta as pta
+
 def compute_obv_price_divergence(data, method="Difference", obv_method="SMA", obv_period=14, price_input_type="OHLC/4", price_method="SMA", price_period=14, bearish_threshold=-0.8, bullish_threshold=0.8, smoothing=0.01):
     price_map = {"close": data['close'], "open": data['open'], "high": data['high'], "low": data['low'], "hl/2": (data['high'] + data['low']) / 2, "ohlc/4": (data[['open','high','low','close']].sum(axis=1) / 4)}
     selected_price = price_map.get(price_input_type.lower(), (data['open'] + data['high'] + data['low'] + data['close']) / 4)
@@ -11,18 +15,30 @@ def compute_obv_price_divergence(data, method="Difference", obv_method="SMA", ob
     metric = obv_change - price_change if method == "Difference" else obv_change / np.maximum(smoothing, np.abs(price_change)) if method == "Ratio" else np.log(np.maximum(smoothing, np.abs(obv_change)) / np.maximum(smoothing, np.abs(price_change)))
     data['obv_price_divergence'] = metric
     return data
+
 def compute_eyeX_MFV_volume(data, ranges=[50,75,100,200]):
     mf_multiplier = ((data['close'] - data['low']) - (data['high'] - data['close'])) / (data['high'] - data['low'])
     mf_multiplier = mf_multiplier.replace([np.inf, -np.inf], 0).fillna(0)
     mf_volume = mf_multiplier * data['volume']
-    combined_mfv = sum([(mf_volume.rolling(window=br, min_periods=1).sum() - mf_volume.shift(br).fillna(0)).rolling(window=br, min_periods=1).apply(lambda x: (x - x.mean()) / (x.std() if x.std() != 0 else 1), raw=True) * 10 for br in ranges]).clip(-400,400)
+    combined_mfv = pd.concat([
+        (mf_volume.rolling(window=br, min_periods=1).sum() - mf_volume.shift(br).fillna(0))
+        .rolling(window=br, min_periods=1)
+        .apply(lambda x: (x - x.mean()) / (x.std() if x.std() != 0 else 1), raw=True) * 10
+        for br in ranges
+    ], axis=1).sum(axis=1).clip(-400, 400)
     data['EyeX MFV Volume'] = combined_mfv
     return data
+
 def compute_eyeX_MFV_support_resistance(data, ranges=[50,75,100,200], pivot_lookback=5, price_proximity=0.00001):
     mf_multiplier = ((data['close'] - data['low']) - (data['high'] - data['close'])) / (data['high'] - data['low'])
     mf_multiplier = mf_multiplier.replace([np.inf, -np.inf], 0).fillna(0)
     mf_volume = mf_multiplier * data['volume']
-    combined_mfv = sum([(mf_volume.rolling(window=br, min_periods=1).sum() - mf_volume.shift(br).fillna(0)).rolling(window=br, min_periods=1).apply(lambda x: (x - x.mean()) / (x.std() if x.std() != 0 else 1), raw=True) * 10 for br in ranges])
+    combined_mfv = pd.concat([
+        (mf_volume.rolling(window=br, min_periods=1).sum() - mf_volume.shift(br).fillna(0))
+        .rolling(window=br, min_periods=1)
+        .apply(lambda x: (x - x.mean()) / (x.std() if x.std() != 0 else 1), raw=True) * 10
+        for br in ranges
+    ], axis=1).sum(axis=1)
     pivot_high = data['high'][(data['high'] == data['high'].rolling(window=pivot_lookback*2+1, center=True).max())]
     pivot_low = data['low'][(data['low'] == data['low'].rolling(window=pivot_lookback*2+1, center=True).min())]
     resistance_levels, support_levels = [], []
@@ -43,6 +59,7 @@ def compute_eyeX_MFV_support_resistance(data, ranges=[50,75,100,200], pivot_look
     data['EyeX MFV S/R Bull'] = bull_attack
     data['EyeX MFV S/R Bear'] = bear_attack
     return data
+
 def compute_all_indicators(data):
     indicators = {}
     indicators['bbands_upper'], indicators['bbands_middle'], indicators['bbands_lower'] = ta.BBANDS(data['close'], timeperiod=5, nbdevup=2, nbdevdn=2, matype=0)
