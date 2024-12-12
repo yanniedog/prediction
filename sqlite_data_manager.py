@@ -1,4 +1,5 @@
 # sqlite_data_manager.py
+
 import sqlite3
 from pathlib import Path
 import pandas as pd
@@ -86,7 +87,8 @@ def create_tables(conn):
 
         for idx_query in indexes:
             cursor.execute(idx_query)
-            print(f"Index created or already exists.")
+            index_name = idx_query.split()[5]
+            print(f"Index created or already exists: {index_name}")
 
         conn.commit()
         print("All tables and indexes are set up successfully.")
@@ -103,10 +105,15 @@ def initialize_database(db_path=DB_PATH):
         print("Failed to initialize the database.")
 
 def insert_indicator_configs(conn, indicator_name, configs):
-    """Insert indicator configurations into the indicators table."""
+    """
+    Insert indicator configurations into the indicators table.
+    Each configuration name follows the pattern 'indicator_paramvalue', e.g., 'sma_timeperiod14'.
+    """
     try:
         cursor = conn.cursor()
+        # Insert the base indicator if not exists
         cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
+        # Insert each configuration
         for config in configs:
             config_name = f"{indicator_name}_" + "_".join([f"{k}{v}" for k, v in config.items()])
             cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (config_name,))
@@ -116,7 +123,11 @@ def insert_indicator_configs(conn, indicator_name, configs):
         print(f"SQLite insertion error: {e}")
 
 def insert_klines(conn, df, symbol, timeframe):
-    """Insert kline data into the klines table."""
+    """
+    Insert kline data into the klines table.
+    Assumes df has columns: open_time, open, high, low, close, volume, close_time,
+    quote_asset_volume, number_of_trades, taker_buy_base_asset_volume, taker_buy_quote_asset_volume
+    """
     try:
         required_columns = [
             'open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time',
@@ -126,17 +137,21 @@ def insert_klines(conn, df, symbol, timeframe):
             raise ValueError(f"DataFrame missing required columns: {set(required_columns) - set(df.columns)}")
 
         cursor = conn.cursor()
+        # Insert symbol and get its id
         cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol,))
         cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
         symbol_id = cursor.fetchone()[0]
 
+        # Insert timeframe and get its id
         cursor.execute("INSERT OR IGNORE INTO timeframes (timeframe) VALUES (?)", (timeframe,))
         cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
         timeframe_id = cursor.fetchone()[0]
 
+        # Format datetime fields
         df['open_time'] = pd.to_datetime(df['open_time']).dt.strftime('%Y-%m-%d %H:%M:%S')
         df['close_time'] = pd.to_datetime(df['close_time']).dt.strftime('%Y-%m-%d %H:%M:%S')
 
+        # Prepare data for insertion
         insert_query = """
             INSERT INTO klines (
                 symbol_id, timeframe_id, open_time, open, high, low, close, volume, close_time,

@@ -1,4 +1,5 @@
 # tweak_indicator.py
+
 import sys
 import itertools
 from pathlib import Path
@@ -93,14 +94,15 @@ def parse_indicator_parameters(indicators_module, indicator_name):
                         pass  # Ignore if conversion fails
     return parameters
 
-def generate_configurations(parameters):
+def generate_configurations(parameter_keys, default_params):
     """
     Generate configurations based on parameter ranges.
     For each parameter, define a range based on the default value.
     Returns a list of dictionaries representing different configurations.
     """
     param_ranges = {}
-    for param, default in parameters.items():
+    for param in parameter_keys:
+        default = default_params[param]
         if isinstance(default, int):
             # Define a range: default -5 to default +5, minimum 1
             start = max(1, default - 5)
@@ -189,7 +191,7 @@ def main():
             continue
         print(f"Parameters for '{indicator_name}': {parameters}")
 
-        configurations = generate_configurations(parameters)
+        configurations = generate_configurations(parameters.keys(), {k: parameters[k] for k in parameters})
         if not configurations:
             print(f"No configurations generated for '{indicator_name}'.")
             continue

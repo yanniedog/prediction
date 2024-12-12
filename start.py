@@ -13,7 +13,7 @@ from pathlib import Path
 from datetime import datetime
 from config import DB_PATH
 from sqlite_data_manager import initialize_database, create_connection, create_tables
-from tweak_indicator import fetch_available_indicators, insert_tweaked_configs, generate_configurations
+from tweak_indicator import fetch_available_indicators, insert_indicator_configs, generate_configurations
 from correlation_utils import load_or_calculate_correlations
 from indicators import compute_all_indicators, compute_configured_indicators
 
@@ -83,18 +83,22 @@ def run_tweak_indicator(symbol: str, timeframe: str):
     """
     Run the tweak_indicator.py script to generate configurations.
     """
-    indicators = fetch_available_indicators()
-    if not indicators:
+    # Fetch available indicators
+    available_indicators = fetch_available_indicators()
+    if not available_indicators:
         log_and_print("No indicators available. Check `indicators.py` or `compute_all_indicators`.", "error")
         sys.exit(1)
+    
     log_and_print("Available indicators:")
-    for idx, indicator in enumerate(indicators, 1):
+    for idx, indicator in enumerate(available_indicators, 1):
         log_and_print(f"{idx}. {indicator}")
+    
     choice = input("Select an indicator by number: ").strip()
-    if not choice.isdigit() or int(choice) < 1 or int(choice) > len(indicators):
+    if not choice.isdigit() or int(choice) < 1 or int(choice) > len(available_indicators):
         log_and_print("Invalid choice. Exiting.", "error")
         sys.exit(1)
-    selected_indicator = indicators[int(choice) - 1]
+    
+    selected_indicator = available_indicators[int(choice) - 1]
     log_and_print(f"Selected indicator: {selected_indicator}")
     
     # Define default parameters (modify as per your indicators' requirements)
@@ -108,8 +112,13 @@ def run_tweak_indicator(symbol: str, timeframe: str):
     log_and_print(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
     
     # Insert configurations into the database
-    insert_tweaked_configs(selected_indicator, configurations)
-    log_and_print(f"Configurations for '{selected_indicator}' added to the database.")
+    conn = create_connection()
+    if not conn:
+        log_and_print("Failed to connect to the database.", "error")
+        sys.exit(1)
+    insert_indicator_configs(conn, selected_indicator, configurations)
+    conn.close()
+    log_and_print(f"Configurations for '{selected_indicator}' have been added to the database.")
     
     return selected_indicator
 
@@ -162,7 +171,8 @@ def main():
 
         log_and_print("Proceeding with main execution.")
 
-        # Download Binance data
+        # Continue with price data steps...
+        # Example: Download data
         from binance_historical_data_downloader import download_binance_data
         if symbol and timeframe:
             download_binance_data(symbol, timeframe, DB_PATH)
