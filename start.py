@@ -1,7 +1,8 @@
 # start.py
+
 import logging
 import os
-import sqlite3
+import subprocess
 import sys
 import shutil
 import pandas as pd
@@ -10,9 +11,13 @@ import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend
 from pathlib import Path
 from datetime import datetime
-from sqlite_data_manager import create_connection, initialize_database, create_tables, DB_PATH
-import subprocess
+from config import DB_PATH
+from sqlite_data_manager import initialize_database, create_connection, create_tables
+from tweak_indicator import fetch_available_indicators, insert_tweaked_configs, generate_configurations
+from correlation_utils import load_or_calculate_correlations
+from indicators import compute_all_indicators, compute_configured_indicators
 
+# Configure logging
 def configure_logging(log_file):
     """Configure logging settings."""
     logging.basicConfig(
@@ -74,45 +79,54 @@ def delete_previous_output():
     else:
         log_and_print("Directory contents not cleared.")
 
-def run_tweak_indicator():
-    """Run the tweak_indicator.py script to generate configurations."""
-    try:
-        subprocess.run([sys.executable, 'tweak_indicator.py', '--all'], check=True)
-    except subprocess.CalledProcessError as e:
-        log_and_print(f"Error running tweak_indicator.py: {e}", "error")
+def run_tweak_indicator(symbol: str, timeframe: str):
+    """
+    Run the tweak_indicator.py script to generate configurations.
+    """
+    indicators = fetch_available_indicators()
+    if not indicators:
+        log_and_print("No indicators available. Check `indicators.py` or `compute_all_indicators`.", "error")
         sys.exit(1)
-
-def load_data(symbol: str, timeframe: str):
-    """
-    Load data from the SQLite database for the given symbol and timeframe.
-    Returns a pandas DataFrame.
-    """
-    from load_data import load_data as load_db_data
-    df, is_rev, db_fn = load_db_data(symbol, timeframe)
-    return df
-
-def compute_indicators(data, configurations):
-    """
-    Compute both default and configured indicators.
-    """
-    import indicators  # Assuming indicators.py is in the same directory and is a module
-    # Compute default indicators
-    try:
-        data = indicators.compute_all_indicators(data)
-        log_and_print("Default indicators computed successfully.")
-    except Exception as e:
-        log_and_print(f"Error computing default indicators: {e}", "error")
+    log_and_print("Available indicators:")
+    for idx, indicator in enumerate(indicators, 1):
+        log_and_print(f"{idx}. {indicator}")
+    choice = input("Select an indicator by number: ").strip()
+    if not choice.isdigit() or int(choice) < 1 or int(choice) > len(indicators):
+        log_and_print("Invalid choice. Exiting.", "error")
         sys.exit(1)
-
-    # Compute configured indicators
-    try:
-        data = indicators.compute_configured_indicators(data, configurations)
-        log_and_print("Configured indicators computed successfully.")
-    except Exception as e:
-        log_and_print(f"Error computing configured indicators: {e}", "error")
+    selected_indicator = indicators[int(choice) - 1]
+    log_and_print(f"Selected indicator: {selected_indicator}")
+    
+    # Define default parameters (modify as per your indicators' requirements)
+    default_params = {"timeperiod": 14}
+    
+    # Generate configurations based on default parameters
+    configurations = generate_configurations(default_params.keys(), default_params)
+    if not configurations:
+        log_and_print(f"No configurations generated for '{selected_indicator}'.", "error")
         sys.exit(1)
+    log_and_print(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
+    
+    # Insert configurations into the database
+    insert_tweaked_configs(selected_indicator, configurations)
+    log_and_print(f"Configurations for '{selected_indicator}' added to the database.")
+    
+    return selected_indicator
 
-    return data
+def get_selected_indicator_configs(indicator_name: str):
+    """Retrieve all configurations for the selected indicator from the database."""
+    conn = create_connection()
+    if not conn:
+        log_and_print("Database connection failed.", "error")
+        sys.exit(1)
+    create_tables(conn)  # Ensure tables are present
+    cursor = conn.cursor()
+    # Fetch indicator configurations that include parameters (assuming they have an underscore)
+    cursor.execute("SELECT name FROM indicators WHERE name LIKE ? ESCAPE '\\'", (f"%\\_%",))
+    rows = cursor.fetchall()
+    conn.close()
+    # Filter configurations that start with the selected_indicator followed by '_'
+    return [row[0] for row in rows if row[0].startswith(indicator_name + "_")]
 
 def main():
     """Main execution flow."""
@@ -124,14 +138,13 @@ def main():
 
     try:
         # Initialize database
-        initialize_database()
+        initialize_database(DB_PATH)
         log_and_print("Database initialized successfully.")
 
         # Delete previous outputs if user chooses
         delete_previous_output()
 
-        selected_indicators = []
-        configurations = []
+        selected_indicator = None
         symbol = None
         timeframe = None
 
@@ -142,27 +155,7 @@ def main():
             log_and_print(f"Symbol: {symbol}, Timeframe: {timeframe}")
 
             # Run tweak_indicator.py to generate configurations
-            run_tweak_indicator()
-
-            # Fetch configurations from the database
-            conn = create_connection()
-            if not conn:
-                log_and_print("Failed to connect to the database to fetch configurations.", "error")
-                sys.exit(1)
-            cursor = conn.cursor()
-            # Fetch indicator configurations that include parameters (assuming they have an underscore)
-            # Corrected the SQL LIKE pattern to ensure proper escaping
-            cursor.execute("SELECT name FROM indicators WHERE name LIKE '%\\_%' ESCAPE '\\'")
-            rows = cursor.fetchall()
-            conn.close()
-
-            configurations = [row[0] for row in rows]
-            if not configurations:
-                log_and_print("No configurations found after tweaking indicators.", "error")
-                sys.exit(1)
-            selected_indicators = [config.split('_')[0] for config in configurations]
-            selected_indicators = list(set(selected_indicators))  # Remove duplicates
-            log_and_print(f"Selected Indicators for Correlation: {selected_indicators}")
+            selected_indicator = run_tweak_indicator(symbol, timeframe)
 
         else:
             log_and_print("Skipping indicator tweaking.")
@@ -171,30 +164,53 @@ def main():
 
         # Download Binance data
         from binance_historical_data_downloader import download_binance_data
-        download_binance_data(symbol, timeframe, DB_PATH)
-        log_and_print("Price data download and insertion completed.")
+        if symbol and timeframe:
+            download_binance_data(symbol, timeframe, DB_PATH)
+            log_and_print("Price data download and insertion completed.")
+        else:
+            log_and_print("Symbol and timeframe not provided. Skipping data download.", "error")
+            sys.exit(1)
 
-        if selected_indicators and configurations:
+        if selected_indicator:
+            # Retrieve configurations for the selected indicator
+            configs = get_selected_indicator_configs(selected_indicator)
+            if not configs:
+                log_and_print("No configurations found for the selected indicator.", "error")
+                sys.exit(1)
+
             # Load data from SQLite
-            data = load_data(symbol, timeframe)
+            from load_data import load_data as load_db_data
+            data, is_rev, db_fn = load_db_data(symbol, timeframe)
             if data.empty:
                 log_and_print("No data available for the selected symbol and timeframe.", "error")
                 sys.exit(1)
 
-            # Compute indicators
-            data = compute_indicators(data, configurations)
+            # Compute default indicators
+            try:
+                data = compute_all_indicators(data)
+                log_and_print("Default indicators computed successfully.")
+            except Exception as e:
+                log_and_print(f"Error computing default indicators: {e}", "error")
+                sys.exit(1)
+
+            # Compute configured indicators
+            try:
+                data = compute_configured_indicators(data, configs)
+                log_and_print("Configured indicators computed successfully.")
+            except Exception as e:
+                log_and_print(f"Error computing configured indicators: {e}", "error")
+                sys.exit(1)
 
             # Perform correlation computations
-            from correlation_utils import load_or_calculate_correlations
             load_or_calculate_correlations(
                 data=data,
-                indicators=configurations,
+                indicators=configs,
                 max_lag=30,
                 reverse=False,
                 symbol=symbol,
                 timeframe=timeframe
             )
-            log_and_print("Correlation computations completed successfully.")
+            log_and_print("Correlation computations completed for the selected indicator configurations.")
         else:
             log_and_print("No indicators selected for correlation computations.")
 
