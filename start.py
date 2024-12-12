@@ -28,6 +28,17 @@ from binance_historical_data_downloader import download_binance_data
 from correlation_database import CorrelationDatabase
 from config import DB_PATH
 import sqlite3
+import logging
+
+# Configure logging
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+log_file = f"start_log_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
+file_handler = logging.FileHandler(log_file, mode='w')
+file_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 warnings.filterwarnings('ignore')
 
@@ -66,12 +77,8 @@ def input_yes_no_no_default(prompt: str) -> str:
         print("Invalid input, enter 'y' or 'n'.")
 
 def delete_previous_output():
-    from pathlib import Path
-    import os
-
     target_dirs = ['csv', 'heatmaps', 'combined_charts', 'reports', 'database']
     delete_outputs = input("Delete contents of output directories? (y/n): ").strip().lower()
-
     if delete_outputs == 'y':
         for folder in target_dirs:
             folder_path = Path(folder)
@@ -81,23 +88,16 @@ def delete_previous_output():
                         if item.is_file():
                             item.unlink()
                         elif item.is_dir():
-                            for sub_item in item.rglob('*'):
-                                if sub_item.is_file():
-                                    sub_item.unlink()
-                                elif sub_item.is_dir():
-                                    sub_item.rmdir()
-                            item.rmdir()
-                    print(f"Cleared contents of: {folder_path}")
+                            shutil.rmtree(item)
+                    logger.info(f"Cleared contents of: {folder}")
                 except Exception as e:
-                    print(f"Error clearing contents of {folder_path}: {e}")
-        print("All selected directory contents have been cleared.")
+                    logger.error(f"Error clearing contents of {folder}: {e}")
+        logger.info("All selected directory contents have been cleared.")
     else:
-        print("Directory contents not cleared.")
-
-
+        logger.info("Directory contents not cleared.")
 
 def recreate_database(db_path: str):
-    print("Recreating database...")
+    logger.info("Recreating database...")
     if os.path.exists(db_path):
         os.remove(db_path)
     from sqlite_data_manager import create_connection, create_tables
@@ -105,9 +105,9 @@ def recreate_database(db_path: str):
     if conn:
         create_tables(conn)
         conn.close()
-        print("New database created.")
+        logger.info("New database created.")
     else:
-        print("Failed to create DB.")
+        logger.error("Failed to create DB.")
         sys.exit(1)
 
 def main():
@@ -126,23 +126,25 @@ def main():
 
     symbol = input_with_default("Enter symbol (e.g., 'BTCUSDT'): ", "BTCUSDT").upper()
     timeframe = input_with_default("Enter timeframe (e.g., '1w'): ", "1w")
-    print(f"Symbol: {symbol}, Timeframe: {timeframe}")
+    logger.info(f"Symbol: {symbol}, Timeframe: {timeframe}")
 
     if tweak:
-        subprocess.run([sys.executable, 'tweak-indicator.py', symbol, timeframe])
+        result = subprocess.run([sys.executable, 'tweak-indicator.py', symbol, timeframe], capture_output=True, text=True)
+        logger.info(result.stdout)
+        if result.stderr:
+            logger.error(result.stderr)
 
     data, is_rev, db_fn = load_data(symbol, timeframe)
-    if not data.empty:
-        if input_yes_no("Invalid DB. Recreate? (y/n): ") == 'y':
-            recreate_database(DB_PATH)
-            data, is_rev, db_fn = load_data(symbol, timeframe)
+    if data.empty and input_yes_no("Invalid DB. Recreate? (y/n): ") == 'y':
+        recreate_database(DB_PATH)
+        data, is_rev, db_fn = load_data(symbol, timeframe)
 
     if data.empty and input_yes_no("Download data? (y/n): ") == 'y':
         download_binance_data(symbol, timeframe)
         data, is_rev, db_fn = load_data(symbol, timeframe)
 
     if data.empty:
-        print("No data available.")
+        logger.error("No data available.")
         sys.exit(0)
 
     data = compute_all_indicators(data)
@@ -154,12 +156,12 @@ def main():
     X_scaled, feature_cols = prepare_data(data)
     original_inds = get_original_indicators(feature_cols, data)
     if not original_inds:
-        print("No valid indicators.")
+        logger.error("No valid indicators.")
         sys.exit(1)
 
     max_lag = len(data) - 51
     if max_lag < 1:
-        print("Insufficient data.")
+        logger.error("Insufficient data.")
         sys.exit(1)
 
     load_or_calculate_correlations(data, original_inds, max_lag, is_rev, symbol, timeframe)
@@ -184,7 +186,7 @@ def main():
     if save_corr_csv:
         generate_correlation_csv(correlations, max_lag, f"{symbol}_{timeframe}", 'csv')
 
-    print("Script completed successfully.")
+    logger.info("Script completed successfully.")
 
 if __name__ == "__main__":
     main()
