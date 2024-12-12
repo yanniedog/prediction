@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 from joblib import Parallel, delayed
 from typing import Any, Callable, Dict, List
+from scipy.stats import t  # Added import for 't'
 
 def generate_combined_correlation_chart(
     correlations: Dict[str, List[float]],
@@ -110,13 +111,13 @@ def visualize_data(
         plt.savefig(os.path.join(charts_dir, f"{timestamp}_{base_csv}_{col}_correlation.png"), bbox_inches='tight')
         plt.close()
     # Combined chart
-    sorted_inds = sorted(
+    sorted_indicators = sorted(
         correlations,
         key=lambda c: correlations[c][-1] if correlations[c] else 0,
         reverse=True
     )
     plt.figure(figsize=(15, 10))
-    for col, color in zip(sorted_inds, plt.cm.rainbow(np.linspace(0, 1, len(sorted_inds)))):
+    for col, color in zip(sorted_indicators, plt.cm.rainbow(np.linspace(0, 1, len(sorted_indicators)))):
         plt.plot(range(1, max_lag + 1), correlations[col], color=color, label=col)
     plt.axhline(0, color='black', linewidth=0.5)
     plt.axvline(0, color='black', linewidth=0.5)
@@ -172,14 +173,14 @@ def generate_heatmaps(
     )
     filtered = [col for col in std_corr.columns if std_corr[col].max() > 0.25]
     std_corr = std_corr[filtered]
-    sorted_inds = sorted(
+    sorted_indicators = sorted(
         filtered,
         key=lambda c: next(
             (i for i, x in enumerate(std_corr[c], 1) if x == 1.0),
             max_lag + 1
         )
     )
-    sns.heatmap(std_corr[sorted_inds].T, cmap='coolwarm', cbar=True, xticklabels=True, yticklabels=True)
+    sns.heatmap(std_corr[sorted_indicators].T, cmap='coolwarm', cbar=True, xticklabels=True, yticklabels=True)
     plt.title(
         'Standardized Correlation of Indicators with Close Price at Various Lags\n(Sorted by Earliest 1.0 Correlation)',
         fontsize=14
@@ -192,8 +193,8 @@ def generate_heatmaps(
     plt.savefig(os.path.join('heatmaps', f"{timestamp}_{base_csv}_heatmap1.png"), bbox_inches='tight')
     plt.close()
 
-    sorted_inds = sorted(filtered, key=lambda c: std_corr[c].iloc[0], reverse=True)
-    sns.heatmap(std_corr[sorted_inds].T, cmap='coolwarm', cbar=True, xticklabels=True, yticklabels=True)
+    sorted_indicators = sorted(filtered, key=lambda c: std_corr[c].iloc[0], reverse=True)
+    sns.heatmap(std_corr[sorted_indicators].T, cmap='coolwarm', cbar=True, xticklabels=True, yticklabels=True)
     plt.title('Standardized Correlation Sorted by Highest Correlation at Lag 1', fontsize=14)
     plt.xlabel(f'Time Lag ({time_interval})', fontsize=12)
     plt.ylabel('Indicators', fontsize=12)
