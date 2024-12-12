@@ -10,7 +10,7 @@ class DeduplicationFilter(logging.Filter):
         self.logged_messages = set()
 
     def filter(self, record):
-        message = f"{record.levelname} - {record.filename}:{record.lineno} - {record.funcName}: {record.getMessage()}"
+        message = f"{record.levelname} - {record.filename}:{record.lineno} - {record.funcName} - {record.getMessage()}"
         if message in self.logged_messages:
             return False
         self.logged_messages.add(message)
@@ -41,6 +41,11 @@ def configure_logging(log_file='prediction.log'):
         file_handler.addFilter(DeduplicationFilter())
         logger.addHandler(file_handler)
 
+        # Suppress unwanted logs
+        logging.getLogger('matplotlib').setLevel(logging.WARNING)
+        logging.getLogger('font_manager').setLevel(logging.WARNING)
+
+        # Redirect stdout and stderr to logger
         class StreamToLogger:
             def __init__(self, stream, log_func):
                 self.stream = stream
@@ -49,7 +54,6 @@ def configure_logging(log_file='prediction.log'):
             def write(self, msg):
                 if msg.strip():
                     self.log_func(msg.strip())
-                self.stream.write(msg)
 
             def flush(self):
                 self.stream.flush()
@@ -57,9 +61,7 @@ def configure_logging(log_file='prediction.log'):
         sys.stdout = StreamToLogger(sys.stdout, logger.info)
         sys.stderr = StreamToLogger(sys.stderr, logger.error)
 
-        logging.getLogger('matplotlib').setLevel(logging.WARNING)
-        logging.getLogger('font_manager').setLevel(logging.WARNING)
-
+        # Handle uncaught exceptions
         def exception_handler(exc_type, exc_value, exc_traceback):
             if not issubclass(exc_type, KeyboardInterrupt):
                 logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
