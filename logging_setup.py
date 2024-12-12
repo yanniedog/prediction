@@ -2,6 +2,16 @@
 import logging
 import sys
 from pathlib import Path
+import inspect
+
+class CustomFormatter(logging.Formatter):
+    def format(self, record):
+        # Update the record to include the actual source filename, function, and line
+        frame = inspect.stack()[8]  # Adjust the index to find the originating caller
+        record.filename = frame.filename.split('/')[-1] if frame.filename else record.filename
+        record.funcName = frame.function
+        record.lineno = frame.lineno
+        return super().format(record)
 
 def configure_logging(log_file='prediction.log'):
     logger = logging.getLogger()
@@ -13,9 +23,7 @@ def configure_logging(log_file='prediction.log'):
         # Configure file handler
         file_handler = logging.FileHandler(log_path, 'w')
         file_handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter(
-            '%(levelname)s - [%(filename)s:%(lineno)d(%(funcName)s)]: %(message)s'
-        )
+        formatter = CustomFormatter('%(levelname)s - [%(filename)s:%(lineno)d(%(funcName)s)]: %(message)s')
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
