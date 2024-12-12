@@ -6,8 +6,6 @@ from datetime import datetime, timedelta
 from joblib import Parallel, delayed
 from sklearn.preprocessing import StandardScaler
 from scipy.stats import t
-from linear_regression import perform_linear_regression
-from advanced_analysis import advanced_price_prediction
 from load_data import load_data
 from indicators import compute_all_indicators
 from data_utils import clear_screen, prepare_data, determine_time_interval, get_original_indicators, handle_missing_indicators
@@ -156,8 +154,7 @@ def main():
     lag_sec = (future_dt - latest_date).total_seconds()
     lag_periods = int(lag_sec / interval_sec)
     if lag_periods <=0 or lag_periods > max_lag: sys.exit(1)
-    perform_linear_regression(data, correlations, max_lag, time_interval, timestamp, f"{symbol}_{timeframe}", future_dt, lag_periods)
-    advanced_price_prediction(data, correlations, max_lag, time_interval, timestamp, f"{symbol}_{timeframe}", future_dt, lag_periods)
+    # Removed perform_linear_regression and advanced_price_prediction function calls
     print("Script completed successfully.")
 
 if __name__=="__main__":

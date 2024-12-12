@@ -9,8 +9,6 @@ from joblib import Parallel, delayed
 from scipy.stats import t
 from sklearn.preprocessing import StandardScaler
 import dateutil.parser
-from linear_regression import perform_linear_regression
-from advanced_analysis import advanced_price_prediction
 from load_data import load_data
 from indicators import compute_all_indicators
 from data_utils import clear_screen, prepare_data, determine_time_interval, get_original_indicators, handle_missing_indicators
