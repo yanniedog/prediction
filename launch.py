@@ -1,35 +1,26 @@
-# launch.py
-import os
-import sys
+import os, sys, logging, runpy
 from pathlib import Path
 from datetime import datetime
-import logging
-import runpy
 
-for f in Path.cwd().glob('*.log'):
-    f.unlink()
+for f in Path.cwd().glob('*.log'): f.unlink()
 
 timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
-working_dir_name = Path.cwd().name
-log_filename = f"{working_dir_name}_{timestamp}.log"
+log_filename = f"{Path.cwd().name}_{timestamp}.log"
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
-for h in logger.handlers[:]:
-    logger.removeHandler(h)
-file_handler = logging.FileHandler(log_filename, mode='w')
+logger.handlers = []
+file_handler = logging.FileHandler(log_filename, 'w')
 file_handler.setLevel(logging.DEBUG)
-file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
 class DoubleWriter:
     def __init__(self, stdout, stderr, logger):
-        self.stdout = stdout
-        self.stderr = stderr
-        self.logger = logger
+        self.stdout, self.stderr, self.logger = stdout, stderr, logger
     def write(self, msg):
-        if msg.strip():
-            self.logger.info(msg.strip())
+        if msg.strip(): self.logger.info(msg.strip())
         self.stdout.write(msg)
     def flush(self):
         self.stdout.flush()
