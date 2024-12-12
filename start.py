@@ -40,12 +40,21 @@ def configure_logging():
         handler = logging.FileHandler(LOG_FILE, mode='w')
         handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
         logger.addHandler(handler)
+        # Only output logs to the file, not the console, to avoid duplication.
 
-# Call this once to configure logging
+# Configure logging once at the start of the script
 configure_logging()
 logger = logging.getLogger()
 
 warnings.filterwarnings('ignore')
+
+# Wrapper for all print statements to ensure no duplicates
+def log_and_print(message, level="info"):
+    if level == "info":
+        logger.info(message)
+    elif level == "error":
+        logger.error(message)
+    print(message)
 
 def parse_date_time_input(user_input: str, ref_dt: datetime) -> datetime:
     user_input = user_input.strip()
@@ -94,15 +103,15 @@ def delete_previous_output():
                             item.unlink()
                         elif item.is_dir():
                             shutil.rmtree(item)
-                    logger.info(f"Cleared contents of: {folder}")
+                    log_and_print(f"Cleared contents of: {folder}")
                 except Exception as e:
-                    logger.error(f"Error clearing contents of {folder}: {e}")
-        logger.info("All selected directory contents have been cleared.")
+                    log_and_print(f"Error clearing contents of {folder}: {e}", "error")
+        log_and_print("All selected directory contents have been cleared.")
     else:
-        logger.info("Directory contents not cleared.")
+        log_and_print("Directory contents not cleared.")
 
 def recreate_database(db_path: str):
-    logger.info("Recreating database...")
+    log_and_print("Recreating database...")
     if os.path.exists(db_path):
         os.remove(db_path)
     from sqlite_data_manager import create_connection, create_tables
@@ -110,13 +119,12 @@ def recreate_database(db_path: str):
     if conn:
         create_tables(conn)
         conn.close()
-        logger.info("New database created.")
+        log_and_print("New database created.")
     else:
-        logger.error("Failed to create DB.")
+        log_and_print("Failed to create DB.", "error")
         sys.exit(1)
 
 def main():
-    # Ensure logger does not duplicate stdout
     clear_screen()
     run_backup_cleanup()
     timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
@@ -132,13 +140,13 @@ def main():
 
     symbol = input_with_default("Enter symbol (e.g., 'BTCUSDT'): ", "BTCUSDT").upper()
     timeframe = input_with_default("Enter timeframe (e.g., '1w'): ", "1w")
-    logger.info(f"Symbol: {symbol}, Timeframe: {timeframe}")
+    log_and_print(f"Symbol: {symbol}, Timeframe: {timeframe}")
 
     if tweak:
         result = subprocess.run([sys.executable, 'tweak-indicator.py', symbol, timeframe], capture_output=True, text=True)
-        logger.info(result.stdout)
+        log_and_print(result.stdout)
         if result.stderr:
-            logger.error(result.stderr)
+            log_and_print(result.stderr, "error")
 
     data, is_rev, db_fn = load_data(symbol, timeframe)
     if data.empty and input_yes_no("Invalid DB. Recreate? (y/n): ") == 'y':
@@ -150,7 +158,7 @@ def main():
         data, is_rev, db_fn = load_data(symbol, timeframe)
 
     if data.empty:
-        logger.error("No data available.")
+        log_and_print("No data available.", "error")
         sys.exit(0)
 
     data = compute_all_indicators(data)
@@ -162,12 +170,12 @@ def main():
     X_scaled, feature_cols = prepare_data(data)
     original_inds = get_original_indicators(feature_cols, data)
     if not original_inds:
-        logger.error("No valid indicators.")
+        log_and_print("No valid indicators.", "error")
         sys.exit(1)
 
     max_lag = len(data) - 51
     if max_lag < 1:
-        logger.error("Insufficient data.")
+        log_and_print("Insufficient data.", "error")
         sys.exit(1)
 
     load_or_calculate_correlations(data, original_inds, max_lag, is_rev, symbol, timeframe)
@@ -192,7 +200,7 @@ def main():
     if save_corr_csv:
         generate_correlation_csv(correlations, max_lag, f"{symbol}_{timeframe}", 'csv')
 
-    logger.info("Script completed successfully.")
+    log_and_print("Script completed successfully.")
 
 if __name__ == "__main__":
     main()
