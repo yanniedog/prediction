@@ -85,57 +85,76 @@ def compute_all_indicators(data):
     indicators['var'] = ta.VAR(data['close'], timeperiod=5, nbdev=1)
     try:
         indicators['ao'] = pta.ao(data['high'], data['low'])
-    except AttributeError:
+    except:
         indicators['ao'] = None
     try:
         indicators['fi'] = pta.fi(data['close'], data['volume'])
-    except AttributeError:
-        data['fi'] = (data['close'] - data['close'].shift(1)) * data['volume']
-        indicators['fi'] = data['fi']
+    except:
+        indicators['fi'] = (data['close'] - data['close'].shift(1)) * data['volume']
     try:
         ichimoku = data.ta.ichimoku(append=False)
-        indicators['ichimoku_conversion'] = ichimoku['isa_9']
-        indicators['ichimoku_base'] = ichimoku['isb_26']
-        indicators['ichimoku_span_a'] = ichimoku['its_9']
-        indicators['ichimoku_span_b'] = ichimoku['iks_26']
-    except (AttributeError, KeyError):
+        if isinstance(ichimoku, tuple):
+            indicators['ichimoku_conversion'], indicators['ichimoku_base'], indicators['ichimoku_span_a'], indicators['ichimoku_span_b'] = ichimoku
+        elif isinstance(ichimoku, pd.DataFrame):
+            indicators['ichimoku_conversion'] = ichimoku.get('isa_9', None)
+            indicators['ichimoku_base'] = ichimoku.get('isb_26', None)
+            indicators['ichimoku_span_a'] = ichimoku.get('its_9', None)
+            indicators['ichimoku_span_b'] = ichimoku.get('iks_26', None)
+        else:
+            indicators['ichimoku_conversion'] = indicators['ichimoku_base'] = indicators['ichimoku_span_a'] = indicators['ichimoku_span_b'] = None
+    except:
         indicators['ichimoku_conversion'] = indicators['ichimoku_base'] = indicators['ichimoku_span_a'] = indicators['ichimoku_span_b'] = None
     try:
         kc = data.ta.kc(append=False)
-        indicators['kc_upper'] = kc['kcu_20_2.0']
-        indicators['kc_middle'] = kc['kcm_20_2.0']
-        indicators['kc_lower'] = kc['kcl_20_2.0']
-    except (AttributeError, KeyError):
+        if isinstance(kc, tuple):
+            indicators['kc_upper'], indicators['kc_middle'], indicators['kc_lower'] = kc
+        elif isinstance(kc, pd.DataFrame):
+            indicators['kc_upper'] = kc.get('kcu_20_2.0', None)
+            indicators['kc_middle'] = kc.get('kcm_20_2.0', None)
+            indicators['kc_lower'] = kc.get('kcl_20_2.0', None)
+        else:
+            indicators['kc_upper'] = indicators['kc_middle'] = indicators['kc_lower'] = None
+    except:
         indicators['kc_upper'] = indicators['kc_middle'] = indicators['kc_lower'] = None
     try:
         indicators['mfi'] = pta.mfi(data['high'], data['low'], data['close'], data['volume'])
-    except AttributeError:
+    except:
         indicators['mfi'] = None
     try:
         indicators['rvi'] = pta.rvi(data['close'])
-    except AttributeError:
+    except:
         indicators['rvi'] = None
     try:
         stochrsi = data.ta.stochrsi(append=False)
-        indicators['stochrsi_fastk'] = stochrsi['stochrsi_14_5_3_slowk']
-        indicators['stochrsi_fastd'] = stochrsi['stochrsi_14_5_3_slowd']
-    except (AttributeError, KeyError):
+        if isinstance(stochrsi, tuple):
+            indicators['stochrsi_fastk'], indicators['stochrsi_fastd'] = stochrsi
+        elif isinstance(stochrsi, pd.DataFrame):
+            indicators['stochrsi_fastk'] = stochrsi.get('stochrsi_14_5_3_slowk', None)
+            indicators['stochrsi_fastd'] = stochrsi.get('stochrsi_14_5_3_slowd', None)
+        else:
+            indicators['stochrsi_fastk'] = indicators['stochrsi_fastd'] = None
+    except:
         indicators['stochrsi_fastk'] = indicators['stochrsi_fastd'] = None
     try:
         tsi = pta.tsi(data['close'])
         for col in tsi.columns:
             indicators[col] = tsi[col]
-    except AttributeError:
+    except:
         pass
     try:
         vortex = data.ta.vortex(append=False)
-        indicators['vi_plus'] = vortex['vi+_14']
-        indicators['vi_minus'] = vortex['vi-_14']
-    except (AttributeError, KeyError):
+        if isinstance(vortex, tuple):
+            indicators['vi_plus'], indicators['vi_minus'] = vortex
+        elif isinstance(vortex, pd.DataFrame):
+            indicators['vi_plus'] = vortex.get('vi+_14', None)
+            indicators['vi_minus'] = vortex.get('vi-_14', None)
+        else:
+            indicators['vi_plus'] = indicators['vi_minus'] = None
+    except:
         indicators['vi_plus'] = indicators['vi_minus'] = None
     data = compute_obv_price_divergence(data)
-    for key, value in indicators.items():
-        if value is not None:
-            data[key] = value
+    for k, v in indicators.items():
+        if v is not None:
+            data[k] = v
     data.dropna(inplace=True)
     return data
