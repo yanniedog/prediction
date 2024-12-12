@@ -16,7 +16,7 @@ from table_generation import generate_best_indicator_table, generate_statistical
 from binance_historical_data_downloader import download_binance_data
 from correlation_database import CorrelationDatabase
 from config import DB_PATH
-import sqlite3
+import sqlite3, subprocess
 
 warnings.filterwarnings('ignore')
 
@@ -87,9 +87,12 @@ def main():
     gen_charts = input_yes_no("Generate individual charts? (y/n): ") == 'y'
     gen_heatmaps = input_yes_no("Generate heatmaps? (y/n): ") == 'y'
     save_corr_csv = input_yes_no("Save correlation CSV? (y/n): ") == 'y'
+    tweak = input_yes_no("Do you want to tweak indicator settings? (y/n): ") == 'y'
     symbol = input_with_default("Enter symbol (e.g., 'BTCUSDT'): ", "BTCUSDT").upper()
     timeframe = input_with_default("Enter timeframe (e.g., '1w'): ", "1w")
     print(f"Symbol: {symbol}, Timeframe: {timeframe}")
+    if tweak:
+        subprocess.run([sys.executable, 'tweak-indicator.py', symbol, timeframe])
     data, is_rev, db_fn = load_data(symbol, timeframe)
     if not preview_database(DB_PATH):
         while True:
@@ -154,7 +157,6 @@ def main():
     lag_sec = (future_dt - latest_date).total_seconds()
     lag_periods = int(lag_sec / interval_sec)
     if lag_periods <=0 or lag_periods > max_lag: sys.exit(1)
-    # Removed perform_linear_regression and advanced_price_prediction function calls
     print("Script completed successfully.")
 
 if __name__=="__main__":
