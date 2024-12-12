@@ -77,6 +77,16 @@ def create_tables(conn):
         conn.commit()
     except sqlite3.Error as e:
         print(f"SQLite table creation error: {e}")
+        
+def initialize_database(db_path):
+    conn = create_connection(db_path)
+    if conn:
+        create_tables(conn)
+        conn.close()
+    else:
+        print("Failed to initialize the database.")
+
+     
 
 def insert_indicator_configs(conn, indicator_name, configs):
     try:
@@ -156,4 +166,5 @@ def main():
         conn.close()
 
 if __name__ == "__main__":
-    main()
+    db_path = "database.db"
+    initialize_database(db_path)   
