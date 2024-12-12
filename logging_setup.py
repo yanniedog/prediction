@@ -19,6 +19,27 @@ def configure_logging(log_file='prediction.log'):
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
+        # Suppress unwanted logs
+        logging.getLogger('matplotlib').setLevel(logging.WARNING)
+        logging.getLogger('font_manager').setLevel(logging.WARNING)
+
+        # Redirect print to both console and log file
+        class StreamToLogger:
+            def __init__(self, stream, log_func):
+                self.stream = stream
+                self.log_func = log_func
+
+            def write(self, msg):
+                if msg.strip():
+                    self.log_func(msg.strip())
+                self.stream.write(msg)
+
+            def flush(self):
+                self.stream.flush()
+
+        sys.stdout = StreamToLogger(sys.stdout, logger.info)
+        sys.stderr = StreamToLogger(sys.stderr, logger.error)
+
         # Handle uncaught exceptions
         def exception_handler(exc_type, exc_value, exc_traceback):
             if not issubclass(exc_type, KeyboardInterrupt):
