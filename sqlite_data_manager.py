@@ -3,14 +3,20 @@ import sqlite3
 from pathlib import Path
 import pandas as pd
 
+DB_PATH = Path('database/klines.db')
+
 def create_connection(db_file):
+    """Create a SQLite database connection."""
     try:
-        return sqlite3.connect(db_file)
+        conn = sqlite3.connect(db_file)
+        print(f"Connected to SQLite database at {db_file}. SQLite version: {sqlite3.version}")
+        return conn
     except sqlite3.Error as e:
         print(f"SQLite connection error: {e}")
         return None
 
 def create_tables(conn):
+    """Create necessary tables in the SQLite database."""
     try:
         cursor = conn.cursor()
         tables = {
@@ -63,23 +69,30 @@ def create_tables(conn):
                     UNIQUE(symbol_id, timeframe_id, indicator_id, lag)
                 );"""
         }
-        for table, query in tables.items():
-            cursor.execute(query)
 
+        for table_name, ddl in tables.items():
+            cursor.execute(ddl)
+            print(f"Table '{table_name}' ensured in database.")
+
+        # Create indexes to optimize queries
         indexes = [
             "CREATE INDEX IF NOT EXISTS idx_open_time ON klines (open_time);",
             "CREATE INDEX IF NOT EXISTS idx_close_time ON klines (close_time);",
             "CREATE INDEX IF NOT EXISTS idx_correlation_computed ON klines (correlation_computed);",
             "CREATE INDEX IF NOT EXISTS idx_correlations ON correlations (symbol_id, timeframe_id, indicator_id, lag);"
         ]
+
         for idx_query in indexes:
             cursor.execute(idx_query)
+            print(f"Index created or already exists: {idx_query.split()[2]}")
 
         conn.commit()
+        print("All tables and indexes are set up successfully.")
     except sqlite3.Error as e:
         print(f"SQLite table creation error: {e}")
 
 def initialize_database(db_path):
+    """Initialize the SQLite database by creating tables."""
     conn = create_connection(db_path)
     if conn:
         create_tables(conn)
@@ -88,18 +101,20 @@ def initialize_database(db_path):
         print("Failed to initialize the database.")
 
 def insert_indicator_configs(conn, indicator_name, configs):
+    """Insert indicator configurations into the indicators table."""
     try:
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
         for config in configs:
-            config_name = f"{indicator_name}_"
-            config_name += "_".join([f"{k}{v}" for k, v in config.items()])
+            config_name = f"{indicator_name}_" + "_".join([f"{k}{v}" for k, v in config.items()])
             cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (config_name,))
         conn.commit()
+        print(f"Inserted {len(configs)+1} configurations for indicator '{indicator_name}'.")
     except sqlite3.Error as e:
         print(f"SQLite insertion error: {e}")
 
 def insert_klines(conn, df, symbol, timeframe):
+    """Insert kline data into the klines table."""
     try:
         required_columns = [
             'open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time',
@@ -140,11 +155,12 @@ def insert_klines(conn, df, symbol, timeframe):
 
         cursor.executemany(insert_query, data)
         conn.commit()
-        print(f"Successfully inserted {len(data)} records into klines.")
+        print(f"Successfully inserted {len(data)} records into 'klines'.")
     except (sqlite3.Error, ValueError) as e:
         print(f"SQLite insertion error: {e}")
 
 def fetch_correlations(conn, symbol, timeframe, indicator_name):
+    """Fetch existing correlations for a specific indicator."""
     try:
         cursor = conn.cursor()
         query = """
@@ -162,6 +178,7 @@ def fetch_correlations(conn, symbol, timeframe, indicator_name):
         return []
 
 def save_to_sqlite(df, db_path, symbol, timeframe):
+    """Save kline DataFrame to SQLite database."""
     conn = create_connection(db_path)
     if conn:
         insert_klines(conn, df, symbol, timeframe)
@@ -170,8 +187,8 @@ def save_to_sqlite(df, db_path, symbol, timeframe):
         print("Cannot connect to the database.")
 
 def main():
-    db_path = "database/klines.db"
-    initialize_database(db_path)
+    """Initialize the database when running this script directly."""
+    initialize_database(DB_PATH)
 
 if __name__ == "__main__":
     main()
