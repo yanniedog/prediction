@@ -81,6 +81,12 @@ def create_tables(conn):
     except sqlite3.Error as e:
         print(f"Error creating tables: {e}")
 
+def initialize_database(db_path):
+    conn = create_connection(db_path)
+    if conn:
+        create_tables(conn)
+        conn.close()
+
 if __name__ == "__main__":
     DB_PATH = "correlation_database.db"
     db_file = Path(DB_PATH)
@@ -88,10 +94,5 @@ if __name__ == "__main__":
     if not db_file.exists():
         print("Database not found. Creating a new one...")
 
-    conn = create_connection(DB_PATH)
-    if conn:
-        create_tables(conn)
-        conn.close()
-        print("Database initialized successfully.")
-    else:
-        print("Failed to initialize the database.")
+    initialize_database(DB_PATH)
+    print("Database initialized successfully.")
