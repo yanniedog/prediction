@@ -5,9 +5,6 @@ import talib as ta
 import pandas_ta as pta
 
 def z_score(x):
-    """
-    Calculate the z-score for a given array.
-    """
     mean = np.mean(x)
     std = np.std(x)
     if std == 0:
@@ -173,5 +170,45 @@ def compute_all_indicators(data):
     data = compute_eyeX_MFV_support_resistance(data)
     for k, v in indicators.items():
         if v is not None: data[k] = v
+    data.dropna(inplace=True)
+    return data
+
+def compute_configured_indicators(data, indicators):
+    for indicator_name in indicators:
+        if '_' not in indicator_name:
+            # Default indicator without parameters
+            if indicator_name not in data.columns:
+                # Compute and add to DataFrame
+                # Reuse compute_all_indicators for default indicators
+                # To prevent duplication, we skip here
+                pass
+            continue
+        parts = indicator_name.split('_')
+        base_indicator = parts[0]
+        params = {}
+        for part in parts[1:]:
+            key = ''.join(filter(str.isalpha, part))
+            value = ''.join(filter(str.isdigit, part))
+            if key and value:
+                params[key] = int(value)
+        # Compute based on base_indicator and params
+        if base_indicator == 't3':
+            timeperiod = params.get('timeperiod', 5)
+            vfactor = params.get('vfactor', 0.7)
+            column_name = indicator_name
+            data[column_name] = ta.T3(data['close'], timeperiod=timeperiod, vfactor=vfactor)
+        elif base_indicator == 'sma':
+            timeperiod = params.get('timeperiod', 14)
+            column_name = indicator_name
+            data[column_name] = ta.SMA(data['close'], timeperiod=timeperiod)
+        # Add similar blocks for other parameterized indicators as needed
+        # Example for 'ema_timeperiod10':
+        elif base_indicator == 'ema':
+            timeperiod = params.get('timeperiod', 14)
+            column_name = indicator_name
+            data[column_name] = ta.EMA(data['close'], timeperiod=timeperiod)
+        # Handle other indicators similarly...
+        else:
+            print(f"Unknown indicator base: {base_indicator}. Skipping.")
     data.dropna(inplace=True)
     return data
