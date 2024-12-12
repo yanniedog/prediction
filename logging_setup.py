@@ -1,16 +1,18 @@
-# logging_setup.py
 import logging
 import sys
 from pathlib import Path
 import inspect
 
-class CustomFormatter(logging.Formatter):
+class TaskAwareFormatter(logging.Formatter):
     def format(self, record):
-        # Update the record to include the actual source filename, function, and line
-        frame = inspect.stack()[8]  # Adjust the index to find the originating caller
-        record.filename = frame.filename.split('/')[-1] if frame.filename else record.filename
-        record.funcName = frame.function
-        record.lineno = frame.lineno
+        # Trace the actual caller in the stack to avoid capturing the logging library frames
+        for frame in inspect.stack()[::-1]:
+            module = inspect.getmodule(frame[0])
+            if module and not module.__name__.startswith('logging'):
+                record.filename = Path(module.__file__).name
+                record.funcName = frame.function
+                record.lineno = frame.lineno
+                break
         return super().format(record)
 
 def configure_logging(log_file='prediction.log'):
@@ -20,18 +22,13 @@ def configure_logging(log_file='prediction.log'):
     log_path = Path.cwd() / log_file
 
     try:
-        # Configure file handler
         file_handler = logging.FileHandler(log_path, 'w')
         file_handler.setLevel(logging.DEBUG)
-        formatter = CustomFormatter('%(levelname)s - [%(filename)s:%(lineno)d(%(funcName)s)]: %(message)s')
+        formatter = TaskAwareFormatter('%(levelname)s - [%(filename)s:%(lineno)d(%(funcName)s)]: %(message)s')
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
-        # Suppress unwanted logs
-        logging.getLogger('matplotlib').setLevel(logging.WARNING)
-        logging.getLogger('font_manager').setLevel(logging.WARNING)
-
-        # Redirect print to both console and log file
+        # Redirect stdout and stderr to logger
         class StreamToLogger:
             def __init__(self, stream, log_func):
                 self.stream = stream
@@ -48,13 +45,14 @@ def configure_logging(log_file='prediction.log'):
         sys.stdout = StreamToLogger(sys.stdout, logger.info)
         sys.stderr = StreamToLogger(sys.stderr, logger.error)
 
+        # Suppress unwanted logs
+        logging.getLogger('matplotlib').setLevel(logging.WARNING)
+        logging.getLogger('font_manager').setLevel(logging.WARNING)
+
         # Handle uncaught exceptions
         def exception_handler(exc_type, exc_value, exc_traceback):
             if not issubclass(exc_type, KeyboardInterrupt):
-                logger.error(
-                    "Uncaught exception",
-                    exc_info=(exc_type, exc_value, exc_traceback),
-                )
+                logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
 
         sys.excepthook = exception_handler
 
