@@ -154,7 +154,7 @@ def main():
                 log_and_print("Failed to connect to the database to fetch configurations.", "error")
                 sys.exit(1)
             cursor = conn.cursor()
-            cursor.execute("SELECT name FROM indicators WHERE name LIKE '%\\_%'", (sqlite3.escape_like('%\\_%'),))
+            cursor.execute("SELECT name FROM indicators WHERE name LIKE ? ESCAPE '\\'", ('%\\_%',))
             rows = cursor.fetchall()
             conn.close()
             configurations = [row[0] for row in rows]
