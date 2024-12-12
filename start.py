@@ -72,11 +72,15 @@ def parse_date_time_input(user_input: str, ref_dt: datetime) -> datetime:
 
 def input_with_default(prompt: str, default: str) -> str:
     val = input(prompt).strip()
-    return val if val else default
+    final_val = val if val else default
+    logger.info(f"User Input: {prompt.strip()} -> {final_val}")
+    return final_val
 
 def input_yes_no(prompt: str, default: str = 'y') -> str:
     val = input(prompt).strip().lower()
-    return 'y' if val.startswith('y') else 'n' if val.startswith('n') else default
+    final_val = 'y' if val.startswith('y') else 'n' if val.startswith('n') else default
+    logger.info(f"User Input: {prompt.strip()} -> {final_val}")
+    return final_val
 
 def input_yes_no_no_default(prompt: str) -> str:
     while True:
