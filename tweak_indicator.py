@@ -2,8 +2,10 @@
 import sys, sqlite3, itertools
 from pathlib import Path
 import pandas as pd
+import numpy as np
 from indicators import compute_all_indicators
 from config import DB_PATH
+from sqlite_data_manager import initialize_database
 
 def create_connection(db_file):
     try:
@@ -14,11 +16,11 @@ def create_connection(db_file):
 
 def fetch_available_indicators():
     dummy_data = pd.DataFrame({
-        'open': [1, 2, 3, 4, 5],
-        'high': [2, 3, 4, 5, 6],
-        'low': [1, 1.5, 2, 2.5, 3],
-        'close': [2, 2.5, 3, 3.5, 4],
-        'volume': [100, 150, 200, 250, 300]
+        'open': np.random.random(200) * 100,
+        'high': np.random.random(200) * 100,
+        'low': np.random.random(200) * 100,
+        'close': np.random.random(200) * 100,
+        'volume': np.random.randint(1, 1000, 200)
     })
     try:
         processed_data = compute_all_indicators(dummy_data)
@@ -53,25 +55,21 @@ def main():
     if len(sys.argv) < 3:
         print("Usage: python tweak-indicator.py <SYMBOL> <TIMEFRAME>")
         sys.exit(1)
-
     symbol, timeframe = sys.argv[1:3]
+    initialize_database(DB_PATH)
     indicators = fetch_available_indicators()
     if not indicators:
         print("No indicators available. Check `indicators.py` or `compute_all_indicators`.")
         sys.exit(1)
-
     print("Available indicators:")
     for idx, indicator in enumerate(indicators, 1):
         print(f"{idx}. {indicator}")
-
-    choice = int(input("Select an indicator by number: ")) - 1
-    if choice < 0 or choice >= len(indicators):
+    choice = input("Select an indicator by number: ").strip()
+    if not choice.isdigit() or int(choice) < 1 or int(choice) > len(indicators):
         print("Invalid choice.")
         sys.exit(1)
-
-    selected_indicator = indicators[choice]
+    selected_indicator = indicators[int(choice) - 1]
     print(f"Selected indicator: {selected_indicator}")
-
     default_params = {"timeperiod": 14}
     configurations = generate_configurations(default_params.keys(), default_params)
     insert_tweaked_configs(selected_indicator, configurations)

@@ -13,8 +13,7 @@ from datetime import datetime
 from config import DB_PATH
 from indicators import compute_all_indicators
 from tweak_indicator import fetch_available_indicators, insert_tweaked_configs, generate_configurations
-
-
+from sqlite_data_manager import create_connection
 
 logger = logging.getLogger()
 
@@ -62,33 +61,59 @@ def run_tweak_indicator(symbol: str, timeframe: str):
     if not indicators:
         log_and_print("No indicators available. Check `indicators.py` or `compute_all_indicators`.", "error")
         sys.exit(1)
-
     log_and_print("Available indicators:")
     for idx, indicator in enumerate(indicators, 1):
         log_and_print(f"{idx}. {indicator}")
-
     choice = input("Select an indicator by number: ").strip()
     if not choice.isdigit() or int(choice) < 1 or int(choice) > len(indicators):
         log_and_print("Invalid choice. Exiting.", "error")
         sys.exit(1)
-
     selected_indicator = indicators[int(choice) - 1]
     log_and_print(f"Selected indicator: {selected_indicator}")
-
     default_params = {"timeperiod": 14}
     configurations = generate_configurations(default_params.keys(), default_params)
     insert_tweaked_configs(selected_indicator, configurations)
     log_and_print(f"Configurations for {selected_indicator} added to the database.")
+    return selected_indicator
+
+def get_selected_indicator_configs(indicator_name: str):
+    conn = create_connection(DB_PATH)
+    if not conn:
+        log_and_print("Database connection failed.", "error")
+        sys.exit(1)
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM indicators WHERE name LIKE ?", (f"{indicator_name}_%",))
+    rows = cursor.fetchall()
+    conn.close()
+    return [row[0] for row in rows]
 
 def main():
     delete_previous_output()
-
+    selected_indicator = None
     if input_yes_no("Do you want to tweak indicator settings? (y/n): ") == 'y':
         symbol = input_with_default("Enter symbol (e.g., 'BTCUSDT'): ", "BTCUSDT")
         timeframe = input_with_default("Enter timeframe (e.g., '1w'): ", "1w")
-        run_tweak_indicator(symbol, timeframe)
-
-    log_and_print("Additional main logic goes here.")
+        selected_indicator = run_tweak_indicator(symbol, timeframe)
+    log_and_print("Proceeding with main execution.")
+    # Continue with price data steps...
+    # After price data steps, handle correlation computations
+    if selected_indicator:
+        configs = get_selected_indicator_configs(selected_indicator)
+        if not configs:
+            log_and_print("No configurations found for the selected indicator.", "error")
+            sys.exit(1)
+        # Proceed to calculate correlations only for the selected indicator's configurations
+        from correlation_utils import load_or_calculate_correlations
+        # Assuming you have the data loaded as 'data' DataFrame
+        from load_data import load_data
+        data, is_rev, db_fn = load_data(symbol, timeframe)
+        if data.empty:
+            log_and_print("No data available for correlation computation.", "error")
+            sys.exit(1)
+        indicators_to_process = configs
+        load_or_calculate_correlations(data, indicators_to_process, max_lag=30, reverse=False, symbol=symbol, timeframe=timeframe)
+        log_and_print("Correlation computations completed for the selected indicator configurations.")
+    log_and_print("Execution finished.")
 
 if __name__ == "__main__":
     main()
