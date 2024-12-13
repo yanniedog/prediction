@@ -128,13 +128,17 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                     data[indicator_name] = result
             except Exception as e:
                 logger.error(f"Error computing indicator '{indicator_name}': {e}")
-        elif indicator_name.lower() in pta.available_indicators():
+        elif indicator_name.lower() in [i.lower() for i in pta.indicators()]:
             try:
                 clean_params = {k: v for k, v in params.items() if k != 'input_columns'}
                 pta_func = getattr(pta, indicator_name.lower())
                 inputs = {key: data[key] for key in input_columns if key in data.columns}
-                result = pta_func(**inputs, **clean_params)
-                data[indicator_name] = result
+                result = pta_func(**clean_params, **inputs)
+                if isinstance(result, pd.DataFrame):
+                    for col in result.columns:
+                        data[col] = result[col]
+                else:
+                    data[indicator_name] = result
             except Exception as e:
                 logger.error(f"Error computing indicator '{indicator_name}': {e}")
         else:
