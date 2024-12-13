@@ -1,4 +1,4 @@
-# copyscripts.py
+# COPYSCRIPTS_SELECTIVE.py
 import os
 import sys
 import argparse

@@ -2,10 +2,10 @@
 import shutil, zipfile, os
 from pathlib import Path
 from datetime import datetime
-import logging  # Import logging
+import logging
 
 def backup_cleanup():
-    logger = logging.getLogger(__name__)  # Get a module-specific logger
+    logger = logging.getLogger(__name__)
     cwd = Path.cwd()
     archive_dir = Path(r"C:\code\(archive) prediction\automated_zip_backups")
     archive_dir.mkdir(parents=True, exist_ok=True)

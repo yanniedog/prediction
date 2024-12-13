@@ -22,7 +22,7 @@ def main():
     delete_old_logs(current_dir)
 
     log_file = f"{current_dir.name}_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
-    configure_logging(log_file)  # Centralized logging configuration
+    configure_logging(log_file)
     logger = logging.getLogger()
 
     try:

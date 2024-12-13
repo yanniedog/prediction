@@ -1,7 +1,7 @@
 # backup_utils.py
 import sys
 import logging
-from backup_cleanup import backup_cleanup  # Import the function directly
+from backup_cleanup import backup_cleanup
 
 def run_backup_cleanup():
     logger = logging.getLogger(__name__)

@@ -15,27 +15,24 @@ class TaskAwareFormatter(logging.Formatter):
                 break
         return super().format(record)
 
-# Global flag to ensure logging is configured only once
 _configured = False
 
 def configure_logging(log_file='prediction.log'):
     global _configured
     if _configured:
-        return  # Logging is already configured
+        return
 
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
     log_path = Path.cwd() / log_file
 
     try:
-        # File Handler
         file_handler = logging.FileHandler(log_path, 'w')
         file_handler.setLevel(logging.DEBUG)
         formatter = TaskAwareFormatter('%(levelname)s - [%(filename)s:%(lineno)d(%(funcName)s)]: %(message)s')
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
-        # Redirect stdout and stderr to logging
         class StreamToLogger:
             def __init__(self, stream, log_func):
                 self.stream = stream
@@ -52,11 +49,9 @@ def configure_logging(log_file='prediction.log'):
         sys.stdout = StreamToLogger(sys.stdout, logger.info)
         sys.stderr = StreamToLogger(sys.stderr, logger.error)
 
-        # Suppress less important logs from third-party libraries
         logging.getLogger('matplotlib').setLevel(logging.WARNING)
         logging.getLogger('font_manager').setLevel(logging.WARNING)
 
-        # Handle uncaught exceptions
         def exception_handler(exc_type, exc_value, exc_traceback):
             if not issubclass(exc_type, KeyboardInterrupt):
                 logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
@@ -64,7 +59,7 @@ def configure_logging(log_file='prediction.log'):
         sys.excepthook = exception_handler
 
         logger.info(f"Logging configured. Log file at: {log_path.resolve()}")
-        _configured = True  # Set the flag to prevent reconfiguration
+        _configured = True
         return log_path
 
     except Exception as e:

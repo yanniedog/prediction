@@ -176,11 +176,7 @@ def compute_all_indicators(data):
 def compute_configured_indicators(data, indicators):
     for indicator_name in indicators:
         if '_' not in indicator_name:
-            # Default indicator without parameters
             if indicator_name not in data.columns:
-                # Compute and add to DataFrame
-                # Reuse compute_all_indicators for default indicators
-                # To prevent duplication, we skip here
                 pass
             continue
         parts = indicator_name.split('_')
@@ -191,7 +187,6 @@ def compute_configured_indicators(data, indicators):
             value = ''.join(filter(str.isdigit, part))
             if key and value:
                 params[key] = int(value)
-        # Compute based on base_indicator and params
         if base_indicator == 't3':
             timeperiod = params.get('timeperiod', 5)
             vfactor = params.get('vfactor', 0.7)
@@ -201,13 +196,10 @@ def compute_configured_indicators(data, indicators):
             timeperiod = params.get('timeperiod', 14)
             column_name = indicator_name
             data[column_name] = ta.SMA(data['close'], timeperiod=timeperiod)
-        # Add similar blocks for other parameterized indicators as needed
-        # Example for 'ema_timeperiod10':
         elif base_indicator == 'ema':
             timeperiod = params.get('timeperiod', 14)
             column_name = indicator_name
             data[column_name] = ta.EMA(data['close'], timeperiod=timeperiod)
-        # Handle other indicators similarly...
         else:
             print(f"Unknown indicator base: {base_indicator}. Skipping.")
     data.dropna(inplace=True)

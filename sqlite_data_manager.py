@@ -77,7 +77,6 @@ def create_tables(conn):
             cursor.execute(ddl)
             print(f"Table '{table_name}' ensured in database.")
 
-        # Create indexes to optimize queries
         indexes = [
             "CREATE INDEX IF NOT EXISTS idx_open_time ON klines (open_time);",
             "CREATE INDEX IF NOT EXISTS idx_close_time ON klines (close_time);",
@@ -111,9 +110,7 @@ def insert_indicator_configs(conn, indicator_name, configs):
     """
     try:
         cursor = conn.cursor()
-        # Insert the base indicator if not exists
         cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
-        # Insert each configuration
         for config in configs:
             config_name = f"{indicator_name}_" + "_".join([f"{k}{v}" for k, v in config.items()])
             cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (config_name,))
@@ -137,21 +134,17 @@ def insert_klines(conn, df, symbol, timeframe):
             raise ValueError(f"DataFrame missing required columns: {set(required_columns) - set(df.columns)}")
 
         cursor = conn.cursor()
-        # Insert symbol and get its id
         cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol,))
         cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
         symbol_id = cursor.fetchone()[0]
 
-        # Insert timeframe and get its id
         cursor.execute("INSERT OR IGNORE INTO timeframes (timeframe) VALUES (?)", (timeframe,))
         cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
         timeframe_id = cursor.fetchone()[0]
 
-        # Format datetime fields
         df['open_time'] = pd.to_datetime(df['open_time']).dt.strftime('%Y-%m-%d %H:%M:%S')
         df['close_time'] = pd.to_datetime(df['close_time']).dt.strftime('%Y-%m-%d %H:%M:%S')
 
-        # Prepare data for insertion
         insert_query = """
             INSERT INTO klines (
                 symbol_id, timeframe_id, open_time, open, high, low, close, volume, close_time,

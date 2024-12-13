@@ -8,7 +8,7 @@ import shutil
 import pandas as pd
 import numpy as np
 import matplotlib
-matplotlib.use('Agg')  # Use non-interactive backend
+matplotlib.use('Agg')
 from pathlib import Path
 from datetime import datetime
 from config import DB_PATH
@@ -16,8 +16,8 @@ from sqlite_data_manager import initialize_database, create_connection, create_t
 from tweak_indicator import fetch_available_indicators, insert_indicator_configs, generate_configurations
 from correlation_utils import load_or_calculate_correlations
 from indicators import compute_all_indicators, compute_configured_indicators
+import indicators
 
-# Configure logging
 def configure_logging(log_file):
     """Configure logging settings."""
     logging.basicConfig(
@@ -83,8 +83,7 @@ def run_tweak_indicator(symbol: str, timeframe: str):
     """
     Run the tweak_indicator.py script to generate configurations.
     """
-    # Fetch available indicators
-    available_indicators = fetch_available_indicators()
+    available_indicators = fetch_available_indicators(indicators)
     if not available_indicators:
         log_and_print("No indicators available. Check `indicators.py` or `compute_all_indicators`.", "error")
         sys.exit(1)
@@ -101,17 +100,14 @@ def run_tweak_indicator(symbol: str, timeframe: str):
     selected_indicator = available_indicators[int(choice) - 1]
     log_and_print(f"Selected indicator: {selected_indicator}")
     
-    # Define default parameters (modify as per your indicators' requirements)
     default_params = {"timeperiod": 14}
     
-    # Generate configurations based on default parameters
     configurations = generate_configurations(default_params.keys(), default_params)
     if not configurations:
         log_and_print(f"No configurations generated for '{selected_indicator}'.", "error")
         sys.exit(1)
     log_and_print(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
     
-    # Insert configurations into the database
     conn = create_connection()
     if not conn:
         log_and_print("Failed to connect to the database.", "error")
@@ -128,42 +124,35 @@ def get_selected_indicator_configs(indicator_name: str):
     if not conn:
         log_and_print("Database connection failed.", "error")
         sys.exit(1)
-    create_tables(conn)  # Ensure tables are present
+    create_tables(conn)
     cursor = conn.cursor()
-    # Fetch indicator configurations that include parameters (assuming they have an underscore)
     cursor.execute("SELECT name FROM indicators WHERE name LIKE ? ESCAPE '\\'", (f"%\\_%",))
     rows = cursor.fetchall()
     conn.close()
-    # Filter configurations that start with the selected_indicator followed by '_'
     return [row[0] for row in rows if row[0].startswith(indicator_name + "_")]
 
 def main():
     """Main execution flow."""
-    # Configure logging
     log_dir = Path('logs')
     log_dir.mkdir(exist_ok=True)
     log_file = log_dir / f"execution_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
     configure_logging(log_file)
 
     try:
-        # Initialize database
         initialize_database(DB_PATH)
         log_and_print("Database initialized successfully.")
 
-        # Delete previous outputs if user chooses
         delete_previous_output()
 
         selected_indicator = None
         symbol = None
         timeframe = None
 
-        # Prompt user to tweak indicator settings
         if input_yes_no("Do you want to tweak indicator settings? (y/n): ") == 'y':
             symbol = input_with_default("Enter symbol (e.g., 'BTCUSDT'): ", "BTCUSDT")
             timeframe = input_with_default("Enter timeframe (e.g., '1w'): ", "1w")
             log_and_print(f"Symbol: {symbol}, Timeframe: {timeframe}")
 
-            # Run tweak_indicator.py to generate configurations
             selected_indicator = run_tweak_indicator(symbol, timeframe)
 
         else:
@@ -171,8 +160,6 @@ def main():
 
         log_and_print("Proceeding with main execution.")
 
-        # Continue with price data steps...
-        # Example: Download data
         from binance_historical_data_downloader import download_binance_data
         if symbol and timeframe:
             download_binance_data(symbol, timeframe, DB_PATH)
@@ -182,20 +169,17 @@ def main():
             sys.exit(1)
 
         if selected_indicator:
-            # Retrieve configurations for the selected indicator
             configs = get_selected_indicator_configs(selected_indicator)
             if not configs:
                 log_and_print("No configurations found for the selected indicator.", "error")
                 sys.exit(1)
 
-            # Load data from SQLite
             from load_data import load_data as load_db_data
             data, is_rev, db_fn = load_db_data(symbol, timeframe)
             if data.empty:
                 log_and_print("No data available for the selected symbol and timeframe.", "error")
                 sys.exit(1)
 
-            # Compute default indicators
             try:
                 data = compute_all_indicators(data)
                 log_and_print("Default indicators computed successfully.")
@@ -203,7 +187,6 @@ def main():
                 log_and_print(f"Error computing default indicators: {e}", "error")
                 sys.exit(1)
 
-            # Compute configured indicators
             try:
                 data = compute_configured_indicators(data, configs)
                 log_and_print("Configured indicators computed successfully.")
@@ -211,7 +194,6 @@ def main():
                 log_and_print(f"Error computing configured indicators: {e}", "error")
                 sys.exit(1)
 
-            # Perform correlation computations
             load_or_calculate_correlations(
                 data=data,
                 indicators=configs,
