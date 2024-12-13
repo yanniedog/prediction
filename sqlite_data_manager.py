@@ -8,21 +8,19 @@ from config import DB_PATH
 
 logger = logging.getLogger()
 
-def create_connection():
-    """Create a SQLite database connection and return the connection object."""
+def create_connection(db_path=DB_PATH):
     try:
-        conn = sqlite3.connect(DB_PATH)
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute("SELECT sqlite_version();")
         version = cursor.fetchone()[0]
-        print(f"Connected to SQLite database at {DB_PATH}. SQLite version: {version}")
+        print(f"Connected to SQLite database at {db_path}. SQLite version: {version}")
         return conn
     except sqlite3.Error as e:
         print(f"SQLite connection error: {e}")
         return None
 
 def create_tables(conn):
-    """Create necessary tables in the SQLite database."""
     try:
         cursor = conn.cursor()
         tables = {
@@ -98,8 +96,7 @@ def create_tables(conn):
         print(f"SQLite table creation error: {e}")
 
 def initialize_database(db_path=DB_PATH):
-    """Initialize the SQLite database by creating tables."""
-    conn = create_connection()
+    conn = create_connection(db_path)
     if conn:
         create_tables(conn)
         conn.close()
@@ -107,10 +104,6 @@ def initialize_database(db_path=DB_PATH):
         print("Failed to initialize the database.")
 
 def insert_indicator_configs(conn, indicator_name, configs):
-    """
-    Insert indicator configurations into the indicators table.
-    Each configuration name follows the pattern 'indicator_paramvalue', e.g., 'sma_timeperiod14'.
-    """
     try:
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
@@ -123,11 +116,6 @@ def insert_indicator_configs(conn, indicator_name, configs):
         print(f"SQLite insertion error: {e}")
 
 def insert_klines(conn, df, symbol, timeframe):
-    """
-    Insert kline data into the klines table.
-    Assumes df has columns: open_time, open, high, low, close, volume, close_time,
-    quote_asset_volume, number_of_trades, taker_buy_base_asset_volume, taker_buy_quote_asset_volume
-    """
     try:
         required_columns = [
             'open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time',
@@ -173,10 +161,10 @@ def insert_klines(conn, df, symbol, timeframe):
         print(f"SQLite insertion error: {e}")
 
 def save_to_sqlite(df, db_path, symbol, timeframe):
-    """Save kline DataFrame to SQLite database."""
-    conn = create_connection()
+    conn = create_connection(db_path)
     if conn:
         insert_klines(conn, df, symbol, timeframe)
         conn.close()
     else:
         print("Cannot connect to the database.")
+
