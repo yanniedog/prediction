@@ -4,25 +4,15 @@ See the error I receive here:
 
 ====================
 
-2024-12-14 00:24:52,813 - INFO - [start.py:136(main)]: Proceeding with main execution.
-2024-12-14 00:24:54,980 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-14 00:24:55,299 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&limit=1&startTime=0 HTTP/11" 200 176
-2024-12-14 00:24:55,315 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-14 00:24:55,545 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/time HTTP/11" 200 28
-2024-12-14 00:24:55,561 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-14 00:24:55,784 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&startTime=1502668800000&endTime=1734096295073&limit=1000 HTTP/11" 200 26459
-2024-12-14 00:24:55,922 - INFO - [start.py:141(main)]: Price data download and insertion completed.
-2024-12-14 00:24:55,961 - ERROR - [indicators.py:147(compute_custom_indicator)]: Error processing custom indicator 'vortex': module 'pandas_ta' has no attribute 'available_indicators'
-2024-12-14 00:24:55,961 - ERROR - [indicators.py:147(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'available_indicators'
-2024-12-14 00:24:55,972 - ERROR - [indicators.py:147(compute_custom_indicator)]: Error processing custom indicator 'fi': module 'pandas_ta' has no attribute 'available_indicators'
-2024-12-14 00:24:55,974 - ERROR - [indicators.py:147(compute_custom_indicator)]: Error processing custom indicator 'kc': module 'pandas_ta' has no attribute 'available_indicators'
-2024-12-14 00:24:55,980 - ERROR - [indicators.py:147(compute_custom_indicator)]: Error processing custom indicator 'rvi': module 'pandas_ta' has no attribute 'available_indicators'
-2024-12-14 00:24:55,984 - ERROR - [indicators.py:147(compute_custom_indicator)]: Error processing custom indicator 'tsi': module 'pandas_ta' has no attribute 'available_indicators'
-2024-12-14 00:24:56,075 - INFO - [start.py:157(main)]: Default indicators computed successfully.
-2024-12-14 00:24:56,081 - INFO - [start.py:164(main)]: Configured indicators computed successfully.
-2024-12-14 00:24:56,084 - INFO - [start.py:165(main)]: Computing correlations.
-2024-12-14 00:24:56,139 - INFO - [start.py:174(main)]: Correlation computations completed for the selected indicator configurations.
-2024-12-14 00:24:56,139 - INFO - [start.py:181(main)]: Execution finished successfully.
+2024-12-14 00:29:08,550 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
+2024-12-14 00:29:08,779 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/time HTTP/11" 200 28
+2024-12-14 00:29:08,782 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
+2024-12-14 00:29:09,044 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&startTime=1502668800000&endTime=1734096548300&limit=1000 HTTP/11" 200 26461
+2024-12-14 00:29:09,161 - INFO - [start.py:141(main)]: Price data download and insertion completed.
+2024-12-14 00:29:09,178 - INFO - [start.py:158(main)]: Default indicators computation skipped.
+2024-12-14 00:29:09,181 - INFO - [start.py:165(main)]: Configured indicators computed successfully.
+2024-12-14 00:29:09,181 - INFO - [start.py:166(main)]: Computing correlations.
+2024-12-14 00:29:09,193 - ERROR - [start.py:177(main)]: Error computing configured indicators or correlations: 'rsi'
 
 
 ====================
@@ -560,7 +550,7 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                     data[indicator_name] = result
             except Exception as e:
                 logger.error(f"Error computing indicator '{indicator_name}': {e}")
-        elif indicator_name.lower() in [i.lower() for i in pta.available_indicators()]:
+        elif indicator_name.lower() in [i.lower() for i in pta.indicators()]:
             try:
                 clean_params = {k: v for k, v in params.items() if k != 'input_columns'}
                 pta_func = getattr(pta, indicator_name.lower())
@@ -1357,8 +1347,7 @@ def main():
                 sys.exit(1)
 
             try:
-                data = compute_all_indicators(data, db_path=DB_PATH)
-                logger.info("Default indicators computed successfully.")
+                logger.info("Default indicators computation skipped.")
             except Exception as e:
                 logger.error(f"Error computing default indicators: {e}")
                 sys.exit(1)
@@ -1385,7 +1374,7 @@ def main():
         logger.info("Execution finished successfully.")
 
     except Exception as e:
-        logger.exception("An unexpected error occurred during execution.")
+        logger.exception("An unexpected exception occurred during execution.")
         sys.exit(1)
 
 if __name__ == "__main__":

@@ -153,8 +153,7 @@ def main():
                 sys.exit(1)
 
             try:
-                data = compute_all_indicators(data, db_path=DB_PATH)
-                logger.info("Default indicators computed successfully.")
+                logger.info("Default indicators computation skipped.")
             except Exception as e:
                 logger.error(f"Error computing default indicators: {e}")
                 sys.exit(1)
@@ -181,7 +180,7 @@ def main():
         logger.info("Execution finished successfully.")
 
     except Exception as e:
-        logger.exception("An unexpected error occurred during execution.")
+        logger.exception("An unexpected exception occurred during execution.")
         sys.exit(1)
 
 if __name__ == "__main__":
