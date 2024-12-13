@@ -41,6 +41,8 @@ def configure_logging(log_file_prefix='predictions'):
         logger.handlers.clear()
 
     logger.setLevel(logging.DEBUG)
+
+    # Correct log file naming
     log_path = Path.cwd() / f"{log_file_prefix}_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
 
     try:
