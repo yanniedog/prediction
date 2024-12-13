@@ -1,4 +1,3 @@
-# COPYSCRIPTS_SELECTIVE.py
 import os
 import sys
 import argparse
@@ -138,8 +137,8 @@ if __name__ == "__main__":
     output_filename = f"{work_dir_name}-{timestamp}.SELECTIVE"
     output_path = os.path.join(current_dir, output_filename)
     script_filename = os.path.basename(__file__).lower()
-    excluded_filenames = {script_filename, 'parsetab.py', 'backup_cleanup.py', 'backup_utils.py', 'generate_heatmaps.py', 'requirements.txt', 'copyscripts.py', 'COPYSCRIPTS_SELECTIVE.py', 'logging_setup.py' 'repair-remarks.py', 'visualization_utils.py', 'visualize_data.py', 'cspell.json', 'revert-to-gpt-scripts.py'}
-    extensions = ['.py', '.ps']
+    excluded_filenames = {script_filename, 'parsetab.py', 'backup_cleanup.py', 'backup_utils.py', 'generate_heatmaps.py', 'requirements.txt', 'copyscripts.py', 'copyscripts_selective.py', 'logging_setup.py', 'repair-remarks.py', 'visualization_utils.py', 'visualize_data.py', 'cspell.json', 'revert-to-gpt-scripts.py'}
+    extensions = ['.py', '.ps', '.json']  # Added .json here
     if args.extensions:
         extensions.extend([ext.lower() if ext.startswith('.') else f".{ext.lower()}" for ext in args.extensions])
     base_dirs = [current_dir, scripts_dir]
