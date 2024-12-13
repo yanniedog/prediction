@@ -82,13 +82,13 @@ def run_tweak_indicator(symbol: str, timeframe: str):
 
     parameters = parse_indicator_parameters(indicators, selected_indicator)
     if not parameters:
-        logger.error(f"No parameters found for '{selected_indicator}'. Using base indicator.")
+        logger.info(f"No parameters found for '{selected_indicator}'. Using base indicator.")
     else:
         logger.info(f"Parameters for '{selected_indicator}': {parameters}")
 
     configurations = generate_configurations(parameters.keys(), parameters) if parameters else []
     if not configurations:
-        logger.error(f"No configurations generated for '{selected_indicator}'. Using base indicator.")
+        logger.info(f"No configurations generated for '{selected_indicator}'. Using base indicator.")
     else:
         logger.info(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
         example_configs = configurations[:5]

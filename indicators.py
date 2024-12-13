@@ -185,7 +185,7 @@ def compute_all_indicators(data):
 
 def compute_configured_indicators(data, indicators):
     for indicator_name in indicators:
-        if '_' not in indicator_name and 'EyeX MFV S/R' not in indicator_name:
+        if '_' not in indicator_name and 'EyeX MFV S/R' not in indicator_name and indicator_name != 'obv_price_divergence':
             if indicator_name not in data.columns:
                 pass
             continue
@@ -199,6 +199,18 @@ def compute_configured_indicators(data, indicators):
             elif 'MFV S/R Bull' in indicator_name:
                 base_indicator = 'EyeX MFV S/R Bull'
                 params = {'ranges': [50,75,100,200], 'pivot_lookback':5, 'price_proximity':0.00001}
+        elif base_indicator == 'obv_price_divergence':
+            params = {
+                'method': 'Difference',
+                'obv_method': 'SMA',
+                'obv_period': 14,
+                'price_input_type': 'OHLC/4',
+                'price_method': 'SMA',
+                'price_period': 14,
+                'bearish_threshold': -0.8,
+                'bullish_threshold': 0.8,
+                'smoothing': 0.01
+            }
         else:
             for part in parts[1:]:
                 key = ''.join(filter(str.isalpha, part))
@@ -238,9 +250,22 @@ def compute_configured_indicators(data, indicators):
             price_proximity = params.get('price_proximity', 0.00001)
             column_name = indicator_name
             data = compute_eyeX_MFV_support_resistance(data, ranges=ranges, pivot_lookback=pivot_lookback, price_proximity=price_proximity)
+        elif base_indicator == 'obv_price_divergence':
+            method = params.get('method', 'Difference')
+            obv_method = params.get('obv_method', 'SMA')
+            obv_period = params.get('obv_period', 14)
+            price_input_type = params.get('price_input_type', 'OHLC/4')
+            price_method = params.get('price_method', 'SMA')
+            price_period = params.get('price_period', 14)
+            bearish_threshold = params.get('bearish_threshold', -0.8)
+            bullish_threshold = params.get('bullish_threshold', 0.8)
+            smoothing = params.get('smoothing', 0.01)
+            column_name = indicator_name
+            data = compute_obv_price_divergence(data, method=method, obv_method=obv_method, obv_period=obv_period, price_input_type=price_input_type, price_method=price_method, price_period=price_period, bearish_threshold=bearish_threshold, bullish_threshold=bullish_threshold, smoothing=smoothing)
+            logger.info(f"Computed configured indicator: {column_name}")
         else:
             logger.error(f"Unknown indicator base: {base_indicator}. Skipping.")
-        if base_indicator.startswith('EyeX'):
+        if base_indicator.startswith('EyeX') or base_indicator == 'obv_price_divergence':
             logger.info(f"Computed configured indicator: {column_name}")
     data.dropna(inplace=True)
     return data
