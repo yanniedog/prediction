@@ -1,5 +1,3 @@
-# indicators.py
-
 import logging
 import pandas as pd
 import numpy as np
@@ -13,15 +11,6 @@ from sqlite_data_manager import create_connection, fetch_indicator_configs
 logger = logging.getLogger(__name__)
 
 def z_score(x: np.ndarray) -> float:
-    """
-    Calculate the Z-score of the last element in the array.
-
-    Args:
-        x (np.ndarray): Array of numerical values.
-
-    Returns:
-        float: Z-score of the last element.
-    """
     mean = np.mean(x)
     std = np.std(x)
     if std == 0:
@@ -29,16 +18,6 @@ def z_score(x: np.ndarray) -> float:
     return (x[-1] - mean) / std
 
 def compute_obv_price_divergence(data: pd.DataFrame, params: dict) -> pd.DataFrame:
-    """
-    Compute the OBV Price Divergence indicator based on provided parameters.
-
-    Args:
-        data (pd.DataFrame): DataFrame containing 'open', 'high', 'low', 'close', 'volume'.
-        params (dict): Parameters for the OBV Price Divergence indicator.
-
-    Returns:
-        pd.DataFrame: DataFrame with the 'obv_price_divergence' column added.
-    """
     method = params.get("method", "Difference")
     obv_method = params.get("obv_method", "SMA")
     obv_period = params.get("obv_period", 14)
@@ -77,16 +56,6 @@ def compute_obv_price_divergence(data: pd.DataFrame, params: dict) -> pd.DataFra
     return data
 
 def compute_eyeX_MFV_volume(data: pd.DataFrame, params: dict) -> pd.DataFrame:
-    """
-    Compute the EyeX MFV Volume indicator based on provided parameters.
-
-    Args:
-        data (pd.DataFrame): DataFrame containing 'high', 'low', 'close', 'volume'.
-        params (dict): Parameters for the EyeX MFV Volume indicator.
-
-    Returns:
-        pd.DataFrame: DataFrame with the 'EyeX MFV Volume' column added.
-    """
     ranges = params.get("ranges", [50, 75, 100, 200])
     
     mf_multiplier = ((data['close'] - data['low']) - (data['high'] - data['close'])) / (data['high'] - data['low'])
@@ -104,16 +73,6 @@ def compute_eyeX_MFV_volume(data: pd.DataFrame, params: dict) -> pd.DataFrame:
     return data
 
 def compute_eyeX_MFV_support_resistance(data: pd.DataFrame, params: dict) -> pd.DataFrame:
-    """
-    Compute the EyeX MFV Support/Resistance Bull and Bear indicators based on provided parameters.
-
-    Args:
-        data (pd.DataFrame): DataFrame containing 'high', 'low', 'close', 'volume'.
-        params (dict): Parameters for the EyeX MFV S/R Bull indicator.
-
-    Returns:
-        pd.DataFrame: DataFrame with 'EyeX MFV S/R Bull' and 'EyeX MFV S/R Bear' columns added.
-    """
     ranges = params.get("ranges", [50, 75, 100, 200])
     pivot_lookback = params.get("pivot_lookback", 5)
     price_proximity = params.get("price_proximity", 0.00001)
@@ -156,18 +115,6 @@ def compute_eyeX_MFV_support_resistance(data: pd.DataFrame, params: dict) -> pd.
     return data
 
 def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str], db_path: str = 'indicators.db', indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
-    """
-    Compute configured indicators based on the provided list and parameters from indicator_params.json.
-
-    Args:
-        data (pd.DataFrame): The input data containing 'open', 'high', 'low', 'close', 'volume'.
-        indicators_list (List[str]): List of indicator names to compute.
-        db_path (str): Path to the SQLite database.
-        indicator_params_path (str): Path to indicator_params.json
-
-    Returns:
-        pd.DataFrame: The data with configured indicators added.
-    """
     with open(indicator_params_path, 'r') as f:
         indicator_params = json.load(f)
     
@@ -212,17 +159,6 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
     return data
 
 def compute_all_indicators(data: pd.DataFrame, db_path: str = 'indicators.db', indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
-    """
-    Compute all indicators based on the parameters defined in indicator_params.json.
-
-    Args:
-        data (pd.DataFrame): The input data containing 'open', 'high', 'low', 'close', 'volume'.
-        db_path (str): Path to the SQLite database.
-        indicator_params_path (str): Path to indicator_params.json
-
-    Returns:
-        pd.DataFrame: The data with all indicators added.
-    """
     with open(indicator_params_path, 'r') as f:
         indicator_params = json.load(f)
     
