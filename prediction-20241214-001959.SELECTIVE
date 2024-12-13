@@ -4,25 +4,24 @@ See the error I receive here:
 
 ====================
 
-2024-12-14 00:14:35,429 - INFO - [start.py:136(main)]: Proceeding with main execution.
-2024-12-14 00:14:41,780 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-14 00:14:42,077 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&limit=1&startTime=0 HTTP/11" 200 176
-2024-12-14 00:14:42,092 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-14 00:14:42,298 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/time HTTP/11" 200 28
-2024-12-14 00:14:42,314 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-14 00:14:42,533 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&startTime=1502668800000&endTime=1734095681827&limit=1000 HTTP/11" 200 26460
-2024-12-14 00:14:42,660 - INFO - [start.py:141(main)]: Price data download and insertion completed.
-2024-12-14 00:14:42,691 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'vortex': module 'pandas_ta' has no attribute 'indicators'
-2024-12-14 00:14:42,695 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
-2024-12-14 00:14:42,698 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'fi': module 'pandas_ta' has no attribute 'indicators'
-2024-12-14 00:14:42,702 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'kc': module 'pandas_ta' has no attribute 'indicators'
-2024-12-14 00:14:42,707 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'rvi': module 'pandas_ta' has no attribute 'indicators'
-2024-12-14 00:14:42,711 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'tsi': module 'pandas_ta' has no attribute 'indicators'
-2024-12-14 00:14:42,807 - INFO - [start.py:157(main)]: Default indicators computed successfully.
-2024-12-14 00:14:42,814 - INFO - [start.py:164(main)]: Configured indicators computed successfully.
-2024-12-14 00:14:42,817 - INFO - [start.py:165(main)]: Computing correlations.
-2024-12-14 00:14:42,874 - INFO - [start.py:174(main)]: Correlation computations completed for the selected indicator configurations.
-2024-12-14 00:14:42,874 - INFO - [start.py:181(main)]: Execution finished successfully.
+2024-12-14 00:19:34,529 - INFO - [start.py:136(main)]: Proceeding with main execution.
+2024-12-14 00:19:39,107 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
+2024-12-14 00:19:39,429 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&limit=1&startTime=0 HTTP/11" 200 176
+2024-12-14 00:19:39,429 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
+2024-12-14 00:19:39,742 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/time HTTP/11" 200 28
+2024-12-14 00:19:39,757 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
+2024-12-14 00:19:40,095 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&startTime=1502668800000&endTime=1734095979233&limit=1000 HTTP/11" 200 26458
+2024-12-14 00:19:40,225 - INFO - [start.py:141(main)]: Price data download and insertion completed.
+2024-12-14 00:19:40,261 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'vortex': module 'pandas_ta' has no attribute 'available_indicators'
+2024-12-14 00:19:40,261 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'available_indicators'
+2024-12-14 00:19:40,270 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'fi': module 'pandas_ta' has no attribute 'available_indicators'
+2024-12-14 00:19:40,270 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'kc': module 'pandas_ta' has no attribute 'available_indicators'
+2024-12-14 00:19:40,278 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'rvi': module 'pandas_ta' has no attribute 'available_indicators'
+2024-12-14 00:19:40,281 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'tsi': module 'pandas_ta' has no attribute 'available_indicators'
+2024-12-14 00:19:40,367 - INFO - [start.py:157(main)]: Default indicators computed successfully.
+2024-12-14 00:19:40,373 - INFO - [start.py:164(main)]: Configured indicators computed successfully.
+2024-12-14 00:19:40,376 - INFO - [start.py:165(main)]: Computing correlations.
+2024-12-14 00:19:40,380 - ERROR - [start.py:176(main)]: Error computing configured indicators or correlations: 'ao'
 
 
 ====================
@@ -560,7 +559,7 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                     data[indicator_name] = result
             except Exception as e:
                 logger.error(f"Error computing indicator '{indicator_name}': {e}")
-        elif indicator_name.lower() in pta.indicators:
+        elif indicator_name.lower() in pta.available_indicators():
             try:
                 clean_params = {k: v for k, v in params.items() if k != 'input_columns'}
                 pta_func = getattr(pta, indicator_name.lower())
@@ -1411,7 +1410,6 @@ def generate_correlation_csv(correlations: dict, max_lag: int, base_filename: st
 ====================
 15) tweak_indicator.py (located in the working directory):
 # tweak_indicator.py
-
 import sys
 import itertools
 import argparse
@@ -1424,6 +1422,7 @@ import json
 from indicator_config_parser import get_configurable_indicators, get_indicator_parameters
 from sqlite_data_manager import insert_indicator_configs, create_connection
 from logging_setup import configure_logging
+from config import DB_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -1497,7 +1496,7 @@ def main():
     args = parser.parse_args()
     configure_logging(log_file_prefix="tweak_indicators")
     logger.info("Starting tweak_indicator.py")
-    DB_PATH = 'indicators.db'
+    
     conn = create_connection(DB_PATH)
     if not conn:
         logger.error("Failed to connect to the database.")
