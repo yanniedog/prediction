@@ -1,7 +1,7 @@
-# logging_setup.py
 import logging
 import sys
 from pathlib import Path
+from datetime import datetime
 import inspect
 
 class TaskAwareFormatter(logging.Formatter):
@@ -21,7 +21,8 @@ class StreamToLogger:
 
     def write(self, msg):
         if msg.strip():
-            self.stream.write(msg)
+            self.stream.write(msg + "\n")
+            self.stream.flush()
 
     def flush(self):
         self.stream.flush()
@@ -35,21 +36,24 @@ def configure_logging(log_file_prefix='predictions'):
 
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
-    
-    log_path = Path.cwd() / f"{log_file_prefix}_{Path.cwd().stem}.log"
+
+    log_path = Path.cwd() / f"{log_file_prefix}_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
 
     try:
+        # File handler for detailed logs
         file_handler = logging.FileHandler(log_path, 'w')
         file_handler.setLevel(logging.DEBUG)
         formatter = TaskAwareFormatter('%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d(%(funcName)s)]: %(message)s')
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
+        # Stream handler for plain screen output
         stream_handler = logging.StreamHandler()
         stream_handler.setLevel(logging.INFO)
-        stream_handler.setFormatter(logging.Formatter('%(message)s'))  # Plain messages to screen
+        stream_handler.setFormatter(logging.Formatter('%(message)s'))
         logger.addHandler(stream_handler)
 
+        # Optional replacement of stdout and stderr
         sys.stdout = StreamToLogger(sys.stdout)
         sys.stderr = StreamToLogger(sys.stderr)
 
