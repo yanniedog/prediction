@@ -8,56 +8,71 @@
         "price_period": 14,
         "bearish_threshold": -0.8,
         "bullish_threshold": 0.8,
-        "smoothing": 0.01
+        "smoothing": 0.01,
+        "input_columns": ["close", "volume", "open", "high", "low"]
     },
     "dema": {
-        "timeperiod": 30
+        "timeperiod": 30,
+        "input_columns": ["close"]
     },
     "t3": {
         "timeperiod": 5,
-        "vfactor": 0.7
+        "vfactor": 0.7,
+        "input_columns": ["close"]
     },
     "sma": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["close"]
     },
     "ema": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["close"]
     },
     "tsf": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["close"]
     },
     "rsi": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["close"]
     },
     "macd": {
         "fastperiod": 12,
         "slowperiod": 26,
-        "signalperiod": 9
+        "signalperiod": 9,
+        "input_columns": ["close"]
     },
     "stoch": {
         "fastk_period": 5,
         "slowk_period": 3,
         "slowd_period": 3,
         "slowk_matype": 0,
-        "slowd_matype": 0
+        "slowd_matype": 0,
+        "input_columns": ["high", "low", "close"]
     },
     "cmo": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["close"]
     },
     "cci": {
-        "timeperiod": 20
+        "timeperiod": 20,
+        "input_columns": ["high", "low", "close"]
     },
     "adx": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["high", "low", "close"]
     },
     "dx": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["high", "low", "close"]
     },
     "aroon": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["high", "low"]
     },
     "aroonosc": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["high", "low"]
     },
     "macdext": {
         "fastperiod": 12,
@@ -65,130 +80,167 @@
         "slowperiod": 26,
         "slowmatype": 0,
         "signalperiod": 9,
-        "signalmatype": 0
+        "signalmatype": 0,
+        "input_columns": ["close"]
     },
     "macdfix": {
-        "signalperiod": 9
+        "signalperiod": 9,
+        "input_columns": ["close"]
     },
     "minus_di": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["high", "low", "close"]
     },
     "minus_dm": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["high", "low"]
     },
     "mom": {
-        "timeperiod": 10
+        "timeperiod": 10,
+        "input_columns": ["close"]
     },
     "plus_di": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["high", "low", "close"]
     },
     "plus_dm": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["high", "low"]
     },
     "ppo": {
         "fastperiod": 12,
         "slowperiod": 26,
-        "matype": 0
+        "matype": 0,
+        "input_columns": ["close"]
     },
     "roc": {
-        "timeperiod": 10
+        "timeperiod": 10,
+        "input_columns": ["close"]
     },
     "rocp": {
-        "timeperiod": 10
+        "timeperiod": 10,
+        "input_columns": ["close"]
     },
     "rocr": {
-        "timeperiod": 10
+        "timeperiod": 10,
+        "input_columns": ["close"]
     },
     "rocr100": {
-        "timeperiod": 10
+        "timeperiod": 10,
+        "input_columns": ["close"]
     },
     "stochf": {
         "fastk_period": 5,
         "fastd_period": 3,
-        "fastd_matype": 0
+        "fastd_matype": 0,
+        "input_columns": ["high", "low", "close"]
     },
     "stochrsi": {
         "timeperiod": 14,
         "fastk_period": 5,
         "fastd_period": 3,
-        "fastd_matype": 0
+        "fastd_matype": 0,
+        "input_columns": ["close"]
     },
     "trix": {
-        "timeperiod": 30
+        "timeperiod": 30,
+        "input_columns": ["close"]
     },
     "ultosc": {
         "timeperiod1": 7,
         "timeperiod2": 14,
-        "timeperiod3": 28
+        "timeperiod3": 28,
+        "input_columns": ["high", "low", "close"]
     },
     "willr": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["high", "low", "close"]
     },
     "adosc": {
         "fastperiod": 3,
-        "slowperiod": 10
+        "slowperiod": 10,
+        "input_columns": ["high", "low", "close", "volume"]
     },
     "atr": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["high", "low", "close"]
     },
     "natr": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["high", "low", "close"]
     },
     "beta": {
-        "timeperiod": 5
+        "timeperiod": 5,
+        "input_columns": ["close", "close"]
     },
     "correl": {
-        "timeperiod": 30
+        "timeperiod": 30,
+        "input_columns": ["close", "close"]
     },
     "linearreg": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["close"]
     },
     "linearreg_angle": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["close"]
     },
     "linearreg_intercept": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["close"]
     },
     "linearreg_slope": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["close"]
     },
     "stddev": {
         "timeperiod": 5,
-        "nbdev": 1
+        "nbdev": 1,
+        "input_columns": ["close"]
     },
     "var": {
         "timeperiod": 5,
-        "nbdev": 1
+        "nbdev": 1,
+        "input_columns": ["close"]
     },
     "mfi": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["high", "low", "close", "volume"]
     },
     "vortex": {
-        "timeperiod": 14
+        "timeperiod": 14,
+        "input_columns": ["high", "low", "close"]
     },
     "ao": {
-        "timeperiod": 5
+        "timeperiod": 5,
+        "input_columns": ["high", "low"]
     },
     "fi": {
-        "timeperiod": 13
+        "timeperiod": 13,
+        "input_columns": ["high", "low", "close", "volume"]
     },
     "kc": {
         "length": 20,
-        "scalar": 1.5
+        "scalar": 1.5,
+        "input_columns": ["high", "low", "close"]
     },
     "rvi": {
-        "timeperiod": 10
+        "timeperiod": 10,
+        "input_columns": ["close"]
     },
     "tsi": {
         "fastperiod": 25,
-        "slowperiod": 13
+        "slowperiod": 13,
+        "input_columns": ["close"]
     },
     "EyeX MFV Volume": {
-        "ranges": [50, 75, 100, 200]
+        "ranges": [50, 75, 100, 200],
+        "input_columns": ["close", "low", "high", "volume"]
     },
     "EyeX MFV S/R Bull": {
         "ranges": [50, 75, 100, 200],
         "pivot_lookback": 5,
-        "price_proximity": 0.00001
+        "price_proximity": 0.00001,
+        "input_columns": ["close", "low", "high", "volume"]
     }
 }
