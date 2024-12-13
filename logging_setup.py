@@ -35,8 +35,12 @@ def configure_logging(log_file_prefix='predictions'):
         return
 
     logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
 
+    # Prevent duplicate handlers
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    logger.setLevel(logging.DEBUG)
     log_path = Path.cwd() / f"{log_file_prefix}_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
 
     try:
