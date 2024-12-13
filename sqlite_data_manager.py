@@ -4,8 +4,8 @@ import logging
 import sqlite3
 from pathlib import Path
 import pandas as pd
-from config import DB_PATH
 import re
+from config import DB_PATH
 
 logger = logging.getLogger()
 
@@ -13,12 +13,10 @@ def create_connection(db_path=DB_PATH):
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        cursor.execute("SELECT sqlite_version();")
-        version = cursor.fetchone()[0]
-        print(f"Connected to SQLite database at {db_path}. SQLite version: {version}")
+        logger.info(f"Connected to SQLite database at {db_path}. SQLite version: {cursor.execute('SELECT sqlite_version();').fetchone()[0]}")
         return conn
     except sqlite3.Error as e:
-        print(f"SQLite connection error: {e}")
+        logger.error(f"SQLite connection error: {e}")
         return None
 
 def create_tables(conn):
@@ -85,7 +83,7 @@ def create_tables(conn):
 
         for table_name, ddl in tables.items():
             cursor.execute(ddl)
-            print(f"Table '{table_name}' ensured in database.")
+            logger.info(f"Table '{table_name}' ensured in database.")
 
         indexes = [
             "CREATE INDEX IF NOT EXISTS idx_open_time ON klines (open_time);",
@@ -97,12 +95,13 @@ def create_tables(conn):
         for idx_query in indexes:
             cursor.execute(idx_query)
             index_name = re.findall(r'CREATE INDEX IF NOT EXISTS (\w+) ', idx_query)[0]
-            print(f"Index created or already exists: {index_name}")
+            logger.info(f"Index created or already exists: {index_name}")
 
         conn.commit()
-        print("All tables and indexes are set up successfully.")
+        logger.info("All tables and indexes are set up successfully.")
     except sqlite3.Error as e:
-        print(f"SQLite table creation error: {e}")
+        logger.error(f"SQLite table creation error: {e}")
+        raise e
 
 def initialize_database(db_path=DB_PATH):
     conn = create_connection(db_path)
@@ -110,24 +109,30 @@ def initialize_database(db_path=DB_PATH):
         create_tables(conn)
         conn.close()
     else:
-        print("Failed to initialize the database.")
+        logger.error("Failed to initialize the database.")
 
 def insert_indicator_configs(conn, indicator_name, configs):
     try:
+        create_tables(conn)  # Ensure tables are created
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
         conn.commit()
         cursor.execute("SELECT id FROM indicators WHERE name = ?", (indicator_name,))
-        indicator_id = cursor.fetchone()[0]
-
+        result = cursor.fetchone()
+        if not result:
+            raise ValueError(f"Indicator '{indicator_name}' could not be inserted.")
+        indicator_id = result[0]
         for config in configs:
             config_json = json.dumps(config, sort_keys=True)
             cursor.execute("INSERT OR IGNORE INTO indicator_configs (indicator_id, config) VALUES (?, ?)", (indicator_id, config_json))
         conn.commit()
-        print(f"Inserted {len(configs)} configurations for indicator '{indicator_name}'.")
+        logger.info(f"Inserted {len(configs)} configurations for indicator '{indicator_name}'.")
     except sqlite3.Error as e:
-        print(f"SQLite insertion error: {e}")
+        logger.error(f"SQLite insertion error: {e}")
         raise e
+    except ValueError as ve:
+        logger.error(ve)
+        raise ve
 
 def fetch_indicator_configs(conn, indicator_name):
     cursor = conn.cursor()
@@ -180,16 +185,21 @@ def insert_klines(conn, df, symbol, timeframe):
 
         cursor.executemany(insert_query, data)
         conn.commit()
-        print(f"Successfully inserted {len(data)} records into 'klines'.")
+        logger.info(f"Successfully inserted {len(data)} records into 'klines'.")
     except (sqlite3.Error, ValueError) as e:
-        print(f"SQLite insertion error: {e}")
+        logger.error(f"SQLite insertion error: {e}")
         raise e
 
 def save_to_sqlite(df, db_path, symbol, timeframe):
     conn = create_connection(db_path)
     if conn:
-        insert_klines(conn, df, symbol, timeframe)
-        conn.close()
+        try:
+            insert_klines(conn, df, symbol, timeframe)
+        except Exception as e:
+            logger.error(f"Error saving klines to SQLite: {e}")
+            raise e
+        finally:
+            conn.close()
     else:
-        print("Cannot connect to the database.")
+        logger.error("Cannot connect to the database.")
         raise ConnectionError("Cannot connect to the database.")

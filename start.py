@@ -1,27 +1,22 @@
 # start.py
 import logging
 import os
-import subprocess
-import sys
 import shutil
-import pandas as pd
-import numpy as np
-import matplotlib
-matplotlib.use('Agg')
+import sys
 from pathlib import Path
 from datetime import datetime
 from config import DB_PATH
-from sqlite_data_manager import initialize_database, create_connection, create_tables
+from sqlite_data_manager import initialize_database, create_connection, insert_indicator_configs
 from tweak_indicator import (
     fetch_available_indicators,
-    insert_indicator_configs,
     generate_configurations,
     parse_indicator_parameters
 )
 from correlation_utils import load_or_calculate_correlations
-from indicators import compute_all_indicators, compute_configured_indicators
+from indicators import compute_configured_indicators
+from load_data import load_data
+from binance_historical_data_downloader import download_binance_data
 from logging_setup import configure_logging
-import indicators
 
 logger = logging.getLogger()
 
@@ -150,8 +145,7 @@ def main():
         if selected_indicator:
             indicators_list = [selected_indicator]
 
-            from load_data import load_data as load_db_data
-            data, is_rev, db_fn = load_db_data(symbol, timeframe)
+            data, is_rev, db_fn = load_data(symbol, timeframe)
             if data.empty:
                 logger.error("No data available for the selected symbol and timeframe.")
                 sys.exit(1)
