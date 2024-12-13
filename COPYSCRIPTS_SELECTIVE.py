@@ -116,16 +116,13 @@ def extract_relevant_log_section(log_content):
     first_error = error_indices[0] if error_indices else None
     first_traceback = traceback_indices[0] if traceback_indices else None
 
-    # Determine which comes first
     if first_error is not None and (first_traceback is None or first_error < first_traceback):
         start_index = max(first_error - 3, 0)
     elif first_traceback is not None:
         start_index = max(first_traceback - 3, 0)
     else:
-        # If neither ERROR nor Traceback is found, return the entire log
         return log_content
 
-    # Join the lines from start_index to the end
     relevant_log = '\n'.join(lines[start_index:])
     return relevant_log
 
