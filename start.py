@@ -98,7 +98,11 @@ def run_tweak_indicator(symbol: str, timeframe: str):
     if not conn:
         logger.error("Failed to connect to the database.")
         sys.exit(1)
-    insert_indicator_configs(conn, selected_indicator, configurations)
+    try:
+        insert_indicator_configs(conn, selected_indicator, configurations)
+    except Exception as e:
+        logger.error(f"Error inserting configurations into database for '{selected_indicator}': {e}")
+        sys.exit(1)
     if configurations:
         logger.info("Configurations stored in database:")
         for config in configurations[:15]:
@@ -150,12 +154,6 @@ def main():
             data, is_rev, db_fn = load_db_data(symbol, timeframe)
             if data.empty:
                 logger.error("No data available for the selected symbol and timeframe.")
-                sys.exit(1)
-
-            try:
-                logger.info("Default indicators computation skipped.")
-            except Exception as e:
-                logger.error(f"Error computing default indicators: {e}")
                 sys.exit(1)
 
             try:

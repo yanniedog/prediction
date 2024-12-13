@@ -1,7 +1,7 @@
 # sqlite_data_manager.py
-
 import json
 import logging
+import re
 import sqlite3
 from pathlib import Path
 import pandas as pd
@@ -73,13 +73,13 @@ def create_tables(conn):
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     symbol_id INTEGER,
                     timeframe_id INTEGER,
-                    indicator_id INTEGER,
+                    indicator_config_id INTEGER,
                     lag INTEGER,
                     correlation_value REAL,
                     FOREIGN KEY (symbol_id) REFERENCES symbols(id),
                     FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
-                    FOREIGN KEY (indicator_id) REFERENCES indicators(id),
-                    UNIQUE(symbol_id, timeframe_id, indicator_id, lag)
+                    FOREIGN KEY (indicator_config_id) REFERENCES indicator_configs(id),
+                    UNIQUE(symbol_id, timeframe_id, indicator_config_id, lag)
                 );"""
         }
 
@@ -91,12 +91,12 @@ def create_tables(conn):
             "CREATE INDEX IF NOT EXISTS idx_open_time ON klines (open_time);",
             "CREATE INDEX IF NOT EXISTS idx_close_time ON klines (close_time);",
             "CREATE INDEX IF NOT EXISTS idx_correlation_computed ON klines (correlation_computed);",
-            "CREATE INDEX IF NOT EXISTS idx_correlations ON correlations (symbol_id, timeframe_id, indicator_id, lag);"
+            "CREATE INDEX IF NOT EXISTS idx_correlations ON correlations (symbol_id, timeframe_id, indicator_config_id, lag);"
         ]
 
         for idx_query in indexes:
             cursor.execute(idx_query)
-            index_name = idx_query.split()[5]
+            index_name = re.findall(r'CREATE INDEX IF NOT EXISTS (\w+) ', idx_query)[0]
             print(f"Index created or already exists: {index_name}")
 
         conn.commit()
@@ -113,14 +113,6 @@ def initialize_database(db_path=DB_PATH):
         print("Failed to initialize the database.")
 
 def insert_indicator_configs(conn, indicator_name, configs):
-    """
-    Inserts the base indicator and its configurations into the database.
-
-    Args:
-        conn (sqlite3.Connection): Database connection.
-        indicator_name (str): Name of the indicator.
-        configs (List[Dict]): List of configuration dictionaries.
-    """
     try:
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
@@ -129,12 +121,13 @@ def insert_indicator_configs(conn, indicator_name, configs):
         indicator_id = cursor.fetchone()[0]
 
         for config in configs:
-            config_json = json.dumps(config)
+            config_json = json.dumps(config, sort_keys=True)
             cursor.execute("INSERT OR IGNORE INTO indicator_configs (indicator_id, config) VALUES (?, ?)", (indicator_id, config_json))
         conn.commit()
         print(f"Inserted {len(configs)} configurations for indicator '{indicator_name}'.")
     except sqlite3.Error as e:
         print(f"SQLite insertion error: {e}")
+        raise
 
 def fetch_indicator_configs(conn, indicator_name):
     cursor = conn.cursor()
@@ -190,6 +183,7 @@ def insert_klines(conn, df, symbol, timeframe):
         print(f"Successfully inserted {len(data)} records into 'klines'.")
     except (sqlite3.Error, ValueError) as e:
         print(f"SQLite insertion error: {e}")
+        raise
 
 def save_to_sqlite(df, db_path, symbol, timeframe):
     conn = create_connection(db_path)
@@ -198,3 +192,4 @@ def save_to_sqlite(df, db_path, symbol, timeframe):
         conn.close()
     else:
         print("Cannot connect to the database.")
+        raise ConnectionError("Cannot connect to the database.")
