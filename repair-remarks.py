@@ -1,4 +1,3 @@
-# repair-remarks.py
 import os
 import sys
 
@@ -12,6 +11,7 @@ def process_python_files(directory, exclude_file=None, exclude_dirs=None):
                 file_path = os.path.join(root, file)
                 if exclude_file and file_path == exclude_file:
                     continue
+                print(f"Processing file: {file_path}")  # Debug print
                 process_file(file_path, file)
 
 def process_file(file_path, filename):
@@ -20,6 +20,7 @@ def process_file(file_path, filename):
             lines = f.readlines()
         
         correct_comment = f'# {filename}'
+        print(f"Expected comment: {correct_comment}")  # Debug print
         
         # Remove any in-line comments that are not the correct comment
         modified_lines = []
@@ -90,6 +91,7 @@ def main():
     exclude_dirs = ['.venv', 'venv', '_pycache_']
     for dir_path in directories:
         if os.path.exists(dir_path):
+            print(f"Processing directory: {dir_path}")  # Debug print
             process_python_files(dir_path, exclude_file=script_path, exclude_dirs=exclude_dirs)
         else:
             print(f"Directory {dir_path} does not exist.")
