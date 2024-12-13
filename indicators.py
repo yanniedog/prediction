@@ -183,8 +183,8 @@ def compute_all_indicators(data):
     data.dropna(inplace=True)
     return data
 
-def compute_configured_indicators(data, indicators):
-    for indicator_name in indicators:
+def compute_configured_indicators(data, indicators_list):
+    for indicator_name in indicators_list:
         if '_' not in indicator_name and 'EyeX MFV S/R' not in indicator_name and indicator_name not in ['obv_price_divergence', 'dema', 't3', 'sma', 'ema', 'tsf']:
             if indicator_name not in data.columns:
                 pass
@@ -217,7 +217,7 @@ def compute_configured_indicators(data, indicators):
             }
         elif base_indicator in ['t3', 'sma', 'ema', 'tsf']:
             params = {
-                'timeperiod': 14  # Example default value
+                'timeperiod': 14  # Example default value; adjust as needed
             }
         else:
             for part in parts[1:]:
