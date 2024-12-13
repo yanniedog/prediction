@@ -168,11 +168,9 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
     Returns:
         pd.DataFrame: The data with configured indicators added.
     """
-    # Load indicator parameters from JSON
     with open(indicator_params_path, 'r') as f:
         indicator_params = json.load(f)
     
-    # Connect to the database
     conn = create_connection(db_path)
     if not conn:
         logger.error("Failed to connect to the database.")
@@ -182,7 +180,6 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
     
     for indicator_name in indicators_list:
         try:
-            # Fetch configurations for the indicator
             cursor.execute("""
                 SELECT config FROM indicator_configs 
                 JOIN indicators ON indicator_configs.indicator_id = indicators.id
@@ -192,7 +189,6 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
             configs = [json.loads(row[0]) for row in rows]
             
             for config in configs:
-                # Compute the indicator with the given configuration
                 if indicator_name == "obv_price_divergence":
                     data = compute_obv_price_divergence(data, config)
                 elif indicator_name == "EyeX MFV Volume":
@@ -200,14 +196,11 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
                 elif indicator_name == "EyeX MFV S/R Bull":
                     data = compute_eyeX_MFV_support_resistance(data, config)
                 else:
-                    # Handle standard indicators dynamically
-                    # Check if the indicator exists in TA-Lib
                     if hasattr(ta, indicator_name.upper()):
                         ta_func = getattr(ta, indicator_name.upper())
-                        ta_params = config  # Parameters from config
+                        ta_params = config
                         data[indicator_name] = ta_func(data['close'], **ta_params)
                     elif indicator_name.lower() in pta.indicators():
-                        # For pandas_ta indicators
                         data[indicator_name] = pta.ta(indicator_name.lower(), close=data['close'], **config)
                     else:
                         logger.warning(f"Indicator '{indicator_name}' not recognized in TA-Lib or pandas_ta. Skipping.")
@@ -230,14 +223,11 @@ def compute_all_indicators(data: pd.DataFrame, db_path: str = 'indicators.db', i
     Returns:
         pd.DataFrame: The data with all indicators added.
     """
-    # Load indicator parameters from JSON
     with open(indicator_params_path, 'r') as f:
         indicator_params = json.load(f)
     
-    # Extract all indicator names
     indicators_list = list(indicator_params.keys())
     
-    # Compute all indicators
     data = compute_configured_indicators(data, indicators_list, db_path, indicator_params_path)
     
     return data

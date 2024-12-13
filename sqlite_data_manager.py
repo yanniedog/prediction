@@ -123,13 +123,11 @@ def insert_indicator_configs(conn, indicator_name, configs):
     """
     try:
         cursor = conn.cursor()
-        # Insert base indicator
         cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
         conn.commit()
         cursor.execute("SELECT id FROM indicators WHERE name = ?", (indicator_name,))
         indicator_id = cursor.fetchone()[0]
 
-        # Insert configurations
         for config in configs:
             config_json = json.dumps(config)
             cursor.execute("INSERT OR IGNORE INTO indicator_configs (indicator_id, config) VALUES (?, ?)", (indicator_id, config_json))

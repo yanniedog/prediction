@@ -30,18 +30,14 @@ def generate_configurations(parameter_keys: List[str], default_params: Dict) -> 
     for param in parameter_keys:
         default = default_params[param]
         if isinstance(default, int):
-            # Define range: default-5 to default+5, minimum 1
             start = max(1, default - 5)
             end = default + 5
             param_ranges[param] = list(range(start, end + 1))
         elif isinstance(default, float):
-            # Define range: 80% to 120% of default, step 5%
             param_ranges[param] = [round(default * factor, 4) for factor in np.arange(0.8, 1.21, 0.05)]
         elif isinstance(default, list):
-            # For list-type parameters like 'ranges', use the list as is
             param_ranges[param] = default
         else:
-            # For other types, use the default value only
             param_ranges[param] = [default]
     
     if param_ranges:
@@ -119,8 +115,7 @@ def main():
     configure_logging(log_file_prefix="tweak_indicators")
     logger.info("Starting tweak_indicator.py")
 
-    # Define the path to your SQLite database
-    DB_PATH = 'indicators.db'  # Adjust as needed
+    DB_PATH = 'indicators.db'
 
     conn = create_connection(DB_PATH)
     if not conn:
