@@ -697,6 +697,7 @@ def compute_configured_indicators(data, indicators):
 
 ====================
 6) launch.py (located in the working directory):
+# launch.py
 import sys
 import logging
 import runpy
@@ -854,7 +855,6 @@ def configure_logging(log_file_prefix='predictions'):
 
 ====================
 9) repair-remarks.py (located in the working directory):
-# repair-remarks.py
 import os
 import sys
 
@@ -914,31 +914,33 @@ def process_file(file_path, filename):
         
         # Write modified lines back to the file if any changes were made
         modified = in_line_comments_removed > 0 or standalone_comments_removed > 0 or duplicate_correct_comments_removed > 0
+        if not found_correct_comment:
+            modified = True
+        
         if modified:
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.writelines(modified_lines)
         
         # Report what was done
-        report = f"Modified {file_path}: "
+        actions = []
         if not modified:
-            report += "No changes made."
+            actions.append("No changes")
         else:
-            actions = []
             if found_correct_comment:
-                actions.append(f"Updated correct comment")
+                actions.append("UPDATED correct comment")
             else:
-                actions.append(f"Added correct comment")
+                actions.append("ADDED correct comment")
             if in_line_comments_removed > 0:
-                actions.append(f"Removed {in_line_comments_removed} in-line comments")
+                actions.append(f"REMOVED {in_line_comments_removed} in-line comments")
             if standalone_comments_removed > 0:
-                actions.append(f"Removed {standalone_comments_removed} standalone comments")
+                actions.append(f"REMOVED {standalone_comments_removed} standalone comments")
             if duplicate_correct_comments_removed > 0:
-                actions.append(f"Removed {duplicate_correct_comments_removed} duplicate correct comments")
-            report += " and ".join(actions) + "."
+                actions.append(f"REMOVED {duplicate_correct_comments_removed} duplicate correct comments")
         
+        report = " and ".join(actions) + f": {file_path}"
         print(report)
     except Exception as e:
-        print(f"Error processing {file_path}: {e}")
+        print(f"ERROR processing {file_path}: {e}")
 
 def main():
     script_path = sys.argv[0]
@@ -946,6 +948,7 @@ def main():
     exclude_dirs = ['.venv', 'venv', '_pycache_']
     for dir_path in directories:
         if os.path.exists(dir_path):
+            print(f"Processing directory: {dir_path}")
             process_python_files(dir_path, exclude_file=script_path, exclude_dirs=exclude_dirs)
         else:
             print(f"Directory {dir_path} does not exist.")
