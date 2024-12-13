@@ -9,7 +9,6 @@ from typing import Dict, List, Optional
 import numpy as np
 import json
 
-from config import DB_PATH
 from indicator_config_parser import get_configurable_indicators, get_indicator_parameters
 from sqlite_data_manager import insert_indicator_configs as sqlite_insert_indicator_configs, create_connection
 from logging_setup import configure_logging
@@ -19,11 +18,11 @@ logger = logging.getLogger(__name__)
 def generate_configurations(parameter_keys: List[str], default_params: Dict) -> List[Dict]:
     """
     Generate all possible configurations based on parameter ranges.
-    
+
     Args:
         parameter_keys (List[str]): List of parameter names.
         default_params (Dict): Dictionary of parameter names and their default values.
-    
+
     Returns:
         List[Dict]: List of configuration dictionaries.
     """
@@ -31,28 +30,32 @@ def generate_configurations(parameter_keys: List[str], default_params: Dict) -> 
     for param in parameter_keys:
         default = default_params[param]
         if isinstance(default, int):
+            # Define range: default-5 to default+5, minimum 1
             start = max(1, default - 5)
             end = default + 5
             param_ranges[param] = list(range(start, end + 1))
         elif isinstance(default, float):
-            # Generate a range around the default value
+            # Define range: 80% to 120% of default, step 5%
             param_ranges[param] = [round(default * factor, 4) for factor in np.arange(0.8, 1.21, 0.05)]
         elif isinstance(default, list):
-            # For list-type parameters like 'ranges'
+            # For list-type parameters like 'ranges', use the list as is
             param_ranges[param] = default
         else:
+            # For other types, use the default value only
             param_ranges[param] = [default]
+    
     if param_ranges:
         keys, values = zip(*param_ranges.items())
         configurations = [dict(zip(keys, v)) for v in itertools.product(*values)]
     else:
         configurations = []
+    
     return configurations
 
 def insert_tweaked_configs(conn, indicator_name: str, configurations: List[Dict]):
     """
     Insert generated configurations into the database.
-    
+
     Args:
         conn: Database connection object.
         indicator_name (str): Name of the indicator.
@@ -64,49 +67,13 @@ def insert_tweaked_configs(conn, indicator_name: str, configurations: List[Dict]
     except Exception as e:
         logger.error(f"Error inserting configurations for '{indicator_name}': {e}")
 
-def fetch_available_indicators(indicator_params_path='indicator_params.json') -> List[str]:
-    """
-    Fetch the list of configurable indicators.
-    
-    Args:
-        indicator_params_path (str): Path to indicator_params.json
-    
-    Returns:
-        List[str]: List of configurable indicator names.
-    """
-    return get_configurable_indicators(indicator_params_path)
-
-def insert_indicator_configs(conn, indicator_name: str, configurations: List[Dict]):
-    """
-    Wrapper function to insert configurations.
-    
-    Args:
-        conn: Database connection object.
-        indicator_name (str): Name of the indicator.
-        configurations (List[Dict]): List of configuration dictionaries.
-    """
-    insert_tweaked_configs(conn, indicator_name, configurations)
-
-def parse_indicator_parameters(indicator_name: str, indicator_params_path='indicator_params.json') -> Optional[Dict]:
-    """
-    Parse parameters for a specific indicator.
-    
-    Args:
-        indicator_name (str): Name of the indicator.
-        indicator_params_path (str): Path to indicator_params.json
-    
-    Returns:
-        Optional[Dict]: Dictionary of parameters or None.
-    """
-    return get_indicator_parameters(indicator_name, indicator_params_path)
-
 def select_indicators(available_indicators: List[str]) -> List[str]:
     """
     Allow user to select indicators for tweaking.
-    
+
     Args:
         available_indicators (List[str]): List of available indicator names.
-    
+
     Returns:
         List[str]: List of selected indicator names.
     """
@@ -114,6 +81,7 @@ def select_indicators(available_indicators: List[str]) -> List[str]:
     for idx, indicator in enumerate(available_indicators, 1):
         print(f"{idx}. {indicator}")
     print(f"{len(available_indicators)+1}. All Indicators")
+    
     selected_indicators = []
     while True:
         choice = input(f"Select an indicator by number (1-{len(available_indicators)+1}) or type 'done' to finish selection: ").strip().lower()
@@ -132,9 +100,11 @@ def select_indicators(available_indicators: List[str]) -> List[str]:
                 print("Invalid selection. Please try again.")
         else:
             print("Invalid input. Please enter a number corresponding to the indicator or 'done'.")
+    
     if not selected_indicators:
         print("No indicators selected. Exiting.")
         sys.exit(0)
+    
     return selected_indicators
 
 def main():
@@ -150,13 +120,16 @@ def main():
     configure_logging(log_file_prefix="tweak_indicators")
     logger.info("Starting tweak_indicator.py")
 
+    # Define the path to your SQLite database
+    DB_PATH = 'indicators.db'  # Adjust as needed
+
     conn = create_connection(DB_PATH)
     if not conn:
         logger.error("Failed to connect to the database.")
         sys.exit(1)
 
     try:
-        available_indicators = fetch_available_indicators('indicator_params.json')
+        available_indicators = get_configurable_indicators('indicator_params.json')
         if not available_indicators:
             logger.error("No configurable indicators found in indicator_params.json.")
             print("No configurable indicators found. Exiting.")
@@ -177,7 +150,7 @@ def main():
         logger.info(f"Processing Indicator: {indicator_name}")
         print(f"\nProcessing Indicator: {indicator_name}")
         try:
-            parameters = parse_indicator_parameters(indicator_name, 'indicator_params.json')
+            parameters = get_indicator_parameters(indicator_name, 'indicator_params.json')
             if not parameters:
                 logger.warning(f"No parameters found for '{indicator_name}'. Skipping configuration generation.")
                 print(f"No parameters found for '{indicator_name}'. Skipping.")
@@ -190,6 +163,7 @@ def main():
             logger.error(f"Error retrieving parameters for '{indicator_name}': {e}")
             print(f"Error retrieving parameters for '{indicator_name}'. Skipping.")
             continue
+
         try:
             configurations = generate_configurations(list(parameters.keys()), parameters)
             if not configurations:
@@ -202,8 +176,9 @@ def main():
             logger.error(f"Error generating configurations for '{indicator_name}': {e}")
             print(f"Error generating configurations for '{indicator_name}'. Skipping.")
             continue
+
         try:
-            insert_indicator_configs(conn, indicator_name, configurations)
+            insert_tweaked_configs(conn, indicator_name, configurations)
         except Exception as e:
             logger.error(f"Error inserting configurations into database for '{indicator_name}': {e}")
             print(f"Error inserting configurations into database for '{indicator_name}'.")
