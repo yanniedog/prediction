@@ -113,7 +113,7 @@ def initialize_database(db_path=DB_PATH):
 
 def insert_indicator_configs(conn, indicator_name, configs):
     try:
-        create_tables(conn)  # Ensure tables are created
+        create_tables(conn)
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
         conn.commit()

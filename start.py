@@ -1,4 +1,4 @@
-# start.py (Complete Script with Fixes)
+# start.py
 import logging
 import os
 import shutil
@@ -134,6 +134,7 @@ def main():
 
         logger.info("Proceeding with main execution.")
 
+        from binance_historical_data_downloader import download_binance_data
         if symbol and timeframe:
             download_binance_data(symbol, timeframe, DB_PATH)
             logger.info("Price data download and insertion completed.")
