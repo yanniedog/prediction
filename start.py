@@ -63,7 +63,7 @@ def delete_previous_output():
         logger.info("Directory contents not cleared.")
 
 def run_tweak_indicator(symbol: str, timeframe: str):
-    available_indicators = fetch_available_indicators('indicators.py')
+    available_indicators = fetch_available_indicators()
     if not available_indicators:
         logger.error("No indicators available. Check `indicators.py` or `compute_all_indicators`.")
         sys.exit(1)
