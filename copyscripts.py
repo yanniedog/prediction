@@ -131,9 +131,9 @@ def extract_relevant_log_section(log_content):
     first_traceback = traceback_indices[0] if traceback_indices else None
 
     if first_error is not None and (first_traceback is None or first_error < first_traceback):
-        start_index = max(first_error - 3, 0)
+        start_index = max(first_error - 8, 0)
     elif first_traceback is not None:
-        start_index = max(first_traceback - 3, 0)
+        start_index = max(first_traceback - 8, 0)
     else:
         return log_content
 
