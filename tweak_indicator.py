@@ -7,11 +7,10 @@ from pathlib import Path
 from typing import Dict, List, Optional
 import numpy as np
 import json
-
-from indicator_config_parser import get_configurable_indicators, get_indicator_parameters
-from sqlite_data_manager import insert_indicator_configs, create_connection
-from logging_setup import configure_logging
 from config import DB_PATH
+from indicator_config_parser import get_configurable_indicators, get_indicator_parameters
+from sqlite_data_manager import insert_indicator_configs, create_connection, initialize_database
+from logging_setup import configure_logging
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +85,8 @@ def main():
     args = parser.parse_args()
     configure_logging(log_file_prefix="tweak_indicators")
     logger.info("Starting tweak_indicator.py")
+    
+    initialize_database(DB_PATH)
     
     conn = create_connection(DB_PATH)
     if not conn:
