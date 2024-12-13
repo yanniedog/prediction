@@ -7,6 +7,19 @@ import shutil
 from collections import defaultdict
 import chardet
 
+def run_repair_remarks():
+    repair_script = os.path.join(os.getcwd(), "repair-remarks.py")
+    if os.path.exists(repair_script):
+        try:
+            os.system(f"python {repair_script}")
+        except Exception as e:
+            print(f"Error running repair_remarks.py: {e}")
+            sys.exit(1)
+    else:
+        print("repair_remarks.py not found. Proceeding without running it.")
+
+run_repair_remarks()
+
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Generate a .GPT file containing contents of specified scripts.")
