@@ -203,6 +203,10 @@ def compute_configured_indicators(data, indicators):
             timeperiod = params.get('timeperiod', 14)
             column_name = indicator_name
             data[column_name] = ta.EMA(data['close'], timeperiod=timeperiod)
+        elif base_indicator == 'tsf':
+            timeperiod = params.get('timeperiod', 14)
+            column_name = indicator_name
+            data[column_name] = ta.TSF(data['close'], timeperiod=timeperiod)
         else:
             print(f"Unknown indicator base: {base_indicator}. Skipping.")
     data.dropna(inplace=True)

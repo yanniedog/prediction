@@ -4,10 +4,10 @@ See the error I receive here:
 
 ====================
 
-2024-12-13 19:48:12,478 - INFO - [start.py:73(run_tweak_indicator)]: 90. TSI_13_25_13
-2024-12-13 19:48:12,482 - INFO - [start.py:73(run_tweak_indicator)]: 91. TSIs_13_25_13
-2024-12-13 19:48:16,071 - INFO - [start.py:81(run_tweak_indicator)]: Selected indicator: tsf
-2024-12-13 19:48:16,087 - ERROR - [start.py:85(run_tweak_indicator)]: No parameters found for 'tsf'. Cannot generate configurations.
+2024-12-13 19:55:01,455 - INFO - [start.py:73(run_tweak_indicator)]: 90. TSI_13_25_13
+2024-12-13 19:55:01,456 - INFO - [start.py:73(run_tweak_indicator)]: 91. TSIs_13_25_13
+2024-12-13 19:55:04,814 - INFO - [start.py:81(run_tweak_indicator)]: Selected indicator: EyeX MFV Volume
+2024-12-13 19:55:04,835 - ERROR - [start.py:85(run_tweak_indicator)]: No parameters found for 'EyeX MFV Volume'. Cannot generate configurations.
 
 
 ====================
@@ -605,6 +605,10 @@ def compute_configured_indicators(data, indicators):
             timeperiod = params.get('timeperiod', 14)
             column_name = indicator_name
             data[column_name] = ta.EMA(data['close'], timeperiod=timeperiod)
+        elif base_indicator == 'tsf':
+            timeperiod = params.get('timeperiod', 14)
+            column_name = indicator_name
+            data[column_name] = ta.TSF(data['close'], timeperiod=timeperiod)
         else:
             print(f"Unknown indicator base: {base_indicator}. Skipping.")
     data.dropna(inplace=True)
