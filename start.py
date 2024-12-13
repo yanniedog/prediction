@@ -33,11 +33,12 @@ logger = logging.getLogger()
 
 def log_and_print(message, level="info"):
     """Log and print messages."""
+    print(message)  # Print to screen
     if level == "info":
-        logger.info(message)
+        logger.info(message)  # Log to file only
     elif level == "error":
-        logger.error(message)
-    print(message)
+        logger.error(message)  # Log to file only
+
 
 def input_with_default(prompt: str, default: str) -> str:
     """Prompt user for input with a default value."""
