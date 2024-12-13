@@ -1,0 +1,194 @@
+{
+    "obv_price_divergence": {
+        "method": "Difference",
+        "obv_method": "SMA",
+        "obv_period": 14,
+        "price_input_type": "OHLC/4",
+        "price_method": "SMA",
+        "price_period": 14,
+        "bearish_threshold": -0.8,
+        "bullish_threshold": 0.8,
+        "smoothing": 0.01
+    },
+    "dema": {
+        "timeperiod": 30
+    },
+    "t3": {
+        "timeperiod": 5,
+        "vfactor": 0.7
+    },
+    "sma": {
+        "timeperiod": 14
+    },
+    "ema": {
+        "timeperiod": 14
+    },
+    "tsf": {
+        "timeperiod": 14
+    },
+    "rsi": {
+        "timeperiod": 14
+    },
+    "macd": {
+        "fastperiod": 12,
+        "slowperiod": 26,
+        "signalperiod": 9
+    },
+    "stoch": {
+        "fastk_period": 5,
+        "slowk_period": 3,
+        "slowd_period": 3,
+        "slowk_matype": 0,
+        "slowd_matype": 0
+    },
+    "cmo": {
+        "timeperiod": 14
+    },
+    "cci": {
+        "timeperiod": 20
+    },
+    "adx": {
+        "timeperiod": 14
+    },
+    "dx": {
+        "timeperiod": 14
+    },
+    "aroon": {
+        "timeperiod": 14
+    },
+    "aroonosc": {
+        "timeperiod": 14
+    },
+    "macdext": {
+        "fastperiod": 12,
+        "fastmatype": 0,
+        "slowperiod": 26,
+        "slowmatype": 0,
+        "signalperiod": 9,
+        "signalmatype": 0
+    },
+    "macdfix": {
+        "signalperiod": 9
+    },
+    "minus_di": {
+        "timeperiod": 14
+    },
+    "minus_dm": {
+        "timeperiod": 14
+    },
+    "mom": {
+        "timeperiod": 10
+    },
+    "plus_di": {
+        "timeperiod": 14
+    },
+    "plus_dm": {
+        "timeperiod": 14
+    },
+    "ppo": {
+        "fastperiod": 12,
+        "slowperiod": 26,
+        "matype": 0
+    },
+    "roc": {
+        "timeperiod": 10
+    },
+    "rocp": {
+        "timeperiod": 10
+    },
+    "rocr": {
+        "timeperiod": 10
+    },
+    "rocr100": {
+        "timeperiod": 10
+    },
+    "stochf": {
+        "fastk_period": 5,
+        "fastd_period": 3,
+        "fastd_matype": 0
+    },
+    "stochrsi": {
+        "timeperiod": 14,
+        "fastk_period": 5,
+        "fastd_period": 3,
+        "fastd_matype": 0
+    },
+    "trix": {
+        "timeperiod": 30
+    },
+    "ultosc": {
+        "timeperiod1": 7,
+        "timeperiod2": 14,
+        "timeperiod3": 28
+    },
+    "willr": {
+        "timeperiod": 14
+    },
+    "adosc": {
+        "fastperiod": 3,
+        "slowperiod": 10
+    },
+    "atr": {
+        "timeperiod": 14
+    },
+    "natr": {
+        "timeperiod": 14
+    },
+    "beta": {
+        "timeperiod": 5
+    },
+    "correl": {
+        "timeperiod": 30
+    },
+    "linearreg": {
+        "timeperiod": 14
+    },
+    "linearreg_angle": {
+        "timeperiod": 14
+    },
+    "linearreg_intercept": {
+        "timeperiod": 14
+    },
+    "linearreg_slope": {
+        "timeperiod": 14
+    },
+    "stddev": {
+        "timeperiod": 5,
+        "nbdev": 1
+    },
+    "var": {
+        "timeperiod": 5,
+        "nbdev": 1
+    },
+    "mfi": {
+        "timeperiod": 14
+    },
+    "vortex": {
+        "timeperiod": 14
+    },
+    "ao": {
+        "timeperiod": 5
+    },
+    "fi": {
+        "timeperiod": 13
+    },
+    "kc": {
+        "length": 20,
+        "scalar": 1.5
+    },
+    "rvi": {
+        "timeperiod": 10
+    },
+    "tsi": {
+        "fastperiod": 25,
+        "slowperiod": 13
+    },
+    "EyeX MFV Volume": {
+        "ranges": [50, 75, 100, 200]
+    },
+    "EyeX MFV S/R Bull": {
+        "ranges": [50, 75, 100, 200],
+        "pivot_lookback": 5,
+        "price_proximity": 0.00001
+    }
+}
