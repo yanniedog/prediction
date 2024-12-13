@@ -8,6 +8,7 @@ import time
 import datetime
 from config import DB_PATH
 from sqlite_data_manager import save_to_sqlite, create_connection, create_tables
+import json
 
 logger = logging.getLogger()
 

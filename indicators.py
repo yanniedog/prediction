@@ -194,7 +194,6 @@ def compute_all_indicators(data: pd.DataFrame, db_path: str = DB_PATH, indicator
         for indicator in indicators_keys:
             params = indicators_list[indicator]
             input_columns = params.get("input_columns", ["close"])
-            # Using config_id = -1 for non-configured indicators
             data = compute_custom_indicator(data, indicator, params, input_columns, config_id=-1)
     except Exception as e:
         logger.error(f"Error computing all indicators: {e}")

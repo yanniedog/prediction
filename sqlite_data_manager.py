@@ -1,11 +1,11 @@
 # sqlite_data_manager.py
 import json
 import logging
-import re
 import sqlite3
 from pathlib import Path
 import pandas as pd
 from config import DB_PATH
+import re
 
 logger = logging.getLogger()
 
@@ -127,7 +127,7 @@ def insert_indicator_configs(conn, indicator_name, configs):
         print(f"Inserted {len(configs)} configurations for indicator '{indicator_name}'.")
     except sqlite3.Error as e:
         print(f"SQLite insertion error: {e}")
-        raise
+        raise e
 
 def fetch_indicator_configs(conn, indicator_name):
     cursor = conn.cursor()
@@ -183,7 +183,7 @@ def insert_klines(conn, df, symbol, timeframe):
         print(f"Successfully inserted {len(data)} records into 'klines'.")
     except (sqlite3.Error, ValueError) as e:
         print(f"SQLite insertion error: {e}")
-        raise
+        raise e
 
 def save_to_sqlite(df, db_path, symbol, timeframe):
     conn = create_connection(db_path)

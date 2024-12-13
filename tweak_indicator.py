@@ -41,6 +41,7 @@ def insert_tweaked_configs(conn, indicator_name: str, configurations: List[Dict]
         insert_indicator_configs(conn, indicator_name, configurations)
     except Exception as e:
         logger.error(f"Error inserting configurations for '{indicator_name}': {e}")
+        raise e
 
 def select_indicators(available_indicators: List[str]) -> List[str]:
     print("\nAvailable Indicators for Tweak:")

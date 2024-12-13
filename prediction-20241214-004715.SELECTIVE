@@ -4,15 +4,15 @@ See the error I receive here:
 
 ====================
 
-2024-12-14 00:29:08,550 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-14 00:29:08,779 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/time HTTP/11" 200 28
-2024-12-14 00:29:08,782 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-14 00:29:09,044 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&startTime=1502668800000&endTime=1734096548300&limit=1000 HTTP/11" 200 26461
-2024-12-14 00:29:09,161 - INFO - [start.py:141(main)]: Price data download and insertion completed.
-2024-12-14 00:29:09,178 - INFO - [start.py:158(main)]: Default indicators computation skipped.
-2024-12-14 00:29:09,181 - INFO - [start.py:165(main)]: Configured indicators computed successfully.
-2024-12-14 00:29:09,181 - INFO - [start.py:166(main)]: Computing correlations.
-2024-12-14 00:29:09,193 - ERROR - [start.py:177(main)]: Error computing configured indicators or correlations: 'rsi'
+2024-12-14 00:47:00,221 - INFO - [start.py:73(run_tweak_indicator)]: 49. rvi
+2024-12-14 00:47:00,224 - INFO - [start.py:73(run_tweak_indicator)]: 50. tsi
+2024-12-14 00:47:00,226 - INFO - [start.py:73(run_tweak_indicator)]: 51. EyeX MFV Volume
+2024-12-14 00:47:00,233 - INFO - [start.py:73(run_tweak_indicator)]: 52. EyeX MFV S/R Bull
+2024-12-14 00:47:03,042 - INFO - [start.py:81(run_tweak_indicator)]: Selected indicator: mfi
+2024-12-14 00:47:03,042 - INFO - [start.py:87(run_tweak_indicator)]: Parameters for 'mfi': {'timeperiod': 14, 'input_columns': ['high', 'low', 'close', 'volume']}
+2024-12-14 00:47:03,061 - INFO - [start.py:93(run_tweak_indicator)]: Generated 44 configurations for 'mfi'.
+2024-12-14 00:47:03,072 - INFO - [start.py:95(run_tweak_indicator)]: Example configurations for 'mfi': [{'timeperiod': 9, 'input_columns': 'high'}, {'timeperiod': 9, 'input_columns': 'low'}, {'timeperiod': 9, 'input_columns': 'close'}, {'timeperiod': 9, 'input_columns': 'volume'}, {'timeperiod': 10, 'input_columns': 'high'}, {'timeperiod': 10, 'input_columns': 'low'}, {'timeperiod': 10, 'input_columns': 'close'}, {'timeperiod': 10, 'input_columns': 'volume'}, {'timeperiod': 11, 'input_columns': 'high'}, {'timeperiod': 11, 'input_columns': 'low'}, {'timeperiod': 11, 'input_columns': 'close'}, {'timeperiod': 11, 'input_columns': 'volume'}, {'timeperiod': 12, 'input_columns': 'high'}, {'timeperiod': 12, 'input_columns': 'low'}, {'timeperiod': 12, 'input_columns': 'close'}]
+2024-12-14 00:47:03,078 - ERROR - [start.py:104(run_tweak_indicator)]: Error inserting configurations into database for 'mfi': no such table: indicators
 
 
 ====================
@@ -33,6 +33,7 @@ import time
 import datetime
 from config import DB_PATH
 from sqlite_data_manager import save_to_sqlite, create_connection, create_tables
+import json
 
 logger = logging.getLogger()
 
@@ -206,8 +207,10 @@ DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 # correlation_database.py
 import logging
 import sqlite3
+import json
 
 logger = logging.getLogger()
+
 class CorrelationDatabase:
     def __init__(self, db_path: str):
         self.conn = sqlite3.connect(db_path)
@@ -219,58 +222,63 @@ class CorrelationDatabase:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             symbol_id INTEGER NOT NULL,
             timeframe_id INTEGER NOT NULL,
-            indicator_id INTEGER NOT NULL,
+            indicator_config_id INTEGER NOT NULL,
             lag INTEGER NOT NULL,
             correlation_value REAL NOT NULL,
             FOREIGN KEY (symbol_id) REFERENCES symbols(id),
             FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
-            FOREIGN KEY (indicator_id) REFERENCES indicators(id),
-            UNIQUE(symbol_id, timeframe_id, indicator_id, lag)
+            FOREIGN KEY (indicator_config_id) REFERENCES indicator_configs(id),
+            UNIQUE(symbol_id, timeframe_id, indicator_config_id, lag)
         );""")
-        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_correlations ON correlations (symbol_id, timeframe_id, indicator_id, lag);")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_correlations ON correlations (symbol_id, timeframe_id, indicator_config_id, lag);")
         self.conn.commit()
 
-    def insert_correlation(self, symbol, timeframe, indicator, lag, value):
+    def insert_correlation(self, symbol, timeframe, indicator_config, lag, value):
         cursor = self.conn.cursor()
         symbol_id = self._get_or_create_id('symbols', 'symbol', symbol, cursor)
         timeframe_id = self._get_or_create_id('timeframes', 'timeframe', timeframe, cursor)
-        indicator_id = self._get_or_create_id('indicators', 'name', indicator, cursor)
+        indicator_config_id = self._get_indicator_config_id(indicator_config, cursor)
         try:
             cursor.execute("""
-                INSERT OR REPLACE INTO correlations (symbol_id, timeframe_id, indicator_id, lag, correlation_value)
-                VALUES (?, ?, ?, ?, ?);""", (symbol_id, timeframe_id, indicator_id, lag, value))
+                INSERT OR REPLACE INTO correlations (symbol_id, timeframe_id, indicator_config_id, lag, correlation_value)
+                VALUES (?, ?, ?, ?, ?);""", (symbol_id, timeframe_id, indicator_config_id, lag, value))
             self.conn.commit()
-        except sqlite3.Error:
-            pass
-
-    def get_correlation(self, symbol, timeframe, indicator, lag):
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT c.correlation_value FROM correlations c
-            JOIN symbols s ON c.symbol_id = s.id
-            JOIN timeframes t ON c.timeframe_id = t.id
-            JOIN indicators i ON c.indicator_id = i.id
-            WHERE s.symbol = ? AND t.timeframe = ? AND i.name = ? AND c.lag = ?;""",
-            (symbol, timeframe, indicator, lag))
-        res = cursor.fetchone()
-        return res[0] if res else None
+        except sqlite3.Error as e:
+            logger.error(f"SQLite insertion error: {e}")
+            raise
 
     def get_all_correlations(self):
         cursor = self.conn.cursor()
         cursor.execute("""
-            SELECT s.symbol, t.timeframe, i.name, c.lag, c.correlation_value
+            SELECT s.symbol, t.timeframe, i.name, ic.config, c.lag, c.correlation_value
             FROM correlations c
             JOIN symbols s ON c.symbol_id = s.id
             JOIN timeframes t ON c.timeframe_id = t.id
-            JOIN indicators i ON c.indicator_id = i.id;""")
+            JOIN indicator_configs ic ON c.indicator_config_id = ic.id
+            JOIN indicators i ON ic.indicator_id = i.id;""")
         return cursor.fetchall()
 
     def _get_or_create_id(self, table, column, value, cursor):
         cursor.execute(f"SELECT id FROM {table} WHERE {column} = ?", (value,))
         res = cursor.fetchone()
-        if res: return res[0]
+        if res:
+            return res[0]
         cursor.execute(f"INSERT INTO {table} ({column}) VALUES (?)", (value,))
         return cursor.lastrowid
+
+    def _get_indicator_config_id(self, indicator_config, cursor):
+        indicator_name = indicator_config['indicator_name']
+        params = json.dumps(indicator_config['params'], sort_keys=True)
+        cursor.execute("""
+            SELECT ic.id FROM indicator_configs ic
+            JOIN indicators i ON ic.indicator_id = i.id
+            WHERE i.name = ? AND ic.config = ?;""", (indicator_name, params))
+        res = cursor.fetchone()
+        if res:
+            return res[0]
+        else:
+            logger.error(f"Indicator configuration not found for {indicator_name} with params {params}")
+            raise ValueError(f"Indicator configuration not found for {indicator_name} with params {params}")
 
     def close(self):
         self.conn.close()
@@ -281,10 +289,10 @@ class CorrelationDatabase:
 import logging
 import pandas as pd
 import numpy as np
-import sqlite3
+import json
 from typing import List
-from sklearn.preprocessing import StandardScaler
 from config import DB_PATH
+from correlation_database import CorrelationDatabase
 
 logger = logging.getLogger()
 
@@ -300,68 +308,40 @@ def calculate_correlation(data: pd.DataFrame, indicator: str, lag: int, reverse:
 def is_valid_indicator(series: pd.Series) -> bool:
     return not series.isna().all() and series.nunique() > 1
 
-def get_symbol_id(conn: sqlite3.Connection, symbol: str) -> int:
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
-    res = cursor.fetchone()
-    if res: return res[0]
-    cursor.execute("INSERT INTO symbols (symbol) VALUES (?)", (symbol,))
-    conn.commit()
-    return cursor.lastrowid
-
-def get_timeframe_id(conn: sqlite3.Connection, timeframe: str) -> int:
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
-    res = cursor.fetchone()
-    if res: return res[0]
-    cursor.execute("INSERT INTO timeframes (timeframe) VALUES (?)", (timeframe,))
-    conn.commit()
-    return cursor.lastrowid
-
-def get_indicator_id(conn: sqlite3.Connection, indicator: str) -> int:
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM indicators WHERE name = ?", (indicator,))
-    res = cursor.fetchone()
-    if res: return res[0]
-    cursor.execute("INSERT INTO indicators (name) VALUES (?)", (indicator,))
-    conn.commit()
-    return cursor.lastrowid
-
 def load_or_calculate_correlations(data: pd.DataFrame, indicators: List[str], max_lag: int, reverse: bool, symbol: str, timeframe: str):
     print(f"Calculating correlations for {symbol} {timeframe}")
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    sym_id = get_symbol_id(conn, symbol)
-    tf_id = get_timeframe_id(conn, timeframe)
-    for i, ind in enumerate(indicators, 1):
-        print(f"Processing {i}/{len(indicators)}: {ind}")
-        if not is_valid_indicator(data[ind]):
-            print(f"Invalid indicator '{ind}'. Skipping.")
-            continue
-        cursor.execute("SELECT lag FROM correlations WHERE symbol_id=? AND timeframe_id=? AND indicator_id=?", (sym_id, tf_id, get_indicator_id(conn, ind)))
-        existing = {row[0] for row in cursor.fetchall()}
-        to_calc = [lag for lag in range(1, max_lag+1) if lag not in existing]
-        print(f"Calculating {len(to_calc)} lags for '{ind}'")
-        for lag in to_calc:
-            corr = calculate_correlation(data, ind, lag, reverse)
-            try:
-                cursor.execute("""
-                    INSERT INTO correlations (symbol_id, timeframe_id, indicator_id, lag, correlation_value)
-                    VALUES (?, ?, ?, ?, ?);""", (sym_id, tf_id, get_indicator_id(conn, ind), lag, corr))
-            except sqlite3.Error as e:
-                print(f"Insert error for '{ind}' lag {lag}: {e}")
-        conn.commit()
-        print(f"Completed '{ind}'")
-    conn.close()
+    db = CorrelationDatabase(DB_PATH)
+    cursor = db.conn.cursor()
+    for indicator in indicators:
+        cursor.execute("""
+            SELECT ic.id, ic.config FROM indicator_configs ic
+            JOIN indicators i ON ic.indicator_id = i.id
+            WHERE i.name = ?;""", (indicator,))
+        configs = cursor.fetchall()
+        for config_id, config_json in configs:
+            config = json.loads(config_json)
+            config_name = f"{indicator}_config_{config_id}"
+            if config_name not in data.columns:
+                logger.error(f"Indicator column '{config_name}' not found in data.")
+                raise KeyError(config_name)
+            if not is_valid_indicator(data[config_name]):
+                logger.warning(f"Invalid indicator '{config_name}'. Skipping.")
+                continue
+            cursor.execute("""
+                SELECT lag FROM correlations 
+                WHERE symbol_id=(SELECT id FROM symbols WHERE symbol=?) 
+                AND timeframe_id=(SELECT id FROM timeframes WHERE timeframe=?) 
+                AND indicator_config_id=?;""", (symbol, timeframe, config_id))
+            existing_lags = {row[0] for row in cursor.fetchall()}
+            to_calc = [lag for lag in range(1, max_lag+1) if lag not in existing_lags]
+            for lag in to_calc:
+                corr = calculate_correlation(data, config_name, lag, reverse)
+                try:
+                    db.insert_correlation(symbol, timeframe, {'indicator_name': indicator, 'params': config}, lag, corr)
+                except Exception as e:
+                    logger.error(f"Error inserting correlation for {config_name} lag {lag}: {e}")
+    db.close()
     print("All correlations processed.")
-
-def get_all_correlations(conn: sqlite3.Connection, sym_id: int, tf_id: int, ind_id: int, max_lag: int) -> List[float]:
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT correlation_value FROM correlations
-        WHERE symbol_id=? AND timeframe_id=? AND indicator_id=? AND lag BETWEEN 1 AND ?
-        ORDER BY lag ASC;""", (sym_id, tf_id, ind_id, max_lag))
-    return [row[0] for row in cursor.fetchall()]
 
 ====================
 5) data_utils.py (located in the working directory):
@@ -441,7 +421,7 @@ def z_score(x: np.ndarray) -> float:
         return 0
     return (x[-1] - mean) / std
 
-def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: dict, input_columns: List[str]) -> pd.DataFrame:
+def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: dict, input_columns: List[str], config_id: int) -> pd.DataFrame:
     try:
         if indicator_name in ["obv_price_divergence", "EyeX MFV Volume", "EyeX MFV S/R Bull", "EyeX MFV S/R Bear"]:
             if indicator_name == "obv_price_divergence":
@@ -477,7 +457,8 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                 else:
                     metric = np.log(np.maximum(smoothing, np.abs(obv_change)) / np.maximum(smoothing, np.abs(price_change)))
 
-                data['obv_price_divergence'] = metric
+                column_name = f"{indicator_name}_config_{config_id}"
+                data[column_name] = metric
 
             elif indicator_name == "EyeX MFV Volume":
                 ranges = params.get("ranges", [50, 75, 100, 200])
@@ -493,7 +474,8 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                     for br in ranges
                 ]).clip(-400, 400)
 
-                data['EyeX MFV Volume'] = combined_mfv
+                column_name = f"{indicator_name}_config_{config_id}"
+                data[column_name] = combined_mfv
 
             elif indicator_name == "EyeX MFV S/R Bull":
                 ranges = params.get("ranges", [50, 75, 100, 200])
@@ -533,8 +515,8 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                     bull_attack.append(near_res and combined_mfv.iloc[i] > 0)
                     bear_attack.append(near_sup and combined_mfv.iloc[i] < 0)
 
-                data['EyeX MFV S/R Bull'] = bull_attack
-                data['EyeX MFV S/R Bear'] = bear_attack
+                data[f'EyeX MFV S/R Bull_config_{config_id}'] = bull_attack
+                data[f'EyeX MFV S/R Bear_config_{config_id}'] = bear_attack
 
         elif indicator_name.upper() in ta.get_functions():
             try:
@@ -544,10 +526,11 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                 result = ta_func(*inputs, **clean_params)
                 if isinstance(result, tuple):
                     for idx, res in enumerate(result):
-                        column_name = f"{indicator_name}_{idx}"
+                        column_name = f"{indicator_name}_config_{config_id}_{idx}"
                         data[column_name] = res
                 else:
-                    data[indicator_name] = result
+                    column_name = f"{indicator_name}_config_{config_id}"
+                    data[column_name] = result
             except Exception as e:
                 logger.error(f"Error computing indicator '{indicator_name}': {e}")
         elif indicator_name.lower() in [i.lower() for i in pta.indicators()]:
@@ -558,9 +541,11 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                 result = pta_func(**clean_params, **inputs)
                 if isinstance(result, pd.DataFrame):
                     for col in result.columns:
-                        data[col] = result[col]
+                        column_name = f"{col}_config_{config_id}"
+                        data[column_name] = result[col]
                 else:
-                    data[indicator_name] = result
+                    column_name = f"{indicator_name}_config_{config_id}"
+                    data[column_name] = result
             except Exception as e:
                 logger.error(f"Error computing indicator '{indicator_name}': {e}")
         else:
@@ -575,27 +560,30 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
             indicator_params = json.load(f)
     except Exception as e:
         logger.error(f"Error loading indicator parameters: {e}")
-        return data
-
+        raise e
     conn = create_connection(db_path)
     if not conn:
         logger.error("Failed to connect to the database.")
-        return data
+        raise ConnectionError("Failed to connect to the database.")
     cursor = conn.cursor()
     for indicator_name in indicators_list:
         try:
             cursor.execute("""
-                SELECT config FROM indicator_configs 
-                JOIN indicators ON indicator_configs.indicator_id = indicators.id
-                WHERE indicators.name = ?
+                SELECT ic.id, ic.config FROM indicator_configs ic
+                JOIN indicators i ON ic.indicator_id = i.id
+                WHERE i.name = ?
             """, (indicator_name,))
             rows = cursor.fetchall()
-            configs = [json.loads(row[0]) for row in rows]
-            input_columns = indicator_params.get(indicator_name, {}).get("input_columns", ["close"])
-            for config in configs:
-                data = compute_custom_indicator(data, indicator_name, config, input_columns)
+            if not rows:
+                logger.error(f"No configurations found for indicator '{indicator_name}'.")
+                raise ValueError(f"No configurations found for indicator '{indicator_name}'.")
+            for config_id, config_json in rows:
+                config = json.loads(config_json)
+                input_columns = indicator_params.get(indicator_name, {}).get("input_columns", ["close"])
+                data = compute_custom_indicator(data, indicator_name, config, input_columns, config_id)
         except Exception as e:
             logger.error(f"Error computing indicator '{indicator_name}': {e}")
+            raise e
     conn.close()
     data.dropna(inplace=True)
     return data
@@ -608,7 +596,7 @@ def compute_all_indicators(data: pd.DataFrame, db_path: str = DB_PATH, indicator
         for indicator in indicators_keys:
             params = indicators_list[indicator]
             input_columns = params.get("input_columns", ["close"])
-            data = compute_custom_indicator(data, indicator, params, input_columns)
+            data = compute_custom_indicator(data, indicator, params, input_columns, config_id=-1)
     except Exception as e:
         logger.error(f"Error computing all indicators: {e}")
     return data
@@ -990,13 +978,13 @@ if __name__=="__main__":
 ====================
 12) sqlite_data_manager.py (located in the working directory):
 # sqlite_data_manager.py
-
 import json
 import logging
 import sqlite3
 from pathlib import Path
 import pandas as pd
 from config import DB_PATH
+import re
 
 logger = logging.getLogger()
 
@@ -1064,13 +1052,13 @@ def create_tables(conn):
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     symbol_id INTEGER,
                     timeframe_id INTEGER,
-                    indicator_id INTEGER,
+                    indicator_config_id INTEGER,
                     lag INTEGER,
                     correlation_value REAL,
                     FOREIGN KEY (symbol_id) REFERENCES symbols(id),
                     FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
-                    FOREIGN KEY (indicator_id) REFERENCES indicators(id),
-                    UNIQUE(symbol_id, timeframe_id, indicator_id, lag)
+                    FOREIGN KEY (indicator_config_id) REFERENCES indicator_configs(id),
+                    UNIQUE(symbol_id, timeframe_id, indicator_config_id, lag)
                 );"""
         }
 
@@ -1082,12 +1070,12 @@ def create_tables(conn):
             "CREATE INDEX IF NOT EXISTS idx_open_time ON klines (open_time);",
             "CREATE INDEX IF NOT EXISTS idx_close_time ON klines (close_time);",
             "CREATE INDEX IF NOT EXISTS idx_correlation_computed ON klines (correlation_computed);",
-            "CREATE INDEX IF NOT EXISTS idx_correlations ON correlations (symbol_id, timeframe_id, indicator_id, lag);"
+            "CREATE INDEX IF NOT EXISTS idx_correlations ON correlations (symbol_id, timeframe_id, indicator_config_id, lag);"
         ]
 
         for idx_query in indexes:
             cursor.execute(idx_query)
-            index_name = idx_query.split()[5]
+            index_name = re.findall(r'CREATE INDEX IF NOT EXISTS (\w+) ', idx_query)[0]
             print(f"Index created or already exists: {index_name}")
 
         conn.commit()
@@ -1104,14 +1092,6 @@ def initialize_database(db_path=DB_PATH):
         print("Failed to initialize the database.")
 
 def insert_indicator_configs(conn, indicator_name, configs):
-    """
-    Inserts the base indicator and its configurations into the database.
-
-    Args:
-        conn (sqlite3.Connection): Database connection.
-        indicator_name (str): Name of the indicator.
-        configs (List[Dict]): List of configuration dictionaries.
-    """
     try:
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
@@ -1120,12 +1100,13 @@ def insert_indicator_configs(conn, indicator_name, configs):
         indicator_id = cursor.fetchone()[0]
 
         for config in configs:
-            config_json = json.dumps(config)
+            config_json = json.dumps(config, sort_keys=True)
             cursor.execute("INSERT OR IGNORE INTO indicator_configs (indicator_id, config) VALUES (?, ?)", (indicator_id, config_json))
         conn.commit()
         print(f"Inserted {len(configs)} configurations for indicator '{indicator_name}'.")
     except sqlite3.Error as e:
         print(f"SQLite insertion error: {e}")
+        raise e
 
 def fetch_indicator_configs(conn, indicator_name):
     cursor = conn.cursor()
@@ -1181,6 +1162,7 @@ def insert_klines(conn, df, symbol, timeframe):
         print(f"Successfully inserted {len(data)} records into 'klines'.")
     except (sqlite3.Error, ValueError) as e:
         print(f"SQLite insertion error: {e}")
+        raise e
 
 def save_to_sqlite(df, db_path, symbol, timeframe):
     conn = create_connection(db_path)
@@ -1189,6 +1171,7 @@ def save_to_sqlite(df, db_path, symbol, timeframe):
         conn.close()
     else:
         print("Cannot connect to the database.")
+        raise ConnectionError("Cannot connect to the database.")
 
 ====================
 13) start.py (located in the working directory):
@@ -1292,7 +1275,11 @@ def run_tweak_indicator(symbol: str, timeframe: str):
     if not conn:
         logger.error("Failed to connect to the database.")
         sys.exit(1)
-    insert_indicator_configs(conn, selected_indicator, configurations)
+    try:
+        insert_indicator_configs(conn, selected_indicator, configurations)
+    except Exception as e:
+        logger.error(f"Error inserting configurations into database for '{selected_indicator}': {e}")
+        sys.exit(1)
     if configurations:
         logger.info("Configurations stored in database:")
         for config in configurations[:15]:
@@ -1344,12 +1331,6 @@ def main():
             data, is_rev, db_fn = load_db_data(symbol, timeframe)
             if data.empty:
                 logger.error("No data available for the selected symbol and timeframe.")
-                sys.exit(1)
-
-            try:
-                logger.info("Default indicators computation skipped.")
-            except Exception as e:
-                logger.error(f"Error computing default indicators: {e}")
                 sys.exit(1)
 
             try:
@@ -1446,6 +1427,7 @@ def insert_tweaked_configs(conn, indicator_name: str, configurations: List[Dict]
         insert_indicator_configs(conn, indicator_name, configurations)
     except Exception as e:
         logger.error(f"Error inserting configurations for '{indicator_name}': {e}")
+        raise e
 
 def select_indicators(available_indicators: List[str]) -> List[str]:
     print("\nAvailable Indicators for Tweak:")
