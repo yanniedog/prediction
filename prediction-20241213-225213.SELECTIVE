@@ -4,16 +4,64 @@ See the error I receive here:
 
 ====================
 
-2024-12-13 22:47:11,131 - INFO - [start.py:31(input_with_default)]: User Input: Enter symbol (e.g., 'BTCUSDT'): -> BTCUSDT
-2024-12-13 22:47:11,755 - INFO - [start.py:31(input_with_default)]: User Input: Enter timeframe (e.g., '1w'): -> 1w
-2024-12-13 22:47:11,755 - INFO - [start.py:141(main)]: Symbol: BTCUSDT, Timeframe: 1w
-2024-12-13 22:47:11,755 - ERROR - [start.py:201(main)]: An unexpected error occurred during execution.
-Traceback (most recent call last):
-  File "start.py", line 143, in main
-    selected_indicator = run_tweak_indicator(symbol, timeframe)
-  File "start.py", line 66, in run_tweak_indicator
-    available_indicators = fetch_available_indicators('indicators.py')
-TypeError: fetch_available_indicators() takes 0 positional arguments but 1 was given
+2024-12-13 22:49:32,753 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
+2024-12-13 22:49:33,018 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&startTime=1502668800000&endTime=1734090572278&limit=1000 HTTP/11" 200 26460
+2024-12-13 22:49:33,164 - INFO - [start.py:153(main)]: Price data download and insertion completed.
+2024-12-13 22:49:33,186 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'obv_price_divergence': no such table: indicator_configs
+2024-12-13 22:49:33,191 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'dema': no such table: indicator_configs
+2024-12-13 22:49:33,196 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 't3': no such table: indicator_configs
+2024-12-13 22:49:33,202 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'sma': no such table: indicator_configs
+2024-12-13 22:49:33,207 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'ema': no such table: indicator_configs
+2024-12-13 22:49:33,210 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'tsf': no such table: indicator_configs
+2024-12-13 22:49:33,216 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'rsi': no such table: indicator_configs
+2024-12-13 22:49:33,219 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'macd': no such table: indicator_configs
+2024-12-13 22:49:33,219 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'stoch': no such table: indicator_configs
+2024-12-13 22:49:33,225 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'cmo': no such table: indicator_configs
+2024-12-13 22:49:33,229 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'cci': no such table: indicator_configs
+2024-12-13 22:49:33,229 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'adx': no such table: indicator_configs
+2024-12-13 22:49:33,236 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'dx': no such table: indicator_configs
+2024-12-13 22:49:33,240 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'aroon': no such table: indicator_configs
+2024-12-13 22:49:33,244 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'aroonosc': no such table: indicator_configs
+2024-12-13 22:49:33,248 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'macdext': no such table: indicator_configs
+2024-12-13 22:49:33,252 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'macdfix': no such table: indicator_configs
+2024-12-13 22:49:33,255 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'minus_di': no such table: indicator_configs
+2024-12-13 22:49:33,259 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'minus_dm': no such table: indicator_configs
+2024-12-13 22:49:33,262 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'mom': no such table: indicator_configs
+2024-12-13 22:49:33,268 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'plus_di': no such table: indicator_configs
+2024-12-13 22:49:33,268 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'plus_dm': no such table: indicator_configs
+2024-12-13 22:49:33,274 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'ppo': no such table: indicator_configs
+2024-12-13 22:49:33,277 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'roc': no such table: indicator_configs
+2024-12-13 22:49:33,283 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'rocp': no such table: indicator_configs
+2024-12-13 22:49:33,286 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'rocr': no such table: indicator_configs
+2024-12-13 22:49:33,286 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'rocr100': no such table: indicator_configs
+2024-12-13 22:49:33,295 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'stochf': no such table: indicator_configs
+2024-12-13 22:49:33,297 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'stochrsi': no such table: indicator_configs
+2024-12-13 22:49:33,301 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'trix': no such table: indicator_configs
+2024-12-13 22:49:33,305 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'ultosc': no such table: indicator_configs
+2024-12-13 22:49:33,309 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'willr': no such table: indicator_configs
+2024-12-13 22:49:33,314 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'adosc': no such table: indicator_configs
+2024-12-13 22:49:33,314 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'atr': no such table: indicator_configs
+2024-12-13 22:49:33,314 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'natr': no such table: indicator_configs
+2024-12-13 22:49:33,314 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'beta': no such table: indicator_configs
+2024-12-13 22:49:33,328 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'correl': no such table: indicator_configs
+2024-12-13 22:49:33,334 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'linearreg': no such table: indicator_configs
+2024-12-13 22:49:33,337 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'linearreg_angle': no such table: indicator_configs
+2024-12-13 22:49:33,341 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'linearreg_intercept': no such table: indicator_configs
+2024-12-13 22:49:33,347 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'linearreg_slope': no such table: indicator_configs
+2024-12-13 22:49:33,350 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'stddev': no such table: indicator_configs
+2024-12-13 22:49:33,354 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'var': no such table: indicator_configs
+2024-12-13 22:49:33,357 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'mfi': no such table: indicator_configs
+2024-12-13 22:49:33,360 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'vortex': no such table: indicator_configs
+2024-12-13 22:49:33,365 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'ao': no such table: indicator_configs
+2024-12-13 22:49:33,367 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'fi': no such table: indicator_configs
+2024-12-13 22:49:33,367 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'kc': no such table: indicator_configs
+2024-12-13 22:49:33,375 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'rvi': no such table: indicator_configs
+2024-12-13 22:49:33,380 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'tsi': no such table: indicator_configs
+2024-12-13 22:49:33,382 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'EyeX MFV Volume': no such table: indicator_configs
+2024-12-13 22:49:33,382 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'EyeX MFV S/R Bull': no such table: indicator_configs
+2024-12-13 22:49:33,391 - INFO - [start.py:173(main)]: Default indicators computed successfully.
+2024-12-13 22:49:33,394 - INFO - [start.py:182(main)]: Computing correlations.
+2024-12-13 22:49:33,400 - ERROR - [start.py:193(main)]: Error computing configured indicators or correlations: 'macd'
 
 
 ====================
@@ -1153,7 +1201,7 @@ def delete_previous_output():
         logger.info("Directory contents not cleared.")
 
 def run_tweak_indicator(symbol: str, timeframe: str):
-    available_indicators = fetch_available_indicators('indicators.py')
+    available_indicators = fetch_available_indicators()
     if not available_indicators:
         logger.error("No indicators available. Check `indicators.py` or `compute_all_indicators`.")
         sys.exit(1)
