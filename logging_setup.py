@@ -15,39 +15,43 @@ class TaskAwareFormatter(logging.Formatter):
                 break
         return super().format(record)
 
+class StreamToLogger:
+    def __init__(self, stream):
+        self.stream = stream
+
+    def write(self, msg):
+        if msg.strip():
+            self.stream.write(msg)
+
+    def flush(self):
+        self.stream.flush()
+
 _configured = False
 
-def configure_logging(log_file='prediction.log'):
+def configure_logging(log_file_prefix='predictions'):
     global _configured
     if _configured:
         return
 
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
-    log_path = Path.cwd() / log_file
+    
+    log_path = Path.cwd() / f"{log_file_prefix}_{Path.cwd().stem}.log"
 
     try:
         file_handler = logging.FileHandler(log_path, 'w')
         file_handler.setLevel(logging.DEBUG)
-        formatter = TaskAwareFormatter('%(levelname)s - [%(filename)s:%(lineno)d(%(funcName)s)]: %(message)s')
+        formatter = TaskAwareFormatter('%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d(%(funcName)s)]: %(message)s')
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
 
-        class StreamToLogger:
-            def __init__(self, stream, log_func):
-                self.stream = stream
-                self.log_func = log_func
+        stream_handler = logging.StreamHandler()
+        stream_handler.setLevel(logging.INFO)
+        stream_handler.setFormatter(logging.Formatter('%(message)s'))  # Plain messages to screen
+        logger.addHandler(stream_handler)
 
-            def write(self, msg):
-                if msg.strip():
-                    self.log_func(msg.strip())
-                self.stream.write(msg)
-
-            def flush(self):
-                self.stream.flush()
-
-        sys.stdout = StreamToLogger(sys.stdout, logger.info)
-        sys.stderr = StreamToLogger(sys.stderr, logger.error)
+        sys.stdout = StreamToLogger(sys.stdout)
+        sys.stderr = StreamToLogger(sys.stderr)
 
         logging.getLogger('matplotlib').setLevel(logging.WARNING)
         logging.getLogger('font_manager').setLevel(logging.WARNING)
