@@ -82,16 +82,16 @@ def run_tweak_indicator(symbol: str, timeframe: str):
 
     parameters = parse_indicator_parameters(indicators, selected_indicator)
     if not parameters:
-        logger.info(f"No parameters found for '{selected_indicator}'. Using base indicator.")
+        logger.error(f"No parameters found for '{selected_indicator}'. Using base indicator.")
     else:
         logger.info(f"Parameters for '{selected_indicator}': {parameters}")
 
     configurations = generate_configurations(parameters.keys(), parameters) if parameters else []
     if not configurations:
-        logger.info(f"No configurations generated for '{selected_indicator}'. Using base indicator.")
+        logger.error(f"No configurations generated for '{selected_indicator}'. Using base indicator.")
     else:
         logger.info(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
-        example_configs = configurations[:5]
+        example_configs = configurations[:15]
         logger.info(f"Example configurations for '{selected_indicator}': {example_configs}")
 
     conn = create_connection(DB_PATH)
@@ -99,6 +99,10 @@ def run_tweak_indicator(symbol: str, timeframe: str):
         logger.error("Failed to connect to the database.")
         sys.exit(1)
     insert_indicator_configs(conn, selected_indicator, configurations)
+    if configurations:
+        logger.info("Configurations stored in database:")
+        for config in configurations[:15]:
+            logger.info(config)
     conn.close()
     logger.info(f"Configurations for '{selected_indicator}' have been added to the database.")
 
