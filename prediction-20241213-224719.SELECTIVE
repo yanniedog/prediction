@@ -4,41 +4,16 @@ See the error I receive here:
 
 ====================
 
-2024-12-13 22:40:09,861 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\visualization_utils__2024-12-13__193823.bak
-2024-12-13 22:40:09,864 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\visualize_data__2024-12-13__193830.bak
-2024-12-13 22:40:09,866 - INFO - [backup_utils.py:12(run_backup_cleanup)]: Backup executed successfully.
-2024-12-13 22:40:11,253 - ERROR - [launch.py:30(main)]: Uncaught exception during execution
+2024-12-13 22:47:11,131 - INFO - [start.py:31(input_with_default)]: User Input: Enter symbol (e.g., 'BTCUSDT'): -> BTCUSDT
+2024-12-13 22:47:11,755 - INFO - [start.py:31(input_with_default)]: User Input: Enter timeframe (e.g., '1w'): -> 1w
+2024-12-13 22:47:11,755 - INFO - [start.py:141(main)]: Symbol: BTCUSDT, Timeframe: 1w
+2024-12-13 22:47:11,755 - ERROR - [start.py:201(main)]: An unexpected error occurred during execution.
 Traceback (most recent call last):
-  File "c:\code\prediction\launch.py", line 26, in main
-    runpy.run_path("start.py", run_name="__main__")
-  File "C:\Users\jkoka\.pyenv\pyenv-win\versions\3.10.0\lib\runpy.py", line 269, in run_path
-    return _run_module_code(code, init_globals, run_name,
-  File "C:\Users\jkoka\.pyenv\pyenv-win\versions\3.10.0\lib\runpy.py", line 96, in _run_module_code
-    _run_code(code, mod_globals, init_globals,
-  File "C:\Users\jkoka\.pyenv\pyenv-win\versions\3.10.0\lib\runpy.py", line 86, in _run_code
-    exec(code, run_globals)
-  File "start.py", line 22, in <module>
-    from indicators import compute_all_indicators, compute_configured_indicators
-  File "c:\code\prediction\indicators.py", line 11, in <module>
-    from sqlite_data_manager import create_connection, fetch_indicator_configs
-ImportError: cannot import name 'fetch_indicator_configs' from 'sqlite_data_manager' (c:\code\prediction\sqlite_data_manager.py)
-2024-12-13 22:40:11,256 - ERROR - [logging_setup.py:67(exception_handler)]: Uncaught exception
-Traceback (most recent call last):
-  File "c:\code\prediction\launch.py", line 34, in <module>
-    main()
-  File "c:\code\prediction\launch.py", line 26, in main
-    runpy.run_path("start.py", run_name="__main__")
-  File "C:\Users\jkoka\.pyenv\pyenv-win\versions\3.10.0\lib\runpy.py", line 269, in run_path
-    return _run_module_code(code, init_globals, run_name,
-  File "C:\Users\jkoka\.pyenv\pyenv-win\versions\3.10.0\lib\runpy.py", line 96, in _run_module_code
-    _run_code(code, mod_globals, init_globals,
-  File "C:\Users\jkoka\.pyenv\pyenv-win\versions\3.10.0\lib\runpy.py", line 86, in _run_code
-    exec(code, run_globals)
-  File "start.py", line 22, in <module>
-    from indicators import compute_all_indicators, compute_configured_indicators
-  File "c:\code\prediction\indicators.py", line 11, in <module>
-    from sqlite_data_manager import create_connection, fetch_indicator_configs
-ImportError: cannot import name 'fetch_indicator_configs' from 'sqlite_data_manager' (c:\code\prediction\sqlite_data_manager.py)
+  File "start.py", line 143, in main
+    selected_indicator = run_tweak_indicator(symbol, timeframe)
+  File "start.py", line 66, in run_tweak_indicator
+    available_indicators = fetch_available_indicators('indicators.py')
+TypeError: fetch_available_indicators() takes 0 positional arguments but 1 was given
 
 
 ====================
@@ -432,7 +407,6 @@ def handle_missing_indicators(original_inds: List[str], data: pd.DataFrame, expe
 ====================
 5) indicators.py (located in the working directory):
 # indicators.py
-
 import logging
 import pandas as pd
 import numpy as np
@@ -446,15 +420,6 @@ from sqlite_data_manager import create_connection, fetch_indicator_configs
 logger = logging.getLogger(__name__)
 
 def z_score(x: np.ndarray) -> float:
-    """
-    Calculate the Z-score of the last element in the array.
-
-    Args:
-        x (np.ndarray): Array of numerical values.
-
-    Returns:
-        float: Z-score of the last element.
-    """
     mean = np.mean(x)
     std = np.std(x)
     if std == 0:
@@ -462,16 +427,6 @@ def z_score(x: np.ndarray) -> float:
     return (x[-1] - mean) / std
 
 def compute_obv_price_divergence(data: pd.DataFrame, params: dict) -> pd.DataFrame:
-    """
-    Compute the OBV Price Divergence indicator based on provided parameters.
-
-    Args:
-        data (pd.DataFrame): DataFrame containing 'open', 'high', 'low', 'close', 'volume'.
-        params (dict): Parameters for the OBV Price Divergence indicator.
-
-    Returns:
-        pd.DataFrame: DataFrame with the 'obv_price_divergence' column added.
-    """
     method = params.get("method", "Difference")
     obv_method = params.get("obv_method", "SMA")
     obv_period = params.get("obv_period", 14)
@@ -510,16 +465,6 @@ def compute_obv_price_divergence(data: pd.DataFrame, params: dict) -> pd.DataFra
     return data
 
 def compute_eyeX_MFV_volume(data: pd.DataFrame, params: dict) -> pd.DataFrame:
-    """
-    Compute the EyeX MFV Volume indicator based on provided parameters.
-
-    Args:
-        data (pd.DataFrame): DataFrame containing 'high', 'low', 'close', 'volume'.
-        params (dict): Parameters for the EyeX MFV Volume indicator.
-
-    Returns:
-        pd.DataFrame: DataFrame with the 'EyeX MFV Volume' column added.
-    """
     ranges = params.get("ranges", [50, 75, 100, 200])
     
     mf_multiplier = ((data['close'] - data['low']) - (data['high'] - data['close'])) / (data['high'] - data['low'])
@@ -537,16 +482,6 @@ def compute_eyeX_MFV_volume(data: pd.DataFrame, params: dict) -> pd.DataFrame:
     return data
 
 def compute_eyeX_MFV_support_resistance(data: pd.DataFrame, params: dict) -> pd.DataFrame:
-    """
-    Compute the EyeX MFV Support/Resistance Bull and Bear indicators based on provided parameters.
-
-    Args:
-        data (pd.DataFrame): DataFrame containing 'high', 'low', 'close', 'volume'.
-        params (dict): Parameters for the EyeX MFV S/R Bull indicator.
-
-    Returns:
-        pd.DataFrame: DataFrame with 'EyeX MFV S/R Bull' and 'EyeX MFV S/R Bear' columns added.
-    """
     ranges = params.get("ranges", [50, 75, 100, 200])
     pivot_lookback = params.get("pivot_lookback", 5)
     price_proximity = params.get("price_proximity", 0.00001)
@@ -589,18 +524,6 @@ def compute_eyeX_MFV_support_resistance(data: pd.DataFrame, params: dict) -> pd.
     return data
 
 def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str], db_path: str = 'indicators.db', indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
-    """
-    Compute configured indicators based on the provided list and parameters from indicator_params.json.
-
-    Args:
-        data (pd.DataFrame): The input data containing 'open', 'high', 'low', 'close', 'volume'.
-        indicators_list (List[str]): List of indicator names to compute.
-        db_path (str): Path to the SQLite database.
-        indicator_params_path (str): Path to indicator_params.json
-
-    Returns:
-        pd.DataFrame: The data with configured indicators added.
-    """
     with open(indicator_params_path, 'r') as f:
         indicator_params = json.load(f)
     
@@ -645,17 +568,6 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
     return data
 
 def compute_all_indicators(data: pd.DataFrame, db_path: str = 'indicators.db', indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
-    """
-    Compute all indicators based on the parameters defined in indicator_params.json.
-
-    Args:
-        data (pd.DataFrame): The input data containing 'open', 'high', 'low', 'close', 'volume'.
-        db_path (str): Path to the SQLite database.
-        indicator_params_path (str): Path to indicator_params.json
-
-    Returns:
-        pd.DataFrame: The data with all indicators added.
-    """
     with open(indicator_params_path, 'r') as f:
         indicator_params = json.load(f)
     
@@ -664,55 +576,24 @@ def compute_all_indicators(data: pd.DataFrame, db_path: str = 'indicators.db', i
     data = compute_configured_indicators(data, indicators_list, db_path, indicator_params_path)
     
     return data
-
 ====================
 6) indicator_config_parser.py (located in the working directory):
 # indicator_config_parser.py
-
 import json
 from typing import Dict, List, Optional
 
 def parse_indicators_json(indicator_params_path: str = 'indicator_params.json') -> Dict[str, Dict]:
-    """
-    Parse the indicator_params.json to extract configurable indicators and their parameters.
-
-    Args:
-        indicator_params_path (str): Path to indicator_params.json
-
-    Returns:
-        Dict[str, Dict]: A dictionary mapping indicator names to their parameter dictionaries.
-    """
     with open(indicator_params_path, 'r') as f:
         indicator_params = json.load(f)
     return indicator_params
 
 def get_configurable_indicators(indicator_params_path: str = 'indicator_params.json') -> List[str]:
-    """
-    Get a list of indicators that have configurable parameters.
-
-    Args:
-        indicator_params_path (str): Path to indicator_params.json
-
-    Returns:
-        List[str]: List of configurable indicator names.
-    """
     indicator_params = parse_indicators_json(indicator_params_path)
     return list(indicator_params.keys())
 
 def get_indicator_parameters(indicator_name: str, indicator_params_path: str = 'indicator_params.json') -> Optional[Dict]:
-    """
-    Get the parameters for a specific indicator.
-
-    Args:
-        indicator_name (str): Name of the indicator.
-        indicator_params_path (str): Path to indicator_params.json
-
-    Returns:
-        Optional[Dict]: Dictionary of parameter names and their default values, or None if not found.
-    """
     indicator_params = parse_indicators_json(indicator_params_path)
     return indicator_params.get(indicator_name)
-
 ====================
 7) launch.py (located in the working directory):
 # launch.py
@@ -1141,6 +1022,16 @@ def insert_indicator_configs(conn, indicator_name, configs):
         print(f"Inserted {len(configs)} configurations for indicator '{indicator_name}'.")
     except sqlite3.Error as e:
         print(f"SQLite insertion error: {e}")
+
+def fetch_indicator_configs(conn, indicator_name):
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT config FROM indicator_configs 
+        JOIN indicators ON indicator_configs.indicator_id = indicators.id 
+        WHERE indicators.name = ?
+    """, (indicator_name,))
+    rows = cursor.fetchall()
+    return [json.loads(row[0]) for row in rows]
 
 def insert_klines(conn, df, symbol, timeframe):
     try:
