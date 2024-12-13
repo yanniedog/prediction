@@ -15,7 +15,14 @@ def z_score(x):
     return (x[-1] - mean) / std
 
 def compute_obv_price_divergence(data, method="Difference", obv_method="SMA", obv_period=14, price_input_type="OHLC/4", price_method="SMA", price_period=14, bearish_threshold=-0.8, bullish_threshold=0.8, smoothing=0.01):
-    price_map = {"close": data['close'], "open": data['open'], "high": data['high'], "low": data['low'], "hl/2": (data['high'] + data['low']) / 2, "ohlc/4": (data[['open','high','low','close']].sum(axis=1) / 4)}
+    price_map = {
+        "close": data['close'],
+        "open": data['open'],
+        "high": data['high'],
+        "low": data['low'],
+        "hl/2": (data['high'] + data['low']) / 2,
+        "ohlc/4": (data[['open','high','low','close']].sum(axis=1) / 4)
+    }
     selected_price = price_map.get(price_input_type.lower(), (data['open'] + data['high'] + data['low'] + data['close']) / 4)
     obv = ta.OBV(data['close'], data['volume'])
     obv_ma = ta.SMA(obv, timeperiod=obv_period) if obv_method.upper() == "SMA" else ta.EMA(obv, timeperiod=obv_period)
@@ -178,18 +185,32 @@ def compute_all_indicators(data):
 
 def compute_configured_indicators(data, indicators):
     for indicator_name in indicators:
-        if '_' not in indicator_name:
+        if '_' not in indicator_name and 'EyeX MFV S/R' not in indicator_name:
             if indicator_name not in data.columns:
                 pass
             continue
         parts = indicator_name.split('_')
         base_indicator = parts[0]
         params = {}
-        for part in parts[1:]:
-            key = ''.join(filter(str.isalpha, part))
-            value = ''.join(filter(str.isdigit, part))
-            if key and value:
-                params[key] = int(value)
+        if base_indicator == 'EyeX':
+            if 'MFV Volume' in indicator_name:
+                base_indicator = 'EyeX MFV Volume'
+                params = {'ranges': [50,75,100,200]}
+            elif 'MFV S/R Bull' in indicator_name:
+                base_indicator = 'EyeX MFV S/R Bull'
+                params = {'ranges': [50,75,100,200], 'pivot_lookback':5, 'price_proximity':0.00001}
+        else:
+            for part in parts[1:]:
+                key = ''.join(filter(str.isalpha, part))
+                value = ''.join(filter(lambda c: c.isdigit() or c == '.', part))
+                if key and value:
+                    try:
+                        if '.' in value:
+                            params[key] = float(value)
+                        else:
+                            params[key] = int(value)
+                    except:
+                        pass
         if base_indicator == 't3':
             timeperiod = params.get('timeperiod', 5)
             vfactor = params.get('vfactor', 0.7)
@@ -207,7 +228,19 @@ def compute_configured_indicators(data, indicators):
             timeperiod = params.get('timeperiod', 14)
             column_name = indicator_name
             data[column_name] = ta.TSF(data['close'], timeperiod=timeperiod)
+        elif base_indicator == 'EyeX MFV Volume':
+            ranges = params.get('ranges', [50,75,100,200])
+            column_name = indicator_name
+            data = compute_eyeX_MFV_volume(data, ranges=ranges)
+        elif base_indicator == 'EyeX MFV S/R Bull':
+            ranges = params.get('ranges', [50,75,100,200])
+            pivot_lookback = params.get('pivot_lookback', 5)
+            price_proximity = params.get('price_proximity', 0.00001)
+            column_name = indicator_name
+            data = compute_eyeX_MFV_support_resistance(data, ranges=ranges, pivot_lookback=pivot_lookback, price_proximity=price_proximity)
         else:
-            print(f"Unknown indicator base: {base_indicator}. Skipping.")
+            logger.error(f"Unknown indicator base: {base_indicator}. Skipping.")
+        if base_indicator.startswith('EyeX'):
+            logger.info(f"Computed configured indicator: {column_name}")
     data.dropna(inplace=True)
     return data

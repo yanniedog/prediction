@@ -82,15 +82,17 @@ def run_tweak_indicator(symbol: str, timeframe: str):
 
     parameters = parse_indicator_parameters(indicators, selected_indicator)
     if not parameters:
-        logger.info(f"No parameters found for '{selected_indicator}'. Using base indicator.")
+        logger.error(f"No parameters found for '{selected_indicator}'. Using base indicator.")
     else:
         logger.info(f"Parameters for '{selected_indicator}': {parameters}")
 
     configurations = generate_configurations(parameters.keys(), parameters) if parameters else []
-    if configurations:
-        logger.info(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
+    if not configurations:
+        logger.error(f"No configurations generated for '{selected_indicator}'. Using base indicator.")
     else:
-        logger.info(f"No configurations generated for '{selected_indicator}'. Using base indicator.")
+        logger.info(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
+        example_configs = configurations[:5]
+        logger.info(f"Example configurations for '{selected_indicator}': {example_configs}")
 
     conn = create_connection(DB_PATH)
     if not conn:
@@ -152,9 +154,9 @@ def main():
         if selected_indicator:
             configs = get_selected_indicator_configs(selected_indicator)
             if not configs:
-                indicators = [selected_indicator]
+                indicators_list = [selected_indicator]
             else:
-                indicators = configs
+                indicators_list = configs
 
             from load_data import load_data as load_db_data
             data, is_rev, db_fn = load_db_data(symbol, timeframe)
@@ -176,7 +178,7 @@ def main():
                 logger.info("Computing correlations.")
                 load_or_calculate_correlations(
                     data=data,
-                    indicators=indicators,
+                    indicators=indicators_list,
                     max_lag=30,
                     reverse=False,
                     symbol=symbol,
