@@ -869,39 +869,7 @@ def main():
 if __name__ == "__main__":
     main()
 ====================
-10) requirements.txt (located in the working directory):
-certifi==2024.8.30
-chardet==5.2.0
-charset-normalizer==3.4.0
-colorama==0.4.6
-contourpy==1.3.1
-cycler==0.12.1
-fonttools==4.55.3
-idna==3.10
-joblib==1.4.2
-kiwisolver==1.4.7
-matplotlib==3.9.3
-numpy==1.24.4
-packaging==24.2
-pandas==2.2.3
-pandas_ta==0.3.14b0
-pillow==11.0.0
-pyparsing==3.2.0
-python-dateutil==2.9.0.post0
-pytz==2024.2
-requests==2.32.3
-scikit-learn==1.6.0
-scipy==1.14.1
-seaborn==0.13.2
-six==1.17.0
-ta-lib==0.5.1
-threadpoolctl==3.5.0
-tqdm==4.67.1
-tzdata==2024.2
-urllib3==2.2.3
-xgboost==2.1.3
-====================
-11) restore_backup.py (located in the working directory):
+10) restore_backup.py (located in the working directory):
 # restore_backup.py
 import os
 from pathlib import Path
@@ -930,7 +898,7 @@ if __name__=="__main__":
     rename_files(r"C:\code\prediction")
 
 ====================
-12) sqlite_data_manager.py (located in the working directory):
+11) sqlite_data_manager.py (located in the working directory):
 # sqlite_data_manager.py
 
 import logging
@@ -1103,7 +1071,7 @@ def save_to_sqlite(df, db_path, symbol, timeframe):
 
 
 ====================
-13) start.py (located in the working directory):
+12) start.py (located in the working directory):
 # start.py
 import logging
 import os
@@ -1303,7 +1271,7 @@ if __name__ == "__main__":
     main()
 
 ====================
-14) table_generation.py (located in the working directory):
+13) table_generation.py (located in the working directory):
 # table_generation.py
 import os, pandas as pd, numpy as np, logging
 
@@ -1324,7 +1292,7 @@ def generate_correlation_csv(correlations: dict, max_lag: int, base_filename: st
     df.to_csv(os.path.join(csv_dir, f"{base_filename}_correlations.csv"), index_label='Lag')
 
 ====================
-15) tweak_indicator.py (located in the working directory):
+14) tweak_indicator.py (located in the working directory):
 # tweak_indicator.py
 
 import sys
@@ -1515,7 +1483,7 @@ if __name__ == "__main__":
     main()
 
 ====================
-16) utils.py (located in the working directory):
+15) utils.py (located in the working directory):
 # utils.py
 import logging
 import os, sys, json, shutil, subprocess, re
