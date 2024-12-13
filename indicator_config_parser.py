@@ -14,7 +14,6 @@ class IndicatorConfigParser(ast.NodeVisitor):
         self.in_compute_function = False
 
     def visit_FunctionDef(self, node: ast.FunctionDef):
-        # Identify the compute_configured_indicators function
         if node.name == 'compute_configured_indicators':
             self.in_compute_function = True
             self.generic_visit(node)
@@ -26,11 +25,9 @@ class IndicatorConfigParser(ast.NodeVisitor):
         if not self.in_compute_function:
             return
 
-        # Check if the if statement is checking for base_indicator
         test = node.test
         indicator_name = None
 
-        # Handle statements like: if base_indicator == 'IndicatorName':
         if isinstance(test, ast.Compare):
             if (isinstance(test.left, ast.Name) and test.left.id == 'base_indicator' and
                 len(test.ops) == 1 and isinstance(test.ops[0], ast.Eq) and
@@ -38,9 +35,7 @@ class IndicatorConfigParser(ast.NodeVisitor):
                 indicator_name = test.comparators[0].s
 
         if indicator_name:
-            # Enter this indicator's configuration block
             self.current_indicator = indicator_name
-            # Visit the body to find params assignment
             for stmt in node.body:
                 if isinstance(stmt, ast.Assign):
                     for target in stmt.targets:
@@ -50,7 +45,6 @@ class IndicatorConfigParser(ast.NodeVisitor):
                                 self.configurable_indicators[indicator_name] = params
             self.current_indicator = None
 
-        # Continue visiting nested if statements
         self.generic_visit(node)
 
     def extract_params(self, node: ast.Dict) -> Optional[Dict]:
@@ -133,9 +127,8 @@ def get_indicator_parameters(indicator_name: str, indicators_py_path: str = 'ind
     configs = parse_indicators_py(indicators_py_path)
     return configs.get(indicator_name)
 
-# Example usage:
 if __name__ == "__main__":
-    indicators_path = 'indicators.py'  # Adjust the path if necessary
+    indicators_path = 'indicators.py'
     try:
         configurable = get_configurable_indicators(indicators_path)
         print("Configurable Indicators:")
