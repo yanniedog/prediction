@@ -13,10 +13,7 @@ def run_repair_remarks():
         try:
             os.system(f"python {repair_script}")
         except Exception as e:
-            print(f"Error running repair_remarks.py: {e}")
             sys.exit(1)
-    else:
-        print("repair_remarks.py not found. Proceeding without running it.")
 
 run_repair_remarks()
 
@@ -35,11 +32,7 @@ def get_timestamp():
 def backup_existing_gpt_files(current_dir, work_dir_name):
     backup_base = r'C:\code\backups'
     backup_dir = os.path.join(backup_base, work_dir_name, 'copyscript-backups')
-    try:
-        os.makedirs(backup_dir, exist_ok=True)
-    except Exception as e:
-        print(f"Error creating directory '{backup_dir}': {e}")
-        sys.exit(1)
+    os.makedirs(backup_dir, exist_ok=True)
     for item in os.listdir(current_dir):
         if item.lower().endswith('.gpt'):
             original_path = os.path.join(current_dir, item)
@@ -48,7 +41,7 @@ def backup_existing_gpt_files(current_dir, work_dir_name):
             try:
                 os.rename(original_path, os.path.join(current_dir, bak_filename))
                 shutil.move(os.path.join(current_dir, bak_filename), backup_path)
-            except Exception as e:
+            except:
                 continue
 
 def collect_files(base_dirs, extensions, excluded_filenames, exclude_subdirs_map, always_excluded_subdirs):
@@ -64,6 +57,7 @@ def collect_files(base_dirs, extensions, excluded_filenames, exclude_subdirs_map
                     continue
                 if any(file.lower().endswith(ext.lower()) for ext in extensions) or file.lower() == 'requirements.txt':
                     filename_map[file.lower()].append(os.path.join(root, file))
+    filename_map['indicator_params.json'] = [os.path.join(base_dirs[0], 'indicator_params.json')]
     return filename_map
 
 def alert_duplicate_filenames(duplicate_files):
@@ -75,7 +69,7 @@ def alert_duplicate_filenames(duplicate_files):
                 mtime = datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d %H:%M:%S')
                 with open(path, 'r', encoding='utf-8', errors='ignore') as f:
                     num_lines = len(f.readlines())
-            except Exception as e:
+            except:
                 continue
 
 def read_file_contents(file_path):
@@ -85,7 +79,7 @@ def read_file_contents(file_path):
         result = chardet.detect(raw_data)
         encoding = result['encoding']
         return raw_data.decode(encoding, errors='replace').replace('\r\n', '\n')
-    except Exception as e:
+    except:
         return "[Error reading file]"
 
 def extract_relevant_log_section(log_content):
@@ -125,8 +119,8 @@ def write_output_file(output_path, content):
     try:
         with open(output_path, 'w', encoding='utf-8', newline='\n') as f:
             f.write(content)
-    except Exception as e:
-        print(f"Error writing to file '{output_path}': {e}")
+    except:
+        pass
 
 if __name__ == "__main__":
     current_dir = get_current_directory()
