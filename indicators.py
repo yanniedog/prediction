@@ -116,9 +116,10 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
 
         elif indicator_name.upper() in ta.get_functions():
             try:
+                clean_params = {k: v for k, v in params.items() if k != 'input_columns'}
                 inputs = [data[col] for col in input_columns]
                 ta_func = getattr(ta, indicator_name.upper())
-                result = ta_func(*inputs, **params)
+                result = ta_func(*inputs, **clean_params)
                 if isinstance(result, tuple):
                     for idx, res in enumerate(result):
                         column_name = f"{indicator_name}_{idx}"
@@ -127,11 +128,12 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                     data[indicator_name] = result
             except Exception as e:
                 logger.error(f"Error computing indicator '{indicator_name}': {e}")
-        elif indicator_name.lower() in pta.available_indicators:
+        elif indicator_name.lower() in pta.indicators:
             try:
+                clean_params = {k: v for k, v in params.items() if k != 'input_columns'}
                 pta_func = getattr(pta, indicator_name.lower())
                 inputs = {key: data[key] for key in input_columns if key in data.columns}
-                result = pta_func(**inputs, **params)
+                result = pta_func(**inputs, **clean_params)
                 data[indicator_name] = result
             except Exception as e:
                 logger.error(f"Error computing indicator '{indicator_name}': {e}")

@@ -4,67 +4,25 @@ See the error I receive here:
 
 ====================
 
-2024-12-14 00:10:40,717 - INFO - [start.py:136(main)]: Proceeding with main execution.
-2024-12-14 00:10:56,738 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-14 00:10:57,032 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&limit=1&startTime=0 HTTP/11" 200 176
-2024-12-14 00:10:57,048 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-14 00:10:57,257 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/time HTTP/11" 200 28
-2024-12-14 00:10:57,273 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-14 00:10:57,506 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&startTime=1502668800000&endTime=1734095456791&limit=1000 HTTP/11" 200 26461
-2024-12-14 00:10:57,636 - INFO - [start.py:141(main)]: Price data download and insertion completed.
-2024-12-14 00:10:57,651 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'dema': DEMA() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,663 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 't3': T3() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,668 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'sma': SMA() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,671 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'ema': EMA() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,671 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'tsf': TSF() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,678 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'rsi': RSI() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,683 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'macd': MACD() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,688 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'stoch': STOCH() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,691 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'cmo': CMO() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,695 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'cci': CCI() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,700 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'adx': ADX() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,701 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'dx': DX() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,706 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'aroon': AROON() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,710 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'aroonosc': AROONOSC() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,716 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'macdext': MACDEXT() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,718 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'macdfix': MACDFIX() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,723 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'minus_di': MINUS_DI() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,726 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'minus_dm': MINUS_DM() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,729 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'mom': MOM() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,735 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'plus_di': PLUS_DI() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,738 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'plus_dm': PLUS_DM() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,743 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'ppo': PPO() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,750 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'roc': ROC() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,751 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'rocp': ROCP() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,751 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'rocr': ROCR() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,761 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'rocr100': ROCR100() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,766 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'stochf': STOCHF() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,768 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'stochrsi': STOCHRSI() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,768 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'trix': TRIX() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,776 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'ultosc': ULTOSC() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,779 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'willr': WILLR() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,785 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'adosc': ADOSC() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,788 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'atr': ATR() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,788 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'natr': NATR() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,796 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'beta': BETA() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,798 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'correl': CORREL() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,804 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'linearreg': LINEARREG() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,806 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'linearreg_angle': LINEARREG_ANGLE() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,812 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'linearreg_intercept': LINEARREG_INTERCEPT() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,817 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'linearreg_slope': LINEARREG_SLOPE() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,818 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'stddev': STDDEV() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,818 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'var': VAR() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,828 - ERROR - [indicators.py:129(compute_custom_indicator)]: Error computing indicator 'mfi': MFI() got an unexpected keyword argument 'input_columns'
-2024-12-14 00:10:57,832 - ERROR - [indicators.py:141(compute_custom_indicator)]: Error processing custom indicator 'vortex': module 'pandas_ta' has no attribute 'available_indicators'
-2024-12-14 00:10:57,836 - ERROR - [indicators.py:141(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'available_indicators'
-2024-12-14 00:10:57,836 - ERROR - [indicators.py:141(compute_custom_indicator)]: Error processing custom indicator 'fi': module 'pandas_ta' has no attribute 'available_indicators'
-2024-12-14 00:10:57,843 - ERROR - [indicators.py:141(compute_custom_indicator)]: Error processing custom indicator 'kc': module 'pandas_ta' has no attribute 'available_indicators'
-2024-12-14 00:10:57,847 - ERROR - [indicators.py:141(compute_custom_indicator)]: Error processing custom indicator 'rvi': module 'pandas_ta' has no attribute 'available_indicators'
-2024-12-14 00:10:57,850 - ERROR - [indicators.py:141(compute_custom_indicator)]: Error processing custom indicator 'tsi': module 'pandas_ta' has no attribute 'available_indicators'
-2024-12-14 00:10:57,939 - INFO - [start.py:157(main)]: Default indicators computed successfully.
-2024-12-14 00:10:57,946 - INFO - [start.py:164(main)]: Configured indicators computed successfully.
-2024-12-14 00:10:57,949 - INFO - [start.py:165(main)]: Computing correlations.
-2024-12-14 00:10:57,953 - ERROR - [start.py:176(main)]: Error computing configured indicators or correlations: 'stoch'
+2024-12-14 00:14:35,429 - INFO - [start.py:136(main)]: Proceeding with main execution.
+2024-12-14 00:14:41,780 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
+2024-12-14 00:14:42,077 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&limit=1&startTime=0 HTTP/11" 200 176
+2024-12-14 00:14:42,092 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
+2024-12-14 00:14:42,298 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/time HTTP/11" 200 28
+2024-12-14 00:14:42,314 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
+2024-12-14 00:14:42,533 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&startTime=1502668800000&endTime=1734095681827&limit=1000 HTTP/11" 200 26460
+2024-12-14 00:14:42,660 - INFO - [start.py:141(main)]: Price data download and insertion completed.
+2024-12-14 00:14:42,691 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'vortex': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 00:14:42,695 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 00:14:42,698 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'fi': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 00:14:42,702 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'kc': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 00:14:42,707 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'rvi': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 00:14:42,711 - ERROR - [indicators.py:143(compute_custom_indicator)]: Error processing custom indicator 'tsi': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 00:14:42,807 - INFO - [start.py:157(main)]: Default indicators computed successfully.
+2024-12-14 00:14:42,814 - INFO - [start.py:164(main)]: Configured indicators computed successfully.
+2024-12-14 00:14:42,817 - INFO - [start.py:165(main)]: Computing correlations.
+2024-12-14 00:14:42,874 - INFO - [start.py:174(main)]: Correlation computations completed for the selected indicator configurations.
+2024-12-14 00:14:42,874 - INFO - [start.py:181(main)]: Execution finished successfully.
 
 
 ====================
@@ -590,9 +548,10 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
 
         elif indicator_name.upper() in ta.get_functions():
             try:
+                clean_params = {k: v for k, v in params.items() if k != 'input_columns'}
                 inputs = [data[col] for col in input_columns]
                 ta_func = getattr(ta, indicator_name.upper())
-                result = ta_func(*inputs, **params)
+                result = ta_func(*inputs, **clean_params)
                 if isinstance(result, tuple):
                     for idx, res in enumerate(result):
                         column_name = f"{indicator_name}_{idx}"
@@ -601,11 +560,12 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                     data[indicator_name] = result
             except Exception as e:
                 logger.error(f"Error computing indicator '{indicator_name}': {e}")
-        elif indicator_name.lower() in pta.available_indicators:
+        elif indicator_name.lower() in pta.indicators:
             try:
+                clean_params = {k: v for k, v in params.items() if k != 'input_columns'}
                 pta_func = getattr(pta, indicator_name.lower())
                 inputs = {key: data[key] for key in input_columns if key in data.columns}
-                result = pta_func(**inputs, **params)
+                result = pta_func(**inputs, **clean_params)
                 data[indicator_name] = result
             except Exception as e:
                 logger.error(f"Error computing indicator '{indicator_name}': {e}")
