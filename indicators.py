@@ -119,14 +119,11 @@ def compute_eyeX_MFV_support_resistance(data: pd.DataFrame, params: dict) -> pd.
 def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str], db_path: str = DB_PATH, indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
     with open(indicator_params_path, 'r') as f:
         indicator_params = json.load(f)
-    
     conn = create_connection(db_path)
     if not conn:
         logger.error("Failed to connect to the database.")
         return data
-    
     cursor = conn.cursor()
-    
     for indicator_name in indicators_list:
         try:
             cursor.execute("""
@@ -136,7 +133,6 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
             """, (indicator_name,))
             rows = cursor.fetchall()
             configs = [json.loads(row[0]) for row in rows]
-            
             for config in configs:
                 if indicator_name == "obv_price_divergence":
                     data = compute_obv_price_divergence(data, config)
@@ -148,14 +144,18 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
                     if hasattr(ta, indicator_name.upper()):
                         ta_func = getattr(ta, indicator_name.upper())
                         ta_params = config
-                        data[indicator_name] = ta_func(data['close'], **ta_params)
+                        result = ta_func(data['close'], **ta_params)
+                        if isinstance(result, tuple) and len(result) > 1:
+                            for idx, res in enumerate(result):
+                                data[f"{indicator_name}_{idx}"] = res
+                        else:
+                            data[indicator_name] = result
                     elif indicator_name.lower() in pta.indicators():
                         data[indicator_name] = pta.ta(indicator_name.lower(), close=data['close'], **config)
                     else:
                         logger.warning(f"Indicator '{indicator_name}' not recognized in TA-Lib or pandas_ta. Skipping.")
         except Exception as e:
             logger.error(f"Error computing indicator '{indicator_name}': {e}")
-    
     conn.close()
     data.dropna(inplace=True)
     return data
