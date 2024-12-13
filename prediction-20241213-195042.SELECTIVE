@@ -4,10 +4,10 @@ See the error I receive here:
 
 ====================
 
-2024-12-13 19:45:08,855 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-13 19:45:09,082 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&startTime=1502668800000&endTime=1734079508375&limit=1000 HTTP/11" 200 26460
-2024-12-13 19:45:09,196 - INFO - [start.py:137(main)]: Price data download and insertion completed.
-2024-12-13 19:45:09,214 - ERROR - [start.py:145(main)]: No configurations found for the selected indicator.
+2024-12-13 19:48:12,478 - INFO - [start.py:73(run_tweak_indicator)]: 90. TSI_13_25_13
+2024-12-13 19:48:12,482 - INFO - [start.py:73(run_tweak_indicator)]: 91. TSIs_13_25_13
+2024-12-13 19:48:16,071 - INFO - [start.py:81(run_tweak_indicator)]: Selected indicator: tsf
+2024-12-13 19:48:16,087 - ERROR - [start.py:85(run_tweak_indicator)]: No parameters found for 'tsf'. Cannot generate configurations.
 
 
 ====================
@@ -769,7 +769,107 @@ def configure_logging(log_file_prefix='predictions'):
         sys.exit(1)
 
 ====================
-9) requirements.txt (located in the working directory):
+9) repair-remarks.py (located in the working directory):
+# repair-remarks.py
+import os
+import sys
+
+def process_python_files(directory, exclude_file=None, exclude_dirs=None):
+    if exclude_dirs is None:
+        exclude_dirs = []
+    for root, dirs, files in os.walk(directory):
+        dirs[:] = [d for d in dirs if d not in exclude_dirs]
+        for file in files:
+            if file.endswith('.py') and file != 'repair-remarks.py':
+                file_path = os.path.join(root, file)
+                if exclude_file and file_path == exclude_file:
+                    continue
+                process_file(file_path, file)
+
+def process_file(file_path, filename):
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        correct_comment = f'# {filename}'
+        
+        # Remove any in-line comments that are not the correct comment
+        modified_lines = []
+        found_correct_comment = False
+        in_line_comments_removed = 0
+        standalone_comments_removed = 0
+        duplicate_correct_comments_removed = 0
+        
+        for line in lines:
+            stripped_line = line.strip()
+            if stripped_line == correct_comment:
+                if not found_correct_comment:
+                    modified_lines.append(line)
+                    found_correct_comment = True
+                else:
+                    duplicate_correct_comments_removed += 1
+            elif stripped_line.startswith('#'):
+                # Remove standalone comments
+                standalone_comments_removed += 1
+            else:
+                # Remove in-line comments
+                if '#' in line:
+                    code_part, _, comment_part = line.partition('#')
+                    if code_part.strip():  # Ensure there is code before the comment
+                        modified_lines.append(code_part.rstrip() + '\n')
+                        if comment_part.strip():
+                            in_line_comments_removed += 1
+                    else:
+                        modified_lines.append(line)
+                else:
+                    modified_lines.append(line)
+        
+        # Ensure there is exactly one correct comment at the top
+        if not found_correct_comment:
+            modified_lines.insert(0, f'{correct_comment}\n')
+        
+        # Write modified lines back to the file if any changes were made
+        modified = in_line_comments_removed > 0 or standalone_comments_removed > 0 or duplicate_correct_comments_removed > 0
+        if modified:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.writelines(modified_lines)
+        
+        # Report what was done
+        report = f"Modified {file_path}: "
+        if not modified:
+            report += "No changes made."
+        else:
+            actions = []
+            if found_correct_comment:
+                actions.append(f"Updated correct comment")
+            else:
+                actions.append(f"Added correct comment")
+            if in_line_comments_removed > 0:
+                actions.append(f"Removed {in_line_comments_removed} in-line comments")
+            if standalone_comments_removed > 0:
+                actions.append(f"Removed {standalone_comments_removed} standalone comments")
+            if duplicate_correct_comments_removed > 0:
+                actions.append(f"Removed {duplicate_correct_comments_removed} duplicate correct comments")
+            report += " and ".join(actions) + "."
+        
+        print(report)
+    except Exception as e:
+        print(f"Error processing {file_path}: {e}")
+
+def main():
+    script_path = sys.argv[0]
+    directories = [os.getcwd(), os.path.join(os.getcwd(), 'scripts')]
+    exclude_dirs = ['.venv', 'venv', '_pycache_']
+    for dir_path in directories:
+        if os.path.exists(dir_path):
+            process_python_files(dir_path, exclude_file=script_path, exclude_dirs=exclude_dirs)
+        else:
+            print(f"Directory {dir_path} does not exist.")
+
+if __name__ == "__main__":
+    main()
+====================
+10) requirements.txt (located in the working directory):
 certifi==2024.8.30
 chardet==5.2.0
 charset-normalizer==3.4.0
@@ -801,7 +901,7 @@ tzdata==2024.2
 urllib3==2.2.3
 xgboost==2.1.3
 ====================
-10) restore_backup.py (located in the working directory):
+11) restore_backup.py (located in the working directory):
 # restore_backup.py
 import os
 from pathlib import Path
@@ -830,7 +930,7 @@ if __name__=="__main__":
     rename_files(r"C:\code\prediction")
 
 ====================
-11) sqlite_data_manager.py (located in the working directory):
+12) sqlite_data_manager.py (located in the working directory):
 # sqlite_data_manager.py
 
 import logging
@@ -1003,7 +1103,8 @@ def save_to_sqlite(df, db_path, symbol, timeframe):
 
 
 ====================
-12) start.py (located in the working directory):
+13) start.py (located in the working directory):
+# start.py
 import logging
 import os
 import subprocess
@@ -1017,7 +1118,12 @@ from pathlib import Path
 from datetime import datetime
 from config import DB_PATH
 from sqlite_data_manager import initialize_database, create_connection, create_tables
-from tweak_indicator import fetch_available_indicators, insert_indicator_configs, generate_configurations
+from tweak_indicator import (
+    fetch_available_indicators,
+    insert_indicator_configs,
+    generate_configurations,
+    parse_indicator_parameters
+)
 from correlation_utils import load_or_calculate_correlations
 from indicators import compute_all_indicators, compute_configured_indicators
 from logging_setup import configure_logging
@@ -1080,15 +1186,19 @@ def run_tweak_indicator(symbol: str, timeframe: str):
     selected_indicator = available_indicators[int(choice) - 1]
     logger.info(f"Selected indicator: {selected_indicator}")
 
-    default_params = {"timeperiod": 14}
+    parameters = parse_indicator_parameters(indicators, selected_indicator)
+    if not parameters:
+        logger.error(f"No parameters found for '{selected_indicator}'. Cannot generate configurations.")
+        sys.exit(1)
+    logger.info(f"Parameters for '{selected_indicator}': {parameters}")
 
-    configurations = generate_configurations(default_params.keys(), default_params)
+    configurations = generate_configurations(parameters.keys(), parameters)
     if not configurations:
         logger.error(f"No configurations generated for '{selected_indicator}'.")
         sys.exit(1)
     logger.info(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
 
-    conn = create_connection()
+    conn = create_connection(DB_PATH)
     if not conn:
         logger.error("Failed to connect to the database.")
         sys.exit(1)
@@ -1099,7 +1209,7 @@ def run_tweak_indicator(symbol: str, timeframe: str):
     return selected_indicator
 
 def get_selected_indicator_configs(indicator_name: str):
-    conn = create_connection()
+    conn = create_connection(DB_PATH)
     if not conn:
         logger.error("Database connection failed.")
         sys.exit(1)
@@ -1193,7 +1303,7 @@ if __name__ == "__main__":
     main()
 
 ====================
-13) table_generation.py (located in the working directory):
+14) table_generation.py (located in the working directory):
 # table_generation.py
 import os, pandas as pd, numpy as np, logging
 
@@ -1214,7 +1324,7 @@ def generate_correlation_csv(correlations: dict, max_lag: int, base_filename: st
     df.to_csv(os.path.join(csv_dir, f"{base_filename}_correlations.csv"), index_label='Lag')
 
 ====================
-14) tweak_indicator.py (located in the working directory):
+15) tweak_indicator.py (located in the working directory):
 # tweak_indicator.py
 
 import sys
@@ -1405,7 +1515,7 @@ if __name__ == "__main__":
     main()
 
 ====================
-15) utils.py (located in the working directory):
+16) utils.py (located in the working directory):
 # utils.py
 import logging
 import os, sys, json, shutil, subprocess, re
