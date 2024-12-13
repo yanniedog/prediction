@@ -105,6 +105,32 @@ def read_file_contents(file_path):
         return "[Error reading file]"
 
 
+def extract_relevant_log_section(log_content):
+    """
+    Extracts the log section starting three lines above the first occurrence
+    of 'ERROR' or 'Traceback' (whichever comes first) and continues to the end.
+    """
+    lines = log_content.split('\n')
+    error_indices = [i for i, line in enumerate(lines) if 'ERROR' in line]
+    traceback_indices = [i for i, line in enumerate(lines) if 'Traceback' in line]
+
+    first_error = error_indices[0] if error_indices else None
+    first_traceback = traceback_indices[0] if traceback_indices else None
+
+    # Determine which comes first
+    if first_error is not None and (first_traceback is None or first_error < first_traceback):
+        start_index = max(first_error - 3, 0)
+    elif first_traceback is not None:
+        start_index = max(first_traceback - 3, 0)
+    else:
+        # If neither ERROR nor Traceback is found, return the entire log
+        return log_content
+
+    # Join the lines from start_index to the end
+    relevant_log = '\n'.join(lines[start_index:])
+    return relevant_log
+
+
 def generate_output(collected_files, log_content=None):
     header = (
         "I’m encountering an error in my script, and I’ve included the output along with all related project scripts below. "
@@ -173,7 +199,8 @@ if __name__ == "__main__":
     print(f"Log files found: {log_files}")
     log_content = None
     if log_files:
-        log_content = read_file_contents(log_files[0])
+        full_log_content = read_file_contents(log_files[0])
+        log_content = extract_relevant_log_section(full_log_content)
 
     output_content = generate_output(unique_files, log_content)
     write_output_file(output_path, output_content)
