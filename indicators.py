@@ -1,9 +1,11 @@
 # indicators.py
+
 import logging
 import pandas as pd
 import numpy as np
 import talib as ta
 import pandas_ta as pta
+import json
 
 logger = logging.getLogger()
 
@@ -29,7 +31,12 @@ def compute_obv_price_divergence(data, method="Difference", obv_method="SMA", ob
     price_ma = ta.SMA(selected_price, timeperiod=price_period) if price_method.upper() == "SMA" else ta.EMA(selected_price, timeperiod=price_period)
     obv_change = (obv_ma - obv_ma.shift(1)) / obv_ma.shift(1) * 100
     price_change = (price_ma - price_ma.shift(1)) / price_ma.shift(1) * 100
-    metric = obv_change - price_change if method == "Difference" else obv_change / np.maximum(smoothing, np.abs(price_change)) if method == "Ratio" else np.log(np.maximum(smoothing, np.abs(obv_change)) / np.maximum(smoothing, np.abs(price_change)))
+    if method == "Difference":
+        metric = obv_change - price_change
+    elif method == "Ratio":
+        metric = obv_change / np.maximum(smoothing, np.abs(price_change))
+    else:
+        metric = np.log(np.maximum(smoothing, np.abs(obv_change)) / np.maximum(smoothing, np.abs(price_change)))
     data['obv_price_divergence'] = metric
     return data
 
@@ -147,19 +154,27 @@ def compute_all_indicators(data):
     indicators['stddev'] = ta.STDDEV(data['close'], timeperiod=5, nbdev=1)
     indicators['tsf'] = ta.TSF(data['close'], timeperiod=14)
     indicators['var'] = ta.VAR(data['close'], timeperiod=5, nbdev=1)
-    try: indicators['ao'] = pta.ao(data['high'], data['low'])
-    except: indicators['ao'] = None
-    try: indicators['fi'] = pta.fi(data['close'], data['volume'])
-    except: indicators['fi'] = (data['close'] - data['close'].shift(1)) * data['volume']
+    try:
+        indicators['ao'] = pta.ao(data['high'], data['low'])
+    except:
+        indicators['ao'] = None
+    try:
+        indicators['fi'] = pta.fi(data['close'], data['volume'])
+    except:
+        indicators['fi'] = (data['close'] - data['close'].shift(1)) * data['volume']
     try:
         kc = data.ta.kc(append=False)
-        indicators['kc_upper'], indicators['kc_middle'], indicators['kc_lower'] = kc.get('kcu_20_2.0', None), kc.get('kcm_20_2.0', None), kc.get('kcl_20_2.0', None)
+        indicators['kc_upper'], indicators['kc_middle'], indicators['kc_lower'] = kc.get('kcu_20_1.5', None), kc.get('kcm_20_1.5', None), kc.get('kcl_20_1.5', None)
     except:
         indicators['kc_upper'] = indicators['kc_middle'] = indicators['kc_lower'] = None
-    try: indicators['mfi'] = pta.mfi(data['high'], data['low'], data['close'], data['volume'])
-    except: indicators['mfi'] = None
-    try: indicators['rvi'] = pta.rvi(data['close'])
-    except: indicators['rvi'] = None
+    try:
+        indicators['mfi'] = pta.mfi(data['high'], data['low'], data['close'], data['volume'], length=14)
+    except:
+        indicators['mfi'] = None
+    try:
+        indicators['rvi'] = pta.rvi(data['close'], length=10)
+    except:
+        indicators['rvi'] = None
     try:
         stochrsi = data.ta.stochrsi(append=False)
         indicators['stochrsi_fastk'] = stochrsi.get('stochrsi_14_5_3_slowk', None)
@@ -167,9 +182,11 @@ def compute_all_indicators(data):
     except:
         indicators['stochrsi_fastk'] = indicators['stochrsi_fastd'] = None
     try:
-        tsi = pta.tsi(data['close'])
-        for col in tsi.columns: indicators[col] = tsi[col]
-    except: pass
+        tsi = pta.tsi(data['close'], fast=25, slow=13)
+        for col in tsi.columns:
+            indicators[col] = tsi[col]
+    except:
+        pass
     try:
         vortex = data.ta.vortex(append=False)
         indicators['vi_plus'], indicators['vi_minus'] = vortex.get('vi+_14', None), vortex.get('vi-_14', None)
@@ -179,106 +196,185 @@ def compute_all_indicators(data):
     data = compute_eyeX_MFV_volume(data)
     data = compute_eyeX_MFV_support_resistance(data)
     for k, v in indicators.items():
-        if v is not None: data[k] = v
+        if v is not None:
+            data[k] = v
     data.dropna(inplace=True)
     return data
 
 def compute_configured_indicators(data, indicators_list):
+    """
+    Compute configured indicators based on the provided list and parameters from indicator_params.json.
+    
+    Args:
+        data (pd.DataFrame): The input data containing 'open', 'high', 'low', 'close', 'volume'.
+        indicators_list (List[str]): List of indicator names to compute.
+    
+    Returns:
+        pd.DataFrame: The data with configured indicators added.
+    """
+    # Load indicator parameters from JSON
+    with open('indicator_params.json', 'r') as f:
+        indicator_params = json.load(f)
+    
     for indicator_name in indicators_list:
-        if '_' not in indicator_name and 'EyeX MFV S/R' not in indicator_name and indicator_name not in ['obv_price_divergence', 'dema', 't3', 'sma', 'ema', 'tsf']:
-            if indicator_name not in data.columns:
-                pass
+        if indicator_name not in indicator_params:
+            logger.warning(f"No parameters found for '{indicator_name}'. Skipping configuration.")
             continue
-        parts = indicator_name.split('_')
-        base_indicator = parts[0]
-        params = {}
-        if base_indicator == 'EyeX':
-            if 'MFV Volume' in indicator_name:
-                base_indicator = 'EyeX MFV Volume'
-                params = {'ranges': [50,75,100,200]}
-            elif 'MFV S/R Bull' in indicator_name:
-                base_indicator = 'EyeX MFV S/R Bull'
-                params = {'ranges': [50,75,100,200], 'pivot_lookback':5, 'price_proximity':0.00001}
-        elif base_indicator == 'obv_price_divergence':
-            params = {
-                'method': 'Difference',
-                'obv_method': 'SMA',
-                'obv_period': 14,
-                'price_input_type': 'OHLC/4',
-                'price_method': 'SMA',
-                'price_period': 14,
-                'bearish_threshold': -0.8,
-                'bullish_threshold': 0.8,
-                'smoothing': 0.01
-            }
-        elif base_indicator == 'dema':
-            params = {
-                'timeperiod': 30
-            }
-        elif base_indicator in ['t3', 'sma', 'ema', 'tsf']:
-            params = {
-                'timeperiod': 14  # Example default value; adjust as needed
-            }
+        params = indicator_params[indicator_name]
+        base_indicator = indicator_name
+        # Handle special cases
+        if indicator_name.startswith("EyeX"):
+            if indicator_name == "EyeX MFV Volume":
+                ranges = params.get("ranges", [50, 75, 100, 200])
+                data = compute_eyeX_MFV_volume(data, ranges=ranges)
+                logger.info(f"Computed configured indicator: {indicator_name}")
+            elif indicator_name == "EyeX MFV S/R Bull":
+                ranges = params.get("ranges", [50, 75, 100, 200])
+                pivot_lookback = params.get("pivot_lookback", 5)
+                price_proximity = params.get("price_proximity", 0.00001)
+                data = compute_eyeX_MFV_support_resistance(data, ranges=ranges, pivot_lookback=pivot_lookback, price_proximity=price_proximity)
+                logger.info(f"Computed configured indicator: {indicator_name}")
+        elif base_indicator == "obv_price_divergence":
+            method = params.get("method", "Difference")
+            obv_method = params.get("obv_method", "SMA")
+            obv_period = params.get("obv_period", 14)
+            price_input_type = params.get("price_input_type", "OHLC/4")
+            price_method = params.get("price_method", "SMA")
+            price_period = params.get("price_period", 14)
+            bearish_threshold = params.get("bearish_threshold", -0.8)
+            bullish_threshold = params.get("bullish_threshold", 0.8)
+            smoothing = params.get("smoothing", 0.01)
+            data = compute_obv_price_divergence(
+                data,
+                method=method,
+                obv_method=obv_method,
+                obv_period=obv_period,
+                price_input_type=price_input_type,
+                price_method=price_method,
+                price_period=price_period,
+                bearish_threshold=bearish_threshold,
+                bullish_threshold=bullish_threshold,
+                smoothing=smoothing
+            )
+            logger.info(f"Computed configured indicator: {indicator_name}")
         else:
-            for part in parts[1:]:
-                key = ''.join(filter(str.isalpha, part))
-                value = ''.join(filter(lambda c: c.isdigit() or c == '.', part))
-                if key and value:
-                    try:
-                        if '.' in value:
-                            params[key] = float(value)
-                        else:
-                            params[key] = int(value)
-                    except:
-                        pass
-        if base_indicator == 't3':
-            timeperiod = params.get('timeperiod', 5)
-            vfactor = params.get('vfactor', 0.7)
-            column_name = indicator_name
-            data[column_name] = ta.T3(data['close'], timeperiod=timeperiod, vfactor=vfactor)
-        elif base_indicator == 'sma':
-            timeperiod = params.get('timeperiod', 14)
-            column_name = indicator_name
-            data[column_name] = ta.SMA(data['close'], timeperiod=timeperiod)
-        elif base_indicator == 'ema':
-            timeperiod = params.get('timeperiod', 14)
-            column_name = indicator_name
-            data[column_name] = ta.EMA(data['close'], timeperiod=timeperiod)
-        elif base_indicator == 'tsf':
-            timeperiod = params.get('timeperiod', 14)
-            column_name = indicator_name
-            data[column_name] = ta.TSF(data['close'], timeperiod=timeperiod)
-        elif base_indicator == 'EyeX MFV Volume':
-            ranges = params.get('ranges', [50,75,100,200])
-            column_name = indicator_name
-            data = compute_eyeX_MFV_volume(data, ranges=ranges)
-        elif base_indicator == 'EyeX MFV S/R Bull':
-            ranges = params.get('ranges', [50,75,100,200])
-            pivot_lookback = params.get('pivot_lookback',5)
-            price_proximity = params.get('price_proximity',0.00001)
-            column_name = indicator_name
-            data = compute_eyeX_MFV_support_resistance(data, ranges=ranges, pivot_lookback=pivot_lookback, price_proximity=price_proximity)
-        elif base_indicator == 'obv_price_divergence':
-            method = params.get('method', 'Difference')
-            obv_method = params.get('obv_method', 'SMA')
-            obv_period = params.get('obv_period', 14)
-            price_input_type = params.get('price_input_type', 'OHLC/4')
-            price_method = params.get('price_method', 'SMA')
-            price_period = params.get('price_period', 14)
-            bearish_threshold = params.get('bearish_threshold', -0.8)
-            bullish_threshold = params.get('bullish_threshold', 0.8)
-            smoothing = params.get('smoothing', 0.01)
-            column_name = indicator_name
-            data = compute_obv_price_divergence(data, method=method, obv_method=obv_method, obv_period=obv_period, price_input_type=price_input_type, price_method=price_method, price_period=price_period, bearish_threshold=bearish_threshold, bullish_threshold=bullish_threshold, smoothing=smoothing)
-            logger.info(f"Computed configured indicator: {column_name}")
-        elif base_indicator == 'dema':
-            timeperiod = params.get('timeperiod', 30)
-            column_name = indicator_name
-            data[column_name] = ta.DEMA(data['close'], timeperiod=timeperiod)
-            logger.info(f"Computed configured indicator: {column_name}")
-        else:
-            logger.error(f"Unknown indicator base: {base_indicator}. Skipping.")
-        if base_indicator.startswith('EyeX') or base_indicator in ['obv_price_divergence', 'dema', 't3', 'sma', 'ema', 'tsf']:
-            logger.info(f"Computed configured indicator: {column_name}")
+            # Handle standard indicators
+            try:
+                if base_indicator in ['dema', 'sma', 'ema', 'tsf', 'rsi', 'cmo', 'cci', 'adx', 'dx', 'aroon', 'aroonosc', 'trix', 'ultosc', 'willr', 'mfi', 'vortex']:
+                    if base_indicator == 'dema':
+                        timeperiod = params.get('timeperiod', 30)
+                        data[indicator_name] = ta.DEMA(data['close'], timeperiod=timeperiod)
+                    elif base_indicator == 'sma':
+                        timeperiod = params.get('timeperiod', 14)
+                        data[indicator_name] = ta.SMA(data['close'], timeperiod=timeperiod)
+                    elif base_indicator == 'ema':
+                        timeperiod = params.get('timeperiod', 14)
+                        data[indicator_name] = ta.EMA(data['close'], timeperiod=timeperiod)
+                    elif base_indicator == 'tsf':
+                        timeperiod = params.get('timeperiod', 14)
+                        data[indicator_name] = ta.TSF(data['close'], timeperiod=timeperiod)
+                    elif base_indicator == 'rsi':
+                        timeperiod = params.get('timeperiod', 14)
+                        data[indicator_name] = ta.RSI(data['close'], timeperiod=timeperiod)
+                    elif base_indicator == 'cmo':
+                        timeperiod = params.get('timeperiod', 14)
+                        data[indicator_name] = ta.CMO(data['close'], timeperiod=timeperiod)
+                    elif base_indicator == 'cci':
+                        timeperiod = params.get('timeperiod', 20)
+                        data[indicator_name] = ta.CCI(data['high'], data['low'], data['close'], timeperiod=timeperiod)
+                    elif base_indicator == 'adx':
+                        timeperiod = params.get('timeperiod', 14)
+                        data[indicator_name] = ta.ADX(data['high'], data['low'], data['close'], timeperiod=timeperiod)
+                    elif base_indicator == 'dx':
+                        timeperiod = params.get('timeperiod', 14)
+                        data[indicator_name] = ta.DX(data['high'], data['low'], data['close'], timeperiod=timeperiod)
+                    elif base_indicator == 'aroon':
+                        timeperiod = params.get('timeperiod', 14)
+                        aroon_down, aroon_up = ta.AROON(data['high'], data['low'], timeperiod=timeperiod)
+                        data[f"{indicator_name}_down"] = aroon_down
+                        data[f"{indicator_name}_up"] = aroon_up
+                    elif base_indicator == 'aroonosc':
+                        timeperiod = params.get('timeperiod', 14)
+                        data[indicator_name] = ta.AROONOSC(data['high'], data['low'], timeperiod=timeperiod)
+                    elif base_indicator == 'trix':
+                        timeperiod = params.get('timeperiod', 30)
+                        data[indicator_name] = ta.TRIX(data['close'], timeperiod=timeperiod)
+                    elif base_indicator == 'ultosc':
+                        timeperiod1 = params.get('timeperiod1', 7)
+                        timeperiod2 = params.get('timeperiod2', 14)
+                        timeperiod3 = params.get('timeperiod3', 28)
+                        data[indicator_name] = ta.ULTOSC(data['high'], data['low'], data['close'], timeperiod1=timeperiod1, timeperiod2=timeperiod2, timeperiod3=timeperiod3)
+                    elif base_indicator == 'willr':
+                        timeperiod = params.get('timeperiod', 14)
+                        data[indicator_name] = ta.WILLR(data['high'], data['low'], data['close'], timeperiod=timeperiod)
+                    elif base_indicator == 'mfi':
+                        timeperiod = params.get('timeperiod', 14)
+                        data[indicator_name] = pta.mfi(data['high'], data['low'], data['close'], data['volume'], length=timeperiod)
+                    elif base_indicator == 'vortex':
+                        timeperiod = params.get('timeperiod', 14)
+                        vortex = ta.VORTEX(data['high'], data['low'], data['close'], timeperiod=timeperiod)
+                        data[f"{indicator_name}_vi_plus"] = vortex['VI+']
+                        data[f"{indicator_name}_vi_minus"] = vortex['VI-']
+                    logger.info(f"Computed configured indicator: {indicator_name}")
+                elif base_indicator in ['macd', 'macdext', 'macdfix', 'ppo']:
+                    # Handle MACD variations
+                    if base_indicator == 'macd':
+                        fastperiod = params.get('fastperiod', 12)
+                        slowperiod = params.get('slowperiod', 26)
+                        signalperiod = params.get('signalperiod', 9)
+                        macd, macd_signal, macd_hist = ta.MACD(data['close'], fastperiod=fastperiod, slowperiod=slowperiod, signalperiod=signalperiod)
+                        data[f"{indicator_name}_macd"] = macd
+                        data[f"{indicator_name}_macd_signal"] = macd_signal
+                        data[f"{indicator_name}_macd_hist"] = macd_hist
+                    elif base_indicator == 'macdext':
+                        fastperiod = params.get('fastperiod', 12)
+                        fastmatype = params.get('fastmatype', 0)
+                        slowperiod = params.get('slowperiod', 26)
+                        slowmatype = params.get('slowmatype', 0)
+                        signalperiod = params.get('signalperiod', 9)
+                        signalmatype = params.get('signalmatype', 0)
+                        macdext, macdext_signal, macdext_hist = ta.MACDEXT(data['close'], fastperiod=fastperiod, fastmatype=fastmatype, slowperiod=slowperiod, slowmatype=slowmatype, signalperiod=signalperiod, signalmatype=signalmatype)
+                        data[f"{indicator_name}_macdext"] = macdext
+                        data[f"{indicator_name}_macdext_signal"] = macdext_signal
+                        data[f"{indicator_name}_macdext_hist"] = macdext_hist
+                    elif base_indicator == 'macdfix':
+                        signalperiod = params.get('signalperiod', 9)
+                        macdfix, macdfix_signal, macdfix_hist = ta.MACDFIX(data['close'], signalperiod=signalperiod)
+                        data[f"{indicator_name}_macdfix"] = macdfix
+                        data[f"{indicator_name}_macdfix_signal"] = macdfix_signal
+                        data[f"{indicator_name}_macdfix_hist"] = macdfix_hist
+                    elif base_indicator == 'ppo':
+                        fastperiod = params.get('fastperiod', 12)
+                        slowperiod = params.get('slowperiod', 26)
+                        matype = params.get('matype', 0)
+                        ppo = ta.PPO(data['close'], fastperiod=fastperiod, slowperiod=slowperiod, matype=matype)
+                        data[indicator_name] = ppo
+                    logger.info(f"Computed configured indicator: {indicator_name}")
+                elif base_indicator in ['ao', 'fi', 'kc', 'tsi']:
+                    if base_indicator == 'ao':
+                        timeperiod = params.get('timeperiod', 5)
+                        data[indicator_name] = pta.ao(data['high'], data['low'], length=timeperiod)
+                    elif base_indicator == 'fi':
+                        timeperiod = params.get('timeperiod', 13)
+                        data[indicator_name] = pta.fi(data['close'], data['volume'], length=timeperiod)
+                    elif base_indicator == 'kc':
+                        length = params.get('length', 20)
+                        scalar = params.get('scalar', 1.5)
+                        kc = ta.KC(data['high'], data['low'], data['close'], timeperiod=length, atrmultiplier=scalar)
+                        data['kc_upper'] = kc[0]
+                        data['kc_middle'] = kc[1]
+                        data['kc_lower'] = kc[2]
+                    elif base_indicator == 'tsi':
+                        fastperiod = params.get('fastperiod', 25)
+                        slowperiod = params.get('slowperiod', 13)
+                        tsi = pta.tsi(data['close'], fast=fastperiod, slow=slowperiod)
+                        for col in tsi.columns:
+                            data[col] = tsi[col]
+                    logger.info(f"Computed configured indicator: {indicator_name}")
+                else:
+                    logger.warning(f"Indicator '{indicator_name}' not recognized for configuration.")
+            except Exception as e:
+                logger.error(f"Error computing indicator '{indicator_name}': {e}")
+        logger.info(f"Completed computation for indicator: {indicator_name}")
     data.dropna(inplace=True)
     return data
