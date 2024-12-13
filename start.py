@@ -1,3 +1,4 @@
+# start.py
 import logging
 import os
 import subprocess
@@ -11,7 +12,12 @@ from pathlib import Path
 from datetime import datetime
 from config import DB_PATH
 from sqlite_data_manager import initialize_database, create_connection, create_tables
-from tweak_indicator import fetch_available_indicators, insert_indicator_configs, generate_configurations
+from tweak_indicator import (
+    fetch_available_indicators,
+    insert_indicator_configs,
+    generate_configurations,
+    parse_indicator_parameters
+)
 from correlation_utils import load_or_calculate_correlations
 from indicators import compute_all_indicators, compute_configured_indicators
 from logging_setup import configure_logging
@@ -74,15 +80,19 @@ def run_tweak_indicator(symbol: str, timeframe: str):
     selected_indicator = available_indicators[int(choice) - 1]
     logger.info(f"Selected indicator: {selected_indicator}")
 
-    default_params = {"timeperiod": 14}
+    parameters = parse_indicator_parameters(indicators, selected_indicator)
+    if not parameters:
+        logger.error(f"No parameters found for '{selected_indicator}'. Cannot generate configurations.")
+        sys.exit(1)
+    logger.info(f"Parameters for '{selected_indicator}': {parameters}")
 
-    configurations = generate_configurations(default_params.keys(), default_params)
+    configurations = generate_configurations(parameters.keys(), parameters)
     if not configurations:
         logger.error(f"No configurations generated for '{selected_indicator}'.")
         sys.exit(1)
     logger.info(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
 
-    conn = create_connection()
+    conn = create_connection(DB_PATH)
     if not conn:
         logger.error("Failed to connect to the database.")
         sys.exit(1)
@@ -93,7 +103,7 @@ def run_tweak_indicator(symbol: str, timeframe: str):
     return selected_indicator
 
 def get_selected_indicator_configs(indicator_name: str):
-    conn = create_connection()
+    conn = create_connection(DB_PATH)
     if not conn:
         logger.error("Database connection failed.")
         sys.exit(1)
