@@ -12,20 +12,6 @@ from config import DB_PATH
 
 logger = logging.getLogger(__name__)
 
-indicator_input_map = {
-    'STOCH': ['high', 'low', 'close'],
-    'CCI': ['high', 'low', 'close'],
-    'ADX': ['high', 'low', 'close'],
-    'DX': ['high', 'low', 'close'],
-    'ULTOSC': ['high', 'low', 'close'],
-    'MFI': ['high', 'low', 'close'],
-    'CORREL': ['close'],
-    'BETA': ['close'],
-    'ATR': ['high', 'low', 'close'],
-    'NATR': ['high', 'low', 'close'],
-    'MFI': ['high', 'low', 'close'],
-}
-
 def z_score(x: np.ndarray) -> float:
     mean = np.mean(x)
     std = np.std(x)
@@ -33,7 +19,7 @@ def z_score(x: np.ndarray) -> float:
         return 0
     return (x[-1] - mean) / std
 
-def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: dict) -> pd.DataFrame:
+def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: dict, input_columns: List[str]) -> pd.DataFrame:
     try:
         if indicator_name in ["obv_price_divergence", "EyeX MFV Volume", "EyeX MFV S/R Bull", "EyeX MFV S/R Bear"]:
             if indicator_name == "obv_price_divergence":
@@ -128,25 +114,25 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                 data['EyeX MFV S/R Bull'] = bull_attack
                 data['EyeX MFV S/R Bear'] = bear_attack
 
-        elif indicator_name.upper() in ta.get_functions() or indicator_name.lower() in pta.indicators():
+        elif indicator_name.upper() in ta.get_functions():
             try:
-                if indicator_name.upper() in ta.get_functions():
-                    required_inputs = indicator_input_map.get(indicator_name.upper(), ['close'])
-                    inputs = [data[col] for col in required_inputs]
-                    ta_func = getattr(ta, indicator_name.upper())
-                    result = ta_func(*inputs, **params)
-                    if isinstance(result, tuple):
-                        for idx, res in enumerate(result):
-                            column_name = f"{indicator_name}_{idx}"
-                            data[column_name] = res
-                    else:
-                        data[indicator_name] = result
-                elif indicator_name.lower() in pta.indicators():
-                    pta_func = getattr(pta, indicator_name.lower())
-                    required_inputs = indicator_input_map.get(indicator_name.lower(), ['close'])
-                    inputs = {key: data[key] for key in required_inputs if key in data.columns}
-                    result = pta_func(**inputs, **params)
+                inputs = [data[col] for col in input_columns]
+                ta_func = getattr(ta, indicator_name.upper())
+                result = ta_func(*inputs, **params)
+                if isinstance(result, tuple):
+                    for idx, res in enumerate(result):
+                        column_name = f"{indicator_name}_{idx}"
+                        data[column_name] = res
+                else:
                     data[indicator_name] = result
+            except Exception as e:
+                logger.error(f"Error computing indicator '{indicator_name}': {e}")
+        elif indicator_name.lower() in pta.available_indicators:
+            try:
+                pta_func = getattr(pta, indicator_name.lower())
+                inputs = {key: data[key] for key in input_columns if key in data.columns}
+                result = pta_func(**inputs, **params)
+                data[indicator_name] = result
             except Exception as e:
                 logger.error(f"Error computing indicator '{indicator_name}': {e}")
         else:
@@ -177,8 +163,9 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
             """, (indicator_name,))
             rows = cursor.fetchall()
             configs = [json.loads(row[0]) for row in rows]
+            input_columns = indicator_params.get(indicator_name, {}).get("input_columns", ["close"])
             for config in configs:
-                data = compute_custom_indicator(data, indicator_name, config)
+                data = compute_custom_indicator(data, indicator_name, config, input_columns)
         except Exception as e:
             logger.error(f"Error computing indicator '{indicator_name}': {e}")
     conn.close()
@@ -191,7 +178,9 @@ def compute_all_indicators(data: pd.DataFrame, db_path: str = DB_PATH, indicator
             indicators_list = json.load(f)
         indicators_keys = list(indicators_list.keys())
         for indicator in indicators_keys:
-            data = compute_custom_indicator(data, indicator, indicators_list[indicator])
+            params = indicators_list[indicator]
+            input_columns = params.get("input_columns", ["close"])
+            data = compute_custom_indicator(data, indicator, params, input_columns)
     except Exception as e:
         logger.error(f"Error computing all indicators: {e}")
     return data
