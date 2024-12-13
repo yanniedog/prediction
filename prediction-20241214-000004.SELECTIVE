@@ -4,43 +4,37 @@ See the error I receive here:
 
 ====================
 
-2024-12-13 23:56:44,225 - INFO - [start.py:136(main)]: Proceeding with main execution.
-2024-12-13 23:56:48,940 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-13 23:56:49,261 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&limit=1&startTime=0 HTTP/11" 200 176
-2024-12-13 23:56:49,261 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-13 23:56:49,480 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/time HTTP/11" 200 28
-2024-12-13 23:56:49,493 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-13 23:56:49,860 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&startTime=1502668800000&endTime=1734094609010&limit=1000 HTTP/11" 200 26460
-2024-12-13 23:56:49,987 - INFO - [start.py:141(main)]: Price data download and insertion completed.
-2024-12-13 23:56:50,007 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'stoch': STOCH() takes at least 3 positional arguments (1 given)
-2024-12-13 23:56:50,014 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'cci': CCI() takes at least 3 positional arguments (1 given)
-2024-12-13 23:56:50,022 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'adx': ADX() takes at least 3 positional arguments (1 given)
-2024-12-13 23:56:50,027 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'dx': DX() takes at least 3 positional arguments (1 given)
-2024-12-13 23:56:50,030 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'aroon': AROON() takes at least 2 positional arguments (1 given)
-2024-12-13 23:56:50,037 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'aroonosc': AROONOSC() takes at least 2 positional arguments (1 given)
-2024-12-13 23:56:50,041 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'minus_di': MINUS_DI() takes at least 3 positional arguments (1 given)
-2024-12-13 23:56:50,046 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'minus_dm': MINUS_DM() takes at least 2 positional arguments (1 given)
-2024-12-13 23:56:50,050 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'plus_di': PLUS_DI() takes at least 3 positional arguments (1 given)
-2024-12-13 23:56:50,050 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'plus_dm': PLUS_DM() takes at least 2 positional arguments (1 given)
-2024-12-13 23:56:50,060 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'stochf': STOCHF() takes at least 3 positional arguments (1 given)
-2024-12-13 23:56:50,072 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'willr': WILLR() takes at least 3 positional arguments (1 given)
-2024-12-13 23:56:50,077 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'adosc': ADOSC() takes at least 4 positional arguments (1 given)
-2024-12-13 23:56:50,083 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'atr': ATR() takes at least 3 positional arguments (1 given)
-2024-12-13 23:56:50,085 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'natr': NATR() takes at least 3 positional arguments (1 given)
-2024-12-13 23:56:50,096 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'beta': BETA() takes at least 2 positional arguments (1 given)
-2024-12-13 23:56:50,100 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'correl': CORREL() takes at least 2 positional arguments (1 given)
-2024-12-13 23:56:50,109 - ERROR - [indicators.py:133(compute_custom_indicator)]: Error computing indicator 'mfi': MFI() takes at least 4 positional arguments (1 given)
-2024-12-13 23:56:50,113 - ERROR - [indicators.py:137(compute_custom_indicator)]: Error processing custom indicator 'vortex': module 'pandas_ta' has no attribute 'indicators'
-2024-12-13 23:56:50,121 - ERROR - [indicators.py:137(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
-2024-12-13 23:56:50,125 - ERROR - [indicators.py:137(compute_custom_indicator)]: Error processing custom indicator 'fi': module 'pandas_ta' has no attribute 'indicators'
-2024-12-13 23:56:50,125 - ERROR - [indicators.py:137(compute_custom_indicator)]: Error processing custom indicator 'kc': module 'pandas_ta' has no attribute 'indicators'
-2024-12-13 23:56:50,136 - ERROR - [indicators.py:137(compute_custom_indicator)]: Error processing custom indicator 'rvi': module 'pandas_ta' has no attribute 'indicators'
-2024-12-13 23:56:50,141 - ERROR - [indicators.py:137(compute_custom_indicator)]: Error processing custom indicator 'tsi': module 'pandas_ta' has no attribute 'indicators'
-2024-12-13 23:56:50,248 - INFO - [start.py:157(main)]: Default indicators computed successfully.
-2024-12-13 23:56:50,248 - INFO - [start.py:164(main)]: Configured indicators computed successfully.
-2024-12-13 23:56:50,268 - INFO - [start.py:165(main)]: Computing correlations.
-2024-12-13 23:56:50,332 - INFO - [start.py:174(main)]: Correlation computations completed for the selected indicator configurations.
-2024-12-13 23:56:50,332 - INFO - [start.py:181(main)]: Execution finished successfully.
+2024-12-13 23:59:46,561 - INFO - [start.py:136(main)]: Proceeding with main execution.
+2024-12-13 23:59:49,462 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
+2024-12-13 23:59:49,770 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&limit=1&startTime=0 HTTP/11" 200 176
+2024-12-13 23:59:49,770 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
+2024-12-13 23:59:49,991 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/time HTTP/11" 200 28
+2024-12-13 23:59:49,991 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
+2024-12-13 23:59:50,211 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&startTime=1502668800000&endTime=1734094789518&limit=1000 HTTP/11" 200 26459
+2024-12-13 23:59:50,341 - INFO - [start.py:141(main)]: Price data download and insertion completed.
+2024-12-13 23:59:50,366 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error computing indicator 'aroon': AROON() takes at least 2 positional arguments (1 given)
+2024-12-13 23:59:50,371 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error computing indicator 'aroonosc': AROONOSC() takes at least 2 positional arguments (1 given)
+2024-12-13 23:59:50,372 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error computing indicator 'minus_di': MINUS_DI() takes at least 3 positional arguments (1 given)
+2024-12-13 23:59:50,379 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error computing indicator 'minus_dm': MINUS_DM() takes at least 2 positional arguments (1 given)
+2024-12-13 23:59:50,386 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error computing indicator 'plus_di': PLUS_DI() takes at least 3 positional arguments (1 given)
+2024-12-13 23:59:50,388 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error computing indicator 'plus_dm': PLUS_DM() takes at least 2 positional arguments (1 given)
+2024-12-13 23:59:50,395 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error computing indicator 'stochf': STOCHF() takes at least 3 positional arguments (1 given)
+2024-12-13 23:59:50,399 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error computing indicator 'willr': WILLR() takes at least 3 positional arguments (1 given)
+2024-12-13 23:59:50,399 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error computing indicator 'adosc': ADOSC() takes at least 4 positional arguments (1 given)
+2024-12-13 23:59:50,409 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error computing indicator 'beta': BETA() takes at least 2 positional arguments (1 given)
+2024-12-13 23:59:50,412 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error computing indicator 'correl': CORREL() takes at least 2 positional arguments (1 given)
+2024-12-13 23:59:50,420 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error computing indicator 'mfi': MFI() takes at least 4 positional arguments (3 given)
+2024-12-13 23:59:50,422 - ERROR - [indicators.py:156(compute_custom_indicator)]: Error processing custom indicator 'vortex': module 'pandas_ta' has no attribute 'indicators'
+2024-12-13 23:59:50,422 - ERROR - [indicators.py:156(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-13 23:59:50,434 - ERROR - [indicators.py:156(compute_custom_indicator)]: Error processing custom indicator 'fi': module 'pandas_ta' has no attribute 'indicators'
+2024-12-13 23:59:50,437 - ERROR - [indicators.py:156(compute_custom_indicator)]: Error processing custom indicator 'kc': module 'pandas_ta' has no attribute 'indicators'
+2024-12-13 23:59:50,441 - ERROR - [indicators.py:156(compute_custom_indicator)]: Error processing custom indicator 'rvi': module 'pandas_ta' has no attribute 'indicators'
+2024-12-13 23:59:50,441 - ERROR - [indicators.py:156(compute_custom_indicator)]: Error processing custom indicator 'tsi': module 'pandas_ta' has no attribute 'indicators'
+2024-12-13 23:59:50,538 - INFO - [start.py:157(main)]: Default indicators computed successfully.
+2024-12-13 23:59:50,545 - INFO - [start.py:164(main)]: Configured indicators computed successfully.
+2024-12-13 23:59:50,551 - INFO - [start.py:165(main)]: Computing correlations.
+2024-12-13 23:59:50,599 - INFO - [start.py:174(main)]: Correlation computations completed for the selected indicator configurations.
+2024-12-13 23:59:50,599 - INFO - [start.py:181(main)]: Execution finished successfully.
 
 
 ====================
@@ -462,6 +456,20 @@ from config import DB_PATH
 
 logger = logging.getLogger(__name__)
 
+indicator_input_map = {
+    'STOCH': ['high', 'low', 'close'],
+    'CCI': ['high', 'low', 'close'],
+    'ADX': ['high', 'low', 'close'],
+    'DX': ['high', 'low', 'close'],
+    'ULTOSC': ['high', 'low', 'close'],
+    'MFI': ['high', 'low', 'close'],
+    'CORREL': ['close'],
+    'BETA': ['close'],
+    'ATR': ['high', 'low', 'close'],
+    'NATR': ['high', 'low', 'close'],
+    'MFI': ['high', 'low', 'close'],
+}
+
 def z_score(x: np.ndarray) -> float:
     mean = np.mean(x)
     std = np.std(x)
@@ -564,14 +572,13 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                 data['EyeX MFV S/R Bull'] = bull_attack
                 data['EyeX MFV S/R Bear'] = bear_attack
 
-        elif hasattr(ta, indicator_name.upper()) or indicator_name.lower() in pta.indicators():
+        elif indicator_name.upper() in ta.get_functions() or indicator_name.lower() in pta.indicators():
             try:
-                if hasattr(ta, indicator_name.upper()):
+                if indicator_name.upper() in ta.get_functions():
+                    required_inputs = indicator_input_map.get(indicator_name.upper(), ['close'])
+                    inputs = [data[col] for col in required_inputs]
                     ta_func = getattr(ta, indicator_name.upper())
-                    if indicator_name.upper() == 'ULTOSC':
-                        result = ta_func(data['high'], data['low'], data['close'], **params)
-                    else:
-                        result = ta_func(data['close'], **params)
+                    result = ta_func(*inputs, **params)
                     if isinstance(result, tuple):
                         for idx, res in enumerate(result):
                             column_name = f"{indicator_name}_{idx}"
@@ -579,7 +586,11 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                     else:
                         data[indicator_name] = result
                 elif indicator_name.lower() in pta.indicators():
-                    data[indicator_name] = pta.ta(indicator_name.lower(), close=data['close'], **params)
+                    pta_func = getattr(pta, indicator_name.lower())
+                    required_inputs = indicator_input_map.get(indicator_name.lower(), ['close'])
+                    inputs = {key: data[key] for key in required_inputs if key in data.columns}
+                    result = pta_func(**inputs, **params)
+                    data[indicator_name] = result
             except Exception as e:
                 logger.error(f"Error computing indicator '{indicator_name}': {e}")
         else:

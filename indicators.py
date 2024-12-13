@@ -12,6 +12,20 @@ from config import DB_PATH
 
 logger = logging.getLogger(__name__)
 
+indicator_input_map = {
+    'STOCH': ['high', 'low', 'close'],
+    'CCI': ['high', 'low', 'close'],
+    'ADX': ['high', 'low', 'close'],
+    'DX': ['high', 'low', 'close'],
+    'ULTOSC': ['high', 'low', 'close'],
+    'MFI': ['high', 'low', 'close'],
+    'CORREL': ['close'],
+    'BETA': ['close'],
+    'ATR': ['high', 'low', 'close'],
+    'NATR': ['high', 'low', 'close'],
+    'MFI': ['high', 'low', 'close'],
+}
+
 def z_score(x: np.ndarray) -> float:
     mean = np.mean(x)
     std = np.std(x)
@@ -114,14 +128,13 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                 data['EyeX MFV S/R Bull'] = bull_attack
                 data['EyeX MFV S/R Bear'] = bear_attack
 
-        elif hasattr(ta, indicator_name.upper()) or indicator_name.lower() in pta.indicators():
+        elif indicator_name.upper() in ta.get_functions() or indicator_name.lower() in pta.indicators():
             try:
-                if hasattr(ta, indicator_name.upper()):
+                if indicator_name.upper() in ta.get_functions():
+                    required_inputs = indicator_input_map.get(indicator_name.upper(), ['close'])
+                    inputs = [data[col] for col in required_inputs]
                     ta_func = getattr(ta, indicator_name.upper())
-                    if indicator_name.upper() == 'ULTOSC':
-                        result = ta_func(data['high'], data['low'], data['close'], **params)
-                    else:
-                        result = ta_func(data['close'], **params)
+                    result = ta_func(*inputs, **params)
                     if isinstance(result, tuple):
                         for idx, res in enumerate(result):
                             column_name = f"{indicator_name}_{idx}"
@@ -129,7 +142,11 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                     else:
                         data[indicator_name] = result
                 elif indicator_name.lower() in pta.indicators():
-                    data[indicator_name] = pta.ta(indicator_name.lower(), close=data['close'], **params)
+                    pta_func = getattr(pta, indicator_name.lower())
+                    required_inputs = indicator_input_map.get(indicator_name.lower(), ['close'])
+                    inputs = {key: data[key] for key in required_inputs if key in data.columns}
+                    result = pta_func(**inputs, **params)
+                    data[indicator_name] = result
             except Exception as e:
                 logger.error(f"Error computing indicator '{indicator_name}': {e}")
         else:
