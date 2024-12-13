@@ -108,18 +108,6 @@ def run_tweak_indicator(symbol: str, timeframe: str):
 
     return selected_indicator
 
-def get_selected_indicator_configs(indicator_name: str):
-    conn = create_connection(DB_PATH)
-    if not conn:
-        logger.error("Database connection failed.")
-        sys.exit(1)
-    create_tables(conn)
-    cursor = conn.cursor()
-    cursor.execute("SELECT name FROM indicators WHERE name LIKE ? ESCAPE '\\'", (f"{indicator_name}_%",))
-    rows = cursor.fetchall()
-    conn.close()
-    return [row[0] for row in rows]
-
 def main():
     log_dir = Path('logs')
     log_dir.mkdir(exist_ok=True)
@@ -156,11 +144,7 @@ def main():
             sys.exit(1)
 
         if selected_indicator:
-            configs = get_selected_indicator_configs(selected_indicator)
-            if not configs:
-                indicators_list = [selected_indicator]
-            else:
-                indicators_list = configs
+            indicators_list = [selected_indicator]
 
             from load_data import load_data as load_db_data
             data, is_rev, db_fn = load_db_data(symbol, timeframe)
@@ -169,16 +153,15 @@ def main():
                 sys.exit(1)
 
             try:
-                data = compute_all_indicators(data)
+                data = compute_all_indicators(data, db_path=DB_PATH)
                 logger.info("Default indicators computed successfully.")
             except Exception as e:
                 logger.error(f"Error computing default indicators: {e}")
                 sys.exit(1)
 
             try:
-                if configs:
-                    data = compute_configured_indicators(data, configs)
-                    logger.info("Configured indicators computed successfully.")
+                data = compute_configured_indicators(data, indicators_list, db_path=DB_PATH)
+                logger.info("Configured indicators computed successfully.")
                 logger.info("Computing correlations.")
                 load_or_calculate_correlations(
                     data=data,

@@ -8,6 +8,7 @@ import json
 from typing import List
 from indicator_config_parser import parse_indicators_json
 from sqlite_data_manager import create_connection, fetch_indicator_configs
+from config import DB_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +116,7 @@ def compute_eyeX_MFV_support_resistance(data: pd.DataFrame, params: dict) -> pd.
     data['EyeX MFV S/R Bear'] = bear_attack
     return data
 
-def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str], db_path: str = 'indicators.db', indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
+def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str], db_path: str = DB_PATH, indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
     with open(indicator_params_path, 'r') as f:
         indicator_params = json.load(f)
     
@@ -159,7 +160,7 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
     data.dropna(inplace=True)
     return data
 
-def compute_all_indicators(data: pd.DataFrame, db_path: str = 'indicators.db', indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
+def compute_all_indicators(data: pd.DataFrame, db_path: str = DB_PATH, indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
     with open(indicator_params_path, 'r') as f:
         indicator_params = json.load(f)
     
