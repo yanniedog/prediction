@@ -1,6 +1,7 @@
-# correlation_utils.py
 import logging
-import pandas as pd, numpy as np, sqlite3
+import pandas as pd
+import numpy as np
+import sqlite3
 from typing import List
 from sklearn.preprocessing import StandardScaler
 from config import DB_PATH
@@ -11,8 +12,8 @@ def calculate_correlation(data: pd.DataFrame, indicator: str, lag: int, reverse:
     if indicator.lower() == 'close': return np.nan
     try:
         shifted = data[indicator].shift(lag if reverse else -lag)
-        valid = pd.concat([shifted, data['Close']], axis=1).dropna()
-        return valid[indicator].corr(valid['Close']) if not valid.empty else np.nan
+        valid = pd.concat([shifted, data['close']], axis=1).dropna()
+        return valid[indicator].corr(valid['close']) if not valid.empty else np.nan
     except:
         return np.nan
 
