@@ -185,7 +185,7 @@ def compute_all_indicators(data):
 
 def compute_configured_indicators(data, indicators):
     for indicator_name in indicators:
-        if '_' not in indicator_name and 'EyeX MFV S/R' not in indicator_name and indicator_name != 'obv_price_divergence':
+        if '_' not in indicator_name and 'EyeX MFV S/R' not in indicator_name and indicator_name != 'obv_price_divergence' and indicator_name != 'dema':
             if indicator_name not in data.columns:
                 pass
             continue
@@ -210,6 +210,10 @@ def compute_configured_indicators(data, indicators):
                 'bearish_threshold': -0.8,
                 'bullish_threshold': 0.8,
                 'smoothing': 0.01
+            }
+        elif base_indicator == 'dema':
+            params = {
+                'timeperiod': 30
             }
         else:
             for part in parts[1:]:
@@ -263,9 +267,14 @@ def compute_configured_indicators(data, indicators):
             column_name = indicator_name
             data = compute_obv_price_divergence(data, method=method, obv_method=obv_method, obv_period=obv_period, price_input_type=price_input_type, price_method=price_method, price_period=price_period, bearish_threshold=bearish_threshold, bullish_threshold=bullish_threshold, smoothing=smoothing)
             logger.info(f"Computed configured indicator: {column_name}")
+        elif base_indicator == 'dema':
+            timeperiod = params.get('timeperiod', 30)
+            column_name = indicator_name
+            data[column_name] = ta.DEMA(data['close'], timeperiod=timeperiod)
+            logger.info(f"Computed configured indicator: {column_name}")
         else:
             logger.error(f"Unknown indicator base: {base_indicator}. Skipping.")
-        if base_indicator.startswith('EyeX') or base_indicator == 'obv_price_divergence':
+        if base_indicator.startswith('EyeX') or base_indicator in ['obv_price_divergence', 'dema']:
             logger.info(f"Computed configured indicator: {column_name}")
     data.dropna(inplace=True)
     return data
