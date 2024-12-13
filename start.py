@@ -82,15 +82,15 @@ def run_tweak_indicator(symbol: str, timeframe: str):
 
     parameters = parse_indicator_parameters(indicators, selected_indicator)
     if not parameters:
-        logger.error(f"No parameters found for '{selected_indicator}'. Cannot generate configurations.")
-        sys.exit(1)
-    logger.info(f"Parameters for '{selected_indicator}': {parameters}")
+        logger.info(f"No parameters found for '{selected_indicator}'. Using base indicator.")
+    else:
+        logger.info(f"Parameters for '{selected_indicator}': {parameters}")
 
-    configurations = generate_configurations(parameters.keys(), parameters)
-    if not configurations:
-        logger.error(f"No configurations generated for '{selected_indicator}'.")
-        sys.exit(1)
-    logger.info(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
+    configurations = generate_configurations(parameters.keys(), parameters) if parameters else []
+    if configurations:
+        logger.info(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
+    else:
+        logger.info(f"No configurations generated for '{selected_indicator}'. Using base indicator.")
 
     conn = create_connection(DB_PATH)
     if not conn:
@@ -109,10 +109,10 @@ def get_selected_indicator_configs(indicator_name: str):
         sys.exit(1)
     create_tables(conn)
     cursor = conn.cursor()
-    cursor.execute("SELECT name FROM indicators WHERE name LIKE ? ESCAPE '\\'", (f"%\\_%",))
+    cursor.execute("SELECT name FROM indicators WHERE name LIKE ? ESCAPE '\\'", (f"{indicator_name}_%",))
     rows = cursor.fetchall()
     conn.close()
-    return [row[0] for row in rows if row[0].startswith(indicator_name + "_")]
+    return [row[0] for row in rows]
 
 def main():
     log_dir = Path('logs')
@@ -152,8 +152,9 @@ def main():
         if selected_indicator:
             configs = get_selected_indicator_configs(selected_indicator)
             if not configs:
-                logger.error("No configurations found for the selected indicator.")
-                sys.exit(1)
+                indicators = [selected_indicator]
+            else:
+                indicators = configs
 
             from load_data import load_data as load_db_data
             data, is_rev, db_fn = load_db_data(symbol, timeframe)
@@ -169,21 +170,22 @@ def main():
                 sys.exit(1)
 
             try:
-                data = compute_configured_indicators(data, configs)
-                logger.info("Configured indicators computed successfully.")
+                if configs:
+                    data = compute_configured_indicators(data, configs)
+                    logger.info("Configured indicators computed successfully.")
+                logger.info("Computing correlations.")
+                load_or_calculate_correlations(
+                    data=data,
+                    indicators=indicators,
+                    max_lag=30,
+                    reverse=False,
+                    symbol=symbol,
+                    timeframe=timeframe
+                )
+                logger.info("Correlation computations completed for the selected indicator configurations.")
             except Exception as e:
-                logger.error(f"Error computing configured indicators: {e}")
+                logger.error(f"Error computing configured indicators or correlations: {e}")
                 sys.exit(1)
-
-            load_or_calculate_correlations(
-                data=data,
-                indicators=configs,
-                max_lag=30,
-                reverse=False,
-                symbol=symbol,
-                timeframe=timeframe
-            )
-            logger.info("Correlation computations completed for the selected indicator configurations.")
         else:
             logger.info("No indicators selected for correlation computations.")
 

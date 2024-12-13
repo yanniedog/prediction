@@ -4,10 +4,199 @@ See the error I receive here:
 
 ====================
 
-2024-12-13 19:55:01,455 - INFO - [start.py:73(run_tweak_indicator)]: 90. TSI_13_25_13
-2024-12-13 19:55:01,456 - INFO - [start.py:73(run_tweak_indicator)]: 91. TSIs_13_25_13
-2024-12-13 19:55:04,814 - INFO - [start.py:81(run_tweak_indicator)]: Selected indicator: EyeX MFV Volume
-2024-12-13 19:55:04,835 - ERROR - [start.py:85(run_tweak_indicator)]: No parameters found for 'EyeX MFV Volume'. Cannot generate configurations.
+2024-12-13 19:57:38,263 - INFO - [launch.py:21(main)]: Logging configured. Log file at: C:\code\prediction\prediction_20241213-195738.log
+2024-12-13 19:57:38,294 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\backup_cleanup.py to C:\code\prediction\backup_cleanup__2024-12-13__193540.bak
+2024-12-13 19:57:38,301 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\backup_utils.py to C:\code\prediction\backup_utils__2024-12-13__193546.bak
+2024-12-13 19:57:38,310 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\binance_historical_data_downloader.py to C:\code\prediction\binance_historical_data_downloader__2024-12-13__193559.bak
+2024-12-13 19:57:38,312 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\config.py to C:\code\prediction\config__2024-12-13__193608.bak
+2024-12-13 19:57:38,312 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\copyscripts.py to C:\code\prediction\copyscripts__2024-12-13__193005.bak
+2024-12-13 19:57:38,330 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\COPYSCRIPTS_SELECTIVE.py to C:\code\prediction\COPYSCRIPTS_SELECTIVE__2024-12-13__195211.bak
+2024-12-13 19:57:38,331 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\correlation_database.py to C:\code\prediction\correlation_database__2024-12-13__193619.bak
+2024-12-13 19:57:38,344 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\correlation_utils.py to C:\code\prediction\correlation_utils__2024-12-13__193629.bak
+2024-12-13 19:57:38,347 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\data_utils.py to C:\code\prediction\data_utils__2024-12-13__193636.bak
+2024-12-13 19:57:38,358 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\generate_heatmaps.py to C:\code\prediction\generate_heatmaps__2024-12-13__193645.bak
+2024-12-13 19:57:38,360 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\indicators.py to C:\code\prediction\indicators__2024-12-13__195441.bak
+2024-12-13 19:57:38,373 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\launch.py to C:\code\prediction\launch__2024-12-13__193445.bak
+2024-12-13 19:57:38,377 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\load_data.py to C:\code\prediction\load_data__2024-12-13__193704.bak
+2024-12-13 19:57:38,382 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\logging_setup.py to C:\code\prediction\logging_setup__2024-12-13__193005.bak
+2024-12-13 19:57:38,389 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\repair-remarks.py to C:\code\prediction\repair-remarks__2024-12-12__224305.bak
+2024-12-13 19:57:38,395 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\restore_backup.py to C:\code\prediction\restore_backup__2024-12-12__185506.bak
+2024-12-13 19:57:38,401 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\REVERT-to-GPT-scripts.py to C:\code\prediction\REVERT-to-GPT-scripts__2024-12-12__185506.bak
+2024-12-13 19:57:38,405 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\sqlite_data_manager.py to C:\code\prediction\sqlite_data_manager__2024-12-13__194444.bak
+2024-12-13 19:57:38,414 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\start.py to C:\code\prediction\start__2024-12-13__195734.bak
+2024-12-13 19:57:38,420 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\table_generation.py to C:\code\prediction\table_generation__2024-12-13__193742.bak
+2024-12-13 19:57:38,425 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\tweak_indicator.py to C:\code\prediction\tweak_indicator__2024-12-13__193758.bak
+2024-12-13 19:57:38,432 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\utils.py to C:\code\prediction\utils__2024-12-13__193814.bak
+2024-12-13 19:57:38,434 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\visualization_utils.py to C:\code\prediction\visualization_utils__2024-12-13__193823.bak
+2024-12-13 19:57:38,441 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\visualize_data.py to C:\code\prediction\visualize_data__2024-12-13__193830.bak
+2024-12-13 19:57:38,441 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\backup_cleanup__2024-12-13__193540.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,441 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\backup_utils__2024-12-13__193546.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,457 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\binance_historical_data_downloader__2024-12-13__193559.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,457 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\config__2024-12-13__193608.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,457 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\copyscripts__2024-12-13__193005.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,457 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\COPYSCRIPTS_SELECTIVE__2024-12-13__195211.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,475 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\correlation_database__2024-12-13__193619.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,475 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\correlation_utils__2024-12-13__193629.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,475 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\data_utils__2024-12-13__193636.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,475 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\generate_heatmaps__2024-12-13__193645.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,484 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\indicators__2024-12-13__195441.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,489 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\launch__2024-12-13__193445.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,494 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\load_data__2024-12-13__193704.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,494 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\logging_setup__2024-12-13__193005.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,494 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\repair-remarks__2024-12-12__224305.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,494 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\restore_backup__2024-12-12__185506.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,508 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\REVERT-to-GPT-scripts__2024-12-12__185506.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,510 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\sqlite_data_manager__2024-12-13__194444.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,513 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\start__2024-12-13__195734.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,516 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\table_generation__2024-12-13__193742.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,519 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\tweak_indicator__2024-12-13__193758.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,523 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\utils__2024-12-13__193814.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,527 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\visualization_utils__2024-12-13__193823.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,530 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\visualize_data__2024-12-13__193830.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-13__195738.zip
+2024-12-13 19:57:38,534 - INFO - [backup_cleanup.py:30(backup_cleanup)]: Backup completed.
+2024-12-13 19:57:38,537 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\backup_cleanup__2024-12-13__193540.bak
+2024-12-13 19:57:38,539 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\backup_utils__2024-12-13__193546.bak
+2024-12-13 19:57:38,539 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\binance_historical_data_downloader__2024-12-13__193559.bak
+2024-12-13 19:57:38,539 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\config__2024-12-13__193608.bak
+2024-12-13 19:57:38,539 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\copyscripts__2024-12-13__193005.bak
+2024-12-13 19:57:38,539 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\COPYSCRIPTS_SELECTIVE__2024-12-13__195211.bak
+2024-12-13 19:57:38,556 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\correlation_database__2024-12-13__193619.bak
+2024-12-13 19:57:38,560 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\correlation_utils__2024-12-13__193629.bak
+2024-12-13 19:57:38,562 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\data_utils__2024-12-13__193636.bak
+2024-12-13 19:57:38,562 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\generate_heatmaps__2024-12-13__193645.bak
+2024-12-13 19:57:38,562 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\indicators__2024-12-13__195441.bak
+2024-12-13 19:57:38,562 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\launch__2024-12-13__193445.bak
+2024-12-13 19:57:38,582 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\load_data__2024-12-13__193704.bak
+2024-12-13 19:57:38,584 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\logging_setup__2024-12-13__193005.bak
+2024-12-13 19:57:38,584 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\repair-remarks__2024-12-12__224305.bak
+2024-12-13 19:57:38,595 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\restore_backup__2024-12-12__185506.bak
+2024-12-13 19:57:38,599 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\REVERT-to-GPT-scripts__2024-12-12__185506.bak
+2024-12-13 19:57:38,599 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\sqlite_data_manager__2024-12-13__194444.bak
+2024-12-13 19:57:38,607 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\start__2024-12-13__195734.bak
+2024-12-13 19:57:38,608 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\table_generation__2024-12-13__193742.bak
+2024-12-13 19:57:38,608 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\tweak_indicator__2024-12-13__193758.bak
+2024-12-13 19:57:38,608 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\utils__2024-12-13__193814.bak
+2024-12-13 19:57:38,608 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\visualization_utils__2024-12-13__193823.bak
+2024-12-13 19:57:38,624 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\visualize_data__2024-12-13__193830.bak
+2024-12-13 19:57:38,626 - INFO - [backup_utils.py:12(run_backup_cleanup)]: Backup executed successfully.
+2024-12-13 19:57:40,140 - INFO - [start.py:124(main)]: Database initialized successfully.
+2024-12-13 19:57:42,306 - INFO - [start.py:42(input_yes_no)]: User Input: Delete contents of output directories? (y/n): -> y
+2024-12-13 19:57:42,306 - INFO - [start.py:58(delete_previous_output)]: Cleared contents of: csv
+2024-12-13 19:57:42,324 - INFO - [start.py:58(delete_previous_output)]: Cleared contents of: combined_charts
+2024-12-13 19:57:42,341 - INFO - [start.py:58(delete_previous_output)]: Cleared contents of: database
+2024-12-13 19:57:42,342 - INFO - [start.py:61(delete_previous_output)]: All selected directory contents have been cleared.
+2024-12-13 19:57:43,498 - INFO - [start.py:42(input_yes_no)]: User Input: Do you want to tweak indicator settings? (y/n): -> y
+2024-12-13 19:57:44,269 - INFO - [start.py:31(input_with_default)]: User Input: Enter symbol (e.g., 'BTCUSDT'): -> BTCUSDT
+2024-12-13 19:57:44,830 - INFO - [start.py:31(input_with_default)]: User Input: Enter timeframe (e.g., '1w'): -> 1w
+2024-12-13 19:57:44,830 - INFO - [start.py:135(main)]: Symbol: BTCUSDT, Timeframe: 1w
+2024-12-13 19:57:44,940 - INFO - [start.py:71(run_tweak_indicator)]: Available indicators:
+2024-12-13 19:57:44,942 - INFO - [start.py:73(run_tweak_indicator)]: 1. obv_price_divergence
+2024-12-13 19:57:44,942 - INFO - [start.py:73(run_tweak_indicator)]: 2. EyeX MFV Volume
+2024-12-13 19:57:44,942 - INFO - [start.py:73(run_tweak_indicator)]: 3. EyeX MFV S/R Bull
+2024-12-13 19:57:44,956 - INFO - [start.py:73(run_tweak_indicator)]: 4. EyeX MFV S/R Bear
+2024-12-13 19:57:44,959 - INFO - [start.py:73(run_tweak_indicator)]: 5. bbands_upper
+2024-12-13 19:57:44,964 - INFO - [start.py:73(run_tweak_indicator)]: 6. bbands_middle
+2024-12-13 19:57:44,966 - INFO - [start.py:73(run_tweak_indicator)]: 7. bbands_lower
+2024-12-13 19:57:44,966 - INFO - [start.py:73(run_tweak_indicator)]: 8. dema
+2024-12-13 19:57:44,974 - INFO - [start.py:73(run_tweak_indicator)]: 9. ema
+2024-12-13 19:57:44,977 - INFO - [start.py:73(run_tweak_indicator)]: 10. ht_trendline
+2024-12-13 19:57:44,984 - INFO - [start.py:73(run_tweak_indicator)]: 11. kama
+2024-12-13 19:57:44,987 - INFO - [start.py:73(run_tweak_indicator)]: 12. ma
+2024-12-13 19:57:44,987 - INFO - [start.py:73(run_tweak_indicator)]: 13. mama
+2024-12-13 19:57:44,994 - INFO - [start.py:73(run_tweak_indicator)]: 14. fama
+2024-12-13 19:57:44,997 - INFO - [start.py:73(run_tweak_indicator)]: 15. midpoint
+2024-12-13 19:57:45,002 - INFO - [start.py:73(run_tweak_indicator)]: 16. midprice
+2024-12-13 19:57:45,005 - INFO - [start.py:73(run_tweak_indicator)]: 17. sar
+2024-12-13 19:57:45,008 - INFO - [start.py:73(run_tweak_indicator)]: 18. sma
+2024-12-13 19:57:45,015 - INFO - [start.py:73(run_tweak_indicator)]: 19. t3
+2024-12-13 19:57:45,016 - INFO - [start.py:73(run_tweak_indicator)]: 20. tema
+2024-12-13 19:57:45,016 - INFO - [start.py:73(run_tweak_indicator)]: 21. trima
+2024-12-13 19:57:45,026 - INFO - [start.py:73(run_tweak_indicator)]: 22. wma
+2024-12-13 19:57:45,030 - INFO - [start.py:73(run_tweak_indicator)]: 23. adx
+2024-12-13 19:57:45,033 - INFO - [start.py:73(run_tweak_indicator)]: 24. adxr
+2024-12-13 19:57:45,037 - INFO - [start.py:73(run_tweak_indicator)]: 25. apo
+2024-12-13 19:57:45,040 - INFO - [start.py:73(run_tweak_indicator)]: 26. aroon_down
+2024-12-13 19:57:45,044 - INFO - [start.py:73(run_tweak_indicator)]: 27. aroon_up
+2024-12-13 19:57:45,049 - INFO - [start.py:73(run_tweak_indicator)]: 28. aroonosc
+2024-12-13 19:57:45,052 - INFO - [start.py:73(run_tweak_indicator)]: 29. bop
+2024-12-13 19:57:45,052 - INFO - [start.py:73(run_tweak_indicator)]: 30. cci
+2024-12-13 19:57:45,061 - INFO - [start.py:73(run_tweak_indicator)]: 31. cmo
+2024-12-13 19:57:45,066 - INFO - [start.py:73(run_tweak_indicator)]: 32. dx
+2024-12-13 19:57:45,069 - INFO - [start.py:73(run_tweak_indicator)]: 33. macd
+2024-12-13 19:57:45,069 - INFO - [start.py:73(run_tweak_indicator)]: 34. macd_signal
+2024-12-13 19:57:45,077 - INFO - [start.py:73(run_tweak_indicator)]: 35. macd_hist
+2024-12-13 19:57:45,083 - INFO - [start.py:73(run_tweak_indicator)]: 36. macdext
+2024-12-13 19:57:45,084 - INFO - [start.py:73(run_tweak_indicator)]: 37. macdext_signal
+2024-12-13 19:57:45,084 - INFO - [start.py:73(run_tweak_indicator)]: 38. macdext_hist
+2024-12-13 19:57:45,094 - INFO - [start.py:73(run_tweak_indicator)]: 39. macdfix
+2024-12-13 19:57:45,098 - INFO - [start.py:73(run_tweak_indicator)]: 40. macdfix_signal
+2024-12-13 19:57:45,101 - INFO - [start.py:73(run_tweak_indicator)]: 41. macdfix_hist
+2024-12-13 19:57:45,105 - INFO - [start.py:73(run_tweak_indicator)]: 42. minus_di
+2024-12-13 19:57:45,109 - INFO - [start.py:73(run_tweak_indicator)]: 43. minus_dm
+2024-12-13 19:57:45,114 - INFO - [start.py:73(run_tweak_indicator)]: 44. mom
+2024-12-13 19:57:45,118 - INFO - [start.py:73(run_tweak_indicator)]: 45. plus_di
+2024-12-13 19:57:45,118 - INFO - [start.py:73(run_tweak_indicator)]: 46. plus_dm
+2024-12-13 19:57:45,124 - INFO - [start.py:73(run_tweak_indicator)]: 47. ppo
+2024-12-13 19:57:45,128 - INFO - [start.py:73(run_tweak_indicator)]: 48. roc
+2024-12-13 19:57:45,143 - INFO - [start.py:73(run_tweak_indicator)]: 49. rocp
+2024-12-13 19:57:45,145 - INFO - [start.py:73(run_tweak_indicator)]: 50. rocr
+2024-12-13 19:57:45,159 - INFO - [start.py:73(run_tweak_indicator)]: 51. rocr100
+2024-12-13 19:57:45,162 - INFO - [start.py:73(run_tweak_indicator)]: 52. rsi
+2024-12-13 19:57:45,162 - INFO - [start.py:73(run_tweak_indicator)]: 53. stoch_slowk
+2024-12-13 19:57:45,178 - INFO - [start.py:73(run_tweak_indicator)]: 54. stoch_slowd
+2024-12-13 19:57:45,178 - INFO - [start.py:73(run_tweak_indicator)]: 55. stochf_fastk
+2024-12-13 19:57:45,191 - INFO - [start.py:73(run_tweak_indicator)]: 56. stochf_fastd
+2024-12-13 19:57:45,195 - INFO - [start.py:73(run_tweak_indicator)]: 57. trix
+2024-12-13 19:57:45,198 - INFO - [start.py:73(run_tweak_indicator)]: 58. ultosc
+2024-12-13 19:57:45,207 - INFO - [start.py:73(run_tweak_indicator)]: 59. willr
+2024-12-13 19:57:45,210 - INFO - [start.py:73(run_tweak_indicator)]: 60. ad
+2024-12-13 19:57:45,211 - INFO - [start.py:73(run_tweak_indicator)]: 61. adosc
+2024-12-13 19:57:45,218 - INFO - [start.py:73(run_tweak_indicator)]: 62. obv
+2024-12-13 19:57:45,221 - INFO - [start.py:73(run_tweak_indicator)]: 63. volume_osc
+2024-12-13 19:57:45,222 - INFO - [start.py:73(run_tweak_indicator)]: 64. vwap
+2024-12-13 19:57:45,227 - INFO - [start.py:73(run_tweak_indicator)]: 65. pvi
+2024-12-13 19:57:45,230 - INFO - [start.py:73(run_tweak_indicator)]: 66. nvi
+2024-12-13 19:57:45,233 - INFO - [start.py:73(run_tweak_indicator)]: 67. atr
+2024-12-13 19:57:45,237 - INFO - [start.py:73(run_tweak_indicator)]: 68. natr
+2024-12-13 19:57:45,237 - INFO - [start.py:73(run_tweak_indicator)]: 69. trange
+2024-12-13 19:57:45,243 - INFO - [start.py:73(run_tweak_indicator)]: 70. ht_dcperiod
+2024-12-13 19:57:45,247 - INFO - [start.py:73(run_tweak_indicator)]: 71. ht_dcpphase
+2024-12-13 19:57:45,247 - INFO - [start.py:73(run_tweak_indicator)]: 72. ht_phasor_inphase
+2024-12-13 19:57:45,254 - INFO - [start.py:73(run_tweak_indicator)]: 73. ht_phasor_quadrature
+2024-12-13 19:57:45,262 - INFO - [start.py:73(run_tweak_indicator)]: 74. ht_sine_sine
+2024-12-13 19:57:45,265 - INFO - [start.py:73(run_tweak_indicator)]: 75. ht_sine_leadsine
+2024-12-13 19:57:45,266 - INFO - [start.py:73(run_tweak_indicator)]: 76. ht_trendmode
+2024-12-13 19:57:45,272 - INFO - [start.py:73(run_tweak_indicator)]: 77. beta
+2024-12-13 19:57:45,275 - INFO - [start.py:73(run_tweak_indicator)]: 78. correl
+2024-12-13 19:57:45,280 - INFO - [start.py:73(run_tweak_indicator)]: 79. linearreg
+2024-12-13 19:57:45,284 - INFO - [start.py:73(run_tweak_indicator)]: 80. linearreg_angle
+2024-12-13 19:57:45,285 - INFO - [start.py:73(run_tweak_indicator)]: 81. linearreg_intercept
+2024-12-13 19:57:45,290 - INFO - [start.py:73(run_tweak_indicator)]: 82. linearreg_slope
+2024-12-13 19:57:45,294 - INFO - [start.py:73(run_tweak_indicator)]: 83. stddev
+2024-12-13 19:57:45,298 - INFO - [start.py:73(run_tweak_indicator)]: 84. tsf
+2024-12-13 19:57:45,302 - INFO - [start.py:73(run_tweak_indicator)]: 85. var
+2024-12-13 19:57:45,305 - INFO - [start.py:73(run_tweak_indicator)]: 86. ao
+2024-12-13 19:57:45,305 - INFO - [start.py:73(run_tweak_indicator)]: 87. fi
+2024-12-13 19:57:45,314 - INFO - [start.py:73(run_tweak_indicator)]: 88. mfi
+2024-12-13 19:57:45,316 - INFO - [start.py:73(run_tweak_indicator)]: 89. rvi
+2024-12-13 19:57:45,321 - INFO - [start.py:73(run_tweak_indicator)]: 90. TSI_13_25_13
+2024-12-13 19:57:45,324 - INFO - [start.py:73(run_tweak_indicator)]: 91. TSIs_13_25_13
+2024-12-13 19:57:46,920 - INFO - [start.py:81(run_tweak_indicator)]: Selected indicator: EyeX MFV S/R Bull
+2024-12-13 19:57:46,939 - INFO - [start.py:85(run_tweak_indicator)]: No parameters found for 'EyeX MFV S/R Bull'. Using base indicator.
+2024-12-13 19:57:46,951 - INFO - [start.py:93(run_tweak_indicator)]: No configurations generated for 'EyeX MFV S/R Bull'. Using base indicator.
+2024-12-13 19:57:46,960 - INFO - [start.py:101(run_tweak_indicator)]: Configurations for 'EyeX MFV S/R Bull' have been added to the database.
+2024-12-13 19:57:46,964 - INFO - [start.py:142(main)]: Proceeding with main execution.
+2024-12-13 19:57:53,459 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
+2024-12-13 19:57:53,766 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&limit=1&startTime=0 HTTP/11" 200 176
+2024-12-13 19:57:53,781 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
+2024-12-13 19:57:54,016 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/time HTTP/11" 200 28
+2024-12-13 19:57:54,026 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
+2024-12-13 19:57:54,257 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&startTime=1502668800000&endTime=1734080273540&limit=1000 HTTP/11" 200 26460
+2024-12-13 19:57:54,384 - INFO - [start.py:147(main)]: Price data download and insertion completed.
+2024-12-13 19:57:54,526 - INFO - [start.py:167(main)]: Default indicators computed successfully.
+2024-12-13 19:57:54,528 - INFO - [start.py:176(main)]: Computing correlations.
+2024-12-13 19:57:54,528 - INFO - [start.py:185(main)]: Correlation computations completed for the selected indicator configurations.
+2024-12-13 19:57:54,541 - INFO - [start.py:192(main)]: Execution finished successfully.
 
 
 ====================
@@ -1160,15 +1349,15 @@ def run_tweak_indicator(symbol: str, timeframe: str):
 
     parameters = parse_indicator_parameters(indicators, selected_indicator)
     if not parameters:
-        logger.error(f"No parameters found for '{selected_indicator}'. Cannot generate configurations.")
-        sys.exit(1)
-    logger.info(f"Parameters for '{selected_indicator}': {parameters}")
+        logger.info(f"No parameters found for '{selected_indicator}'. Using base indicator.")
+    else:
+        logger.info(f"Parameters for '{selected_indicator}': {parameters}")
 
-    configurations = generate_configurations(parameters.keys(), parameters)
-    if not configurations:
-        logger.error(f"No configurations generated for '{selected_indicator}'.")
-        sys.exit(1)
-    logger.info(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
+    configurations = generate_configurations(parameters.keys(), parameters) if parameters else []
+    if configurations:
+        logger.info(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
+    else:
+        logger.info(f"No configurations generated for '{selected_indicator}'. Using base indicator.")
 
     conn = create_connection(DB_PATH)
     if not conn:
@@ -1187,10 +1376,10 @@ def get_selected_indicator_configs(indicator_name: str):
         sys.exit(1)
     create_tables(conn)
     cursor = conn.cursor()
-    cursor.execute("SELECT name FROM indicators WHERE name LIKE ? ESCAPE '\\'", (f"%\\_%",))
+    cursor.execute("SELECT name FROM indicators WHERE name LIKE ? ESCAPE '\\'", (f"{indicator_name}_%",))
     rows = cursor.fetchall()
     conn.close()
-    return [row[0] for row in rows if row[0].startswith(indicator_name + "_")]
+    return [row[0] for row in rows]
 
 def main():
     log_dir = Path('logs')
@@ -1230,8 +1419,9 @@ def main():
         if selected_indicator:
             configs = get_selected_indicator_configs(selected_indicator)
             if not configs:
-                logger.error("No configurations found for the selected indicator.")
-                sys.exit(1)
+                indicators = [selected_indicator]
+            else:
+                indicators = configs
 
             from load_data import load_data as load_db_data
             data, is_rev, db_fn = load_db_data(symbol, timeframe)
@@ -1247,21 +1437,22 @@ def main():
                 sys.exit(1)
 
             try:
-                data = compute_configured_indicators(data, configs)
-                logger.info("Configured indicators computed successfully.")
+                if configs:
+                    data = compute_configured_indicators(data, configs)
+                    logger.info("Configured indicators computed successfully.")
+                logger.info("Computing correlations.")
+                load_or_calculate_correlations(
+                    data=data,
+                    indicators=indicators,
+                    max_lag=30,
+                    reverse=False,
+                    symbol=symbol,
+                    timeframe=timeframe
+                )
+                logger.info("Correlation computations completed for the selected indicator configurations.")
             except Exception as e:
-                logger.error(f"Error computing configured indicators: {e}")
+                logger.error(f"Error computing configured indicators or correlations: {e}")
                 sys.exit(1)
-
-            load_or_calculate_correlations(
-                data=data,
-                indicators=configs,
-                max_lag=30,
-                reverse=False,
-                symbol=symbol,
-                timeframe=timeframe
-            )
-            logger.info("Correlation computations completed for the selected indicator configurations.")
         else:
             logger.info("No indicators selected for correlation computations.")
 
