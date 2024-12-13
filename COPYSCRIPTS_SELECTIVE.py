@@ -145,7 +145,7 @@ if __name__ == "__main__":
     backup_existing_gpt_files(current_dir, work_dir_name)
     args = parse_arguments()
     timestamp = get_timestamp()
-    output_filename = f"{work_dir_name}-{timestamp}.GPT"
+    output_filename = f"{work_dir_name}-{timestamp}.SELECTIVE"
     output_path = os.path.join(current_dir, output_filename)
     script_filename = os.path.basename(__file__).lower()
     excluded_filenames = {script_filename, 'parsetab.py', 'backup_cleanup.py', 'backup_utils.py', 'binance_historical_data_downloader.py', 'config.py', 'generate_heatmaps.py', 'copyscripts.py', 'COPYSCRIPTS_SELECTIVE.py', 'repair-remarks.py', 'visualization_utils.py', 'visualize_data.py', 'cspell.json', 'revert-to-gpt-scripts.py'}
