@@ -136,6 +136,16 @@ def insert_indicator_configs(conn, indicator_name, configs):
     except sqlite3.Error as e:
         print(f"SQLite insertion error: {e}")
 
+def fetch_indicator_configs(conn, indicator_name):
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT config FROM indicator_configs 
+        JOIN indicators ON indicator_configs.indicator_id = indicators.id 
+        WHERE indicators.name = ?
+    """, (indicator_name,))
+    rows = cursor.fetchall()
+    return [json.loads(row[0]) for row in rows]
+
 def insert_klines(conn, df, symbol, timeframe):
     try:
         required_columns = [
