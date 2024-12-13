@@ -185,7 +185,7 @@ def compute_all_indicators(data):
 
 def compute_configured_indicators(data, indicators):
     for indicator_name in indicators:
-        if '_' not in indicator_name and 'EyeX MFV S/R' not in indicator_name and indicator_name != 'obv_price_divergence' and indicator_name != 'dema':
+        if '_' not in indicator_name and 'EyeX MFV S/R' not in indicator_name and indicator_name not in ['obv_price_divergence', 'dema', 't3', 'sma', 'ema', 'tsf']:
             if indicator_name not in data.columns:
                 pass
             continue
@@ -214,6 +214,10 @@ def compute_configured_indicators(data, indicators):
         elif base_indicator == 'dema':
             params = {
                 'timeperiod': 30
+            }
+        elif base_indicator in ['t3', 'sma', 'ema', 'tsf']:
+            params = {
+                'timeperiod': 14  # Example default value
             }
         else:
             for part in parts[1:]:
@@ -250,8 +254,8 @@ def compute_configured_indicators(data, indicators):
             data = compute_eyeX_MFV_volume(data, ranges=ranges)
         elif base_indicator == 'EyeX MFV S/R Bull':
             ranges = params.get('ranges', [50,75,100,200])
-            pivot_lookback = params.get('pivot_lookback', 5)
-            price_proximity = params.get('price_proximity', 0.00001)
+            pivot_lookback = params.get('pivot_lookback',5)
+            price_proximity = params.get('price_proximity',0.00001)
             column_name = indicator_name
             data = compute_eyeX_MFV_support_resistance(data, ranges=ranges, pivot_lookback=pivot_lookback, price_proximity=price_proximity)
         elif base_indicator == 'obv_price_divergence':
@@ -274,7 +278,7 @@ def compute_configured_indicators(data, indicators):
             logger.info(f"Computed configured indicator: {column_name}")
         else:
             logger.error(f"Unknown indicator base: {base_indicator}. Skipping.")
-        if base_indicator.startswith('EyeX') or base_indicator in ['obv_price_divergence', 'dema']:
+        if base_indicator.startswith('EyeX') or base_indicator in ['obv_price_divergence', 'dema', 't3', 'sma', 'ema', 'tsf']:
             logger.info(f"Computed configured indicator: {column_name}")
     data.dropna(inplace=True)
     return data
