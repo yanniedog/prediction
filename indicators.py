@@ -8,8 +8,25 @@ import pandas_ta as pta
 import json
 from typing import List
 from indicator_config_parser import parse_indicators_json
+from sqlite_data_manager import create_connection, fetch_indicator_configs
 
 logger = logging.getLogger(__name__)
+
+def z_score(x: np.ndarray) -> float:
+    """
+    Calculate the Z-score of the last element in the array.
+
+    Args:
+        x (np.ndarray): Array of numerical values.
+
+    Returns:
+        float: Z-score of the last element.
+    """
+    mean = np.mean(x)
+    std = np.std(x)
+    if std == 0:
+        return 0
+    return (x[-1] - mean) / std
 
 def compute_obv_price_divergence(data: pd.DataFrame, params: dict) -> pd.DataFrame:
     """
@@ -88,7 +105,7 @@ def compute_eyeX_MFV_volume(data: pd.DataFrame, params: dict) -> pd.DataFrame:
 
 def compute_eyeX_MFV_support_resistance(data: pd.DataFrame, params: dict) -> pd.DataFrame:
     """
-    Compute the EyeX MFV Support/Resistance Bull indicator based on provided parameters.
+    Compute the EyeX MFV Support/Resistance Bull and Bear indicators based on provided parameters.
 
     Args:
         data (pd.DataFrame): DataFrame containing 'high', 'low', 'close', 'volume'.
@@ -138,83 +155,89 @@ def compute_eyeX_MFV_support_resistance(data: pd.DataFrame, params: dict) -> pd.
     data['EyeX MFV S/R Bear'] = bear_attack
     return data
 
-def z_score(x: np.ndarray) -> float:
-    """
-    Calculate the Z-score of the last element in the array.
-
-    Args:
-        x (np.ndarray): Array of numerical values.
-
-    Returns:
-        float: Z-score of the last element.
-    """
-    mean = np.mean(x)
-    std = np.std(x)
-    if std == 0:
-        return 0
-    return (x[-1] - mean) / std
-
-def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str], indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
+def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str], db_path: str = 'indicators.db', indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
     """
     Compute configured indicators based on the provided list and parameters from indicator_params.json.
 
     Args:
         data (pd.DataFrame): The input data containing 'open', 'high', 'low', 'close', 'volume'.
         indicators_list (List[str]): List of indicator names to compute.
+        db_path (str): Path to the SQLite database.
         indicator_params_path (str): Path to indicator_params.json
 
     Returns:
         pd.DataFrame: The data with configured indicators added.
     """
+    # Load indicator parameters from JSON
     with open(indicator_params_path, 'r') as f:
         indicator_params = json.load(f)
     
+    # Connect to the database
+    conn = create_connection(db_path)
+    if not conn:
+        logger.error("Failed to connect to the database.")
+        return data
+    
+    cursor = conn.cursor()
+    
     for indicator_name in indicators_list:
-        if indicator_name not in indicator_params:
-            logger.warning(f"No parameters found for '{indicator_name}'. Skipping configuration.")
-            continue
-        params = indicator_params[indicator_name]
-        
         try:
-            if indicator_name == "obv_price_divergence":
-                data = compute_obv_price_divergence(data, params)
-            elif indicator_name == "EyeX MFV Volume":
-                data = compute_eyeX_MFV_volume(data, params)
-            elif indicator_name == "EyeX MFV S/R Bull":
-                data = compute_eyeX_MFV_support_resistance(data, params)
-            else:
-                # Dynamically handle standard indicators
-                # Ensure the indicator exists in TA-Lib or pandas_ta
-                # For simplicity, use pandas_ta if available
-                if hasattr(ta, indicator_name.upper()):
-                    ta_func = getattr(ta, indicator_name.upper())
-                    # Extract parameters excluding 'name'
-                    ta_params = {k: v for k, v in params.items()}
-                    data[indicator_name] = ta_func(data['close'], **ta_params)
-                elif indicator_name.lower() in pta.indicators():
-                    data[indicator_name] = pta.ta(indicator_name.lower(), close=data['close'], **params)
+            # Fetch configurations for the indicator
+            cursor.execute("""
+                SELECT config FROM indicator_configs 
+                JOIN indicators ON indicator_configs.indicator_id = indicators.id
+                WHERE indicators.name = ?
+            """, (indicator_name,))
+            rows = cursor.fetchall()
+            configs = [json.loads(row[0]) for row in rows]
+            
+            for config in configs:
+                # Compute the indicator with the given configuration
+                if indicator_name == "obv_price_divergence":
+                    data = compute_obv_price_divergence(data, config)
+                elif indicator_name == "EyeX MFV Volume":
+                    data = compute_eyeX_MFV_volume(data, config)
+                elif indicator_name == "EyeX MFV S/R Bull":
+                    data = compute_eyeX_MFV_support_resistance(data, config)
                 else:
-                    logger.warning(f"Indicator '{indicator_name}' not recognized in TA-Lib or pandas_ta. Skipping.")
+                    # Handle standard indicators dynamically
+                    # Check if the indicator exists in TA-Lib
+                    if hasattr(ta, indicator_name.upper()):
+                        ta_func = getattr(ta, indicator_name.upper())
+                        ta_params = config  # Parameters from config
+                        data[indicator_name] = ta_func(data['close'], **ta_params)
+                    elif indicator_name.lower() in pta.indicators():
+                        # For pandas_ta indicators
+                        data[indicator_name] = pta.ta(indicator_name.lower(), close=data['close'], **config)
+                    else:
+                        logger.warning(f"Indicator '{indicator_name}' not recognized in TA-Lib or pandas_ta. Skipping.")
         except Exception as e:
             logger.error(f"Error computing indicator '{indicator_name}': {e}")
     
+    conn.close()
     data.dropna(inplace=True)
     return data
 
-def compute_all_indicators(data: pd.DataFrame, indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
+def compute_all_indicators(data: pd.DataFrame, db_path: str = 'indicators.db', indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
     """
     Compute all indicators based on the parameters defined in indicator_params.json.
 
     Args:
         data (pd.DataFrame): The input data containing 'open', 'high', 'low', 'close', 'volume'.
+        db_path (str): Path to the SQLite database.
         indicator_params_path (str): Path to indicator_params.json
 
     Returns:
         pd.DataFrame: The data with all indicators added.
     """
+    # Load indicator parameters from JSON
     with open(indicator_params_path, 'r') as f:
         indicator_params = json.load(f)
     
+    # Extract all indicator names
     indicators_list = list(indicator_params.keys())
-    data = compute_configured_indicators(data, indicators_list, indicator_params_path)
+    
+    # Compute all indicators
+    data = compute_configured_indicators(data, indicators_list, db_path, indicator_params_path)
+    
     return data

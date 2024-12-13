@@ -1,5 +1,6 @@
 # sqlite_data_manager.py
 
+import json
 import logging
 import sqlite3
 from pathlib import Path
@@ -38,6 +39,14 @@ def create_tables(conn):
                 CREATE TABLE IF NOT EXISTS indicators (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT UNIQUE
+                );""",
+            'indicator_configs': """
+                CREATE TABLE IF NOT EXISTS indicator_configs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    indicator_id INTEGER,
+                    config TEXT NOT NULL,
+                    FOREIGN KEY (indicator_id) REFERENCES indicators(id),
+                    UNIQUE(indicator_id, config)
                 );""",
             'klines': """
                 CREATE TABLE IF NOT EXISTS klines (
@@ -104,14 +113,28 @@ def initialize_database(db_path=DB_PATH):
         print("Failed to initialize the database.")
 
 def insert_indicator_configs(conn, indicator_name, configs):
+    """
+    Inserts the base indicator and its configurations into the database.
+
+    Args:
+        conn (sqlite3.Connection): Database connection.
+        indicator_name (str): Name of the indicator.
+        configs (List[Dict]): List of configuration dictionaries.
+    """
     try:
         cursor = conn.cursor()
+        # Insert base indicator
         cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
-        for config in configs:
-            config_name = f"{indicator_name}_" + "_".join([f"{k}{v}" for k, v in config.items()])
-            cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (config_name,))
         conn.commit()
-        print(f"Inserted {len(configs)+1} configurations for indicator '{indicator_name}'.")
+        cursor.execute("SELECT id FROM indicators WHERE name = ?", (indicator_name,))
+        indicator_id = cursor.fetchone()[0]
+
+        # Insert configurations
+        for config in configs:
+            config_json = json.dumps(config)
+            cursor.execute("INSERT OR IGNORE INTO indicator_configs (indicator_id, config) VALUES (?, ?)", (indicator_id, config_json))
+        conn.commit()
+        print(f"Inserted {len(configs)} configurations for indicator '{indicator_name}'.")
     except sqlite3.Error as e:
         print(f"SQLite insertion error: {e}")
 
@@ -167,4 +190,3 @@ def save_to_sqlite(df, db_path, symbol, timeframe):
         conn.close()
     else:
         print("Cannot connect to the database.")
-

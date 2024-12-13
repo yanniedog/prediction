@@ -10,7 +10,7 @@ import numpy as np
 import json
 
 from indicator_config_parser import get_configurable_indicators, get_indicator_parameters
-from sqlite_data_manager import insert_indicator_configs as sqlite_insert_indicator_configs, create_connection
+from sqlite_data_manager import insert_indicator_configs, create_connection
 from logging_setup import configure_logging
 
 logger = logging.getLogger(__name__)
@@ -57,13 +57,12 @@ def insert_tweaked_configs(conn, indicator_name: str, configurations: List[Dict]
     Insert generated configurations into the database.
 
     Args:
-        conn: Database connection object.
+        conn (sqlite3.Connection): Database connection object.
         indicator_name (str): Name of the indicator.
         configurations (List[Dict]): List of configuration dictionaries.
     """
     try:
-        sqlite_insert_indicator_configs(conn, indicator_name, configurations)
-        logger.info(f"Inserted {len(configurations)} configurations for indicator '{indicator_name}' into the database.")
+        insert_indicator_configs(conn, indicator_name, configurations)
     except Exception as e:
         logger.error(f"Error inserting configurations for '{indicator_name}': {e}")
 
