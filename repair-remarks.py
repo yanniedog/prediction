@@ -59,6 +59,9 @@ def process_file(file_path, filename):
         
         # Write modified lines back to the file if any changes were made
         modified = in_line_comments_removed > 0 or standalone_comments_removed > 0 or duplicate_correct_comments_removed > 0
+        if not found_correct_comment:
+            modified = True
+        
         if modified:
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.writelines(modified_lines)
