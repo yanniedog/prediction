@@ -65,23 +65,22 @@ def process_file(file_path, filename):
                 f.writelines(modified_lines)
         
         # Report what was done
-        report = f"Checking {file_path}: "
+        actions = []
         if not modified:
-            report += "no changes made."
+            actions.append("No changes")
         else:
-            actions = []
             if found_correct_comment:
-                actions.append(f"UPDATED correct comment")
+                actions.append("UPDATED correct comment")
             else:
-                actions.append(f"ADDED correct comment")
+                actions.append("ADDED correct comment")
             if in_line_comments_removed > 0:
                 actions.append(f"REMOVED {in_line_comments_removed} in-line comments")
             if standalone_comments_removed > 0:
                 actions.append(f"REMOVED {standalone_comments_removed} standalone comments")
             if duplicate_correct_comments_removed > 0:
                 actions.append(f"REMOVED {duplicate_correct_comments_removed} duplicate correct comments")
-            report += " and ".join(actions) + "."
         
+        report = " and ".join(actions) + f": {file_path}"
         print(report)
     except Exception as e:
         print(f"ERROR processing {file_path}: {e}")
