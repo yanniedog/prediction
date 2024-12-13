@@ -1,6 +1,8 @@
 # correlation_database.py
+import logging
 import sqlite3
 
+logger = logging.getLogger()
 class CorrelationDatabase:
     def __init__(self, db_path: str):
         self.conn = sqlite3.connect(db_path)

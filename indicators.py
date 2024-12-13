@@ -1,8 +1,11 @@
 # indicators.py
+import logging
 import pandas as pd
 import numpy as np
 import talib as ta
 import pandas_ta as pta
+
+logger = logging.getLogger()
 
 def z_score(x):
     mean = np.mean(x)

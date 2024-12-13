@@ -1,10 +1,13 @@
 # visualize_data.py
+import logging
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from scipy.stats import t
 from joblib import Parallel,delayed
+
+logger = logging.getLogger()
 
 def visualize_data(data,features,feature_columns,timestamp,is_reverse_chronological,time_interval,generate_charts,cache,calculate_correlation,base_csv_filename):
     if not generate_charts:

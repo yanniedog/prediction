@@ -1,8 +1,11 @@
 # load_data.py
+import logging
 import os
 import pandas as pd
 from sqlite_data_manager import create_connection, initialize_database
 from config import DB_PATH
+
+logger = logging.getLogger()
 
 def load_data(symbol, timeframe):
     initialize_database(DB_PATH)

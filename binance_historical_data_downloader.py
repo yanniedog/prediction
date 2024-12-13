@@ -1,4 +1,5 @@
 # binance_historical_data_downloader.py
+import logging
 import os
 import sys
 import requests
@@ -7,6 +8,8 @@ import time
 import datetime
 from config import DB_PATH
 from sqlite_data_manager import save_to_sqlite, create_connection, create_tables
+
+logger = logging.getLogger()
 
 BASE_URL = 'https://api.binance.com'
 

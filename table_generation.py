@@ -1,6 +1,8 @@
 # table_generation.py
 import os, pandas as pd, numpy as np, logging
 
+logger = logging.getLogger()
+
 def generate_statistical_summary(correlations: dict, max_lag: int) -> pd.DataFrame:
     summary = {ind: {'mean': np.mean(vals), 'std': np.std(vals), 'min': np.min(vals), 'max': np.max(vals)} 
                for ind, vals in correlations.items() if vals and any(pd.notna(v) for v in vals)}

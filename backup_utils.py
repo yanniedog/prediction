@@ -3,6 +3,8 @@ import sys
 import logging
 from backup_cleanup import backup_cleanup
 
+logger = logging.getLogger()
+
 def run_backup_cleanup():
     logger = logging.getLogger(__name__)
     try:

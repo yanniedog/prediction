@@ -1,9 +1,12 @@
 # sqlite_data_manager.py
 
+import logging
 import sqlite3
 from pathlib import Path
 import pandas as pd
 from config import DB_PATH
+
+logger = logging.getLogger()
 
 def create_connection():
     """Create a SQLite database connection and return the connection object."""

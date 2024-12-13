@@ -1,4 +1,5 @@
 # utils.py
+import logging
 import os, sys, json, shutil, subprocess, re
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -20,6 +21,8 @@ from table_generation import generate_best_indicator_table, generate_statistical
 from binance_historical_data_downloader import download_binance_data, fetch_klines, process_klines, save_to_sqlite
 import warnings
 warnings.filterwarnings('ignore')
+
+logger = logging.getLogger()
 
 def run_backup_cleanup():
     pass

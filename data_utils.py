@@ -1,4 +1,5 @@
 # data_utils.py
+import logging
 import os, sys, pandas as pd, numpy as np
 from sklearn.preprocessing import StandardScaler
 from typing import Tuple, List
@@ -6,6 +7,8 @@ from datetime import datetime
 from joblib import Parallel, delayed
 from load_data import load_data
 from indicators import compute_all_indicators
+
+logger = logging.getLogger()
 
 def clear_screen():
     os.system('cls' if os.name=='nt' else 'clear')

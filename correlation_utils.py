@@ -1,8 +1,11 @@
 # correlation_utils.py
+import logging
 import pandas as pd, numpy as np, sqlite3
 from typing import List
 from sklearn.preprocessing import StandardScaler
 from config import DB_PATH
+
+logger = logging.getLogger()
 
 def calculate_correlation(data: pd.DataFrame, indicator: str, lag: int, reverse: bool) -> float:
     if indicator.lower() == 'close': return np.nan

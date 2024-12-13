@@ -1,5 +1,6 @@
 # visualization_utils.py
 
+import logging
 import os
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -8,6 +9,8 @@ import numpy as np
 from joblib import Parallel, delayed
 from typing import Any, Callable, Dict, List
 from scipy.stats import t
+
+logger = logging.getLogger()
 
 def generate_combined_correlation_chart(
     correlations: Dict[str, List[float]],

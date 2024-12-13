@@ -12,6 +12,8 @@ import inspect
 import logging
 import argparse
 
+logger = logging.getLogger()
+
 def fetch_available_indicators(indicators_module):
     """
     Fetch all available indicators by analyzing the compute_all_indicators function.

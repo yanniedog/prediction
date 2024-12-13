@@ -4,6 +4,8 @@ from pathlib import Path
 from datetime import datetime
 import logging
 
+logger = logging.getLogger()
+
 def backup_cleanup():
     logger = logging.getLogger(__name__)
     cwd = Path.cwd()

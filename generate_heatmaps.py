@@ -1,7 +1,10 @@
 # generate_heatmaps.py
+import logging
 import os, matplotlib.pyplot as plt, seaborn as sns, pandas as pd, numpy as np
 from joblib import Parallel, delayed
 from typing import Callable, Dict, List
+
+logger = logging.getLogger()
 
 def generate_heatmaps(data: pd.DataFrame, timestamp: str, time_interval: str, flag: bool, cache: Dict[str, List[float]], calc_corr: Callable[[pd.DataFrame, str, int, bool], float], base_csv: str) -> None:
     if not flag: return
