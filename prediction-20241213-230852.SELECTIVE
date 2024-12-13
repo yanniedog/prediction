@@ -4,64 +4,10 @@ See the error I receive here:
 
 ====================
 
-2024-12-13 22:49:32,753 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-13 22:49:33,018 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&startTime=1502668800000&endTime=1734090572278&limit=1000 HTTP/11" 200 26460
-2024-12-13 22:49:33,164 - INFO - [start.py:153(main)]: Price data download and insertion completed.
-2024-12-13 22:49:33,186 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'obv_price_divergence': no such table: indicator_configs
-2024-12-13 22:49:33,191 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'dema': no such table: indicator_configs
-2024-12-13 22:49:33,196 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 't3': no such table: indicator_configs
-2024-12-13 22:49:33,202 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'sma': no such table: indicator_configs
-2024-12-13 22:49:33,207 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'ema': no such table: indicator_configs
-2024-12-13 22:49:33,210 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'tsf': no such table: indicator_configs
-2024-12-13 22:49:33,216 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'rsi': no such table: indicator_configs
-2024-12-13 22:49:33,219 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'macd': no such table: indicator_configs
-2024-12-13 22:49:33,219 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'stoch': no such table: indicator_configs
-2024-12-13 22:49:33,225 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'cmo': no such table: indicator_configs
-2024-12-13 22:49:33,229 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'cci': no such table: indicator_configs
-2024-12-13 22:49:33,229 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'adx': no such table: indicator_configs
-2024-12-13 22:49:33,236 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'dx': no such table: indicator_configs
-2024-12-13 22:49:33,240 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'aroon': no such table: indicator_configs
-2024-12-13 22:49:33,244 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'aroonosc': no such table: indicator_configs
-2024-12-13 22:49:33,248 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'macdext': no such table: indicator_configs
-2024-12-13 22:49:33,252 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'macdfix': no such table: indicator_configs
-2024-12-13 22:49:33,255 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'minus_di': no such table: indicator_configs
-2024-12-13 22:49:33,259 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'minus_dm': no such table: indicator_configs
-2024-12-13 22:49:33,262 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'mom': no such table: indicator_configs
-2024-12-13 22:49:33,268 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'plus_di': no such table: indicator_configs
-2024-12-13 22:49:33,268 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'plus_dm': no such table: indicator_configs
-2024-12-13 22:49:33,274 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'ppo': no such table: indicator_configs
-2024-12-13 22:49:33,277 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'roc': no such table: indicator_configs
-2024-12-13 22:49:33,283 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'rocp': no such table: indicator_configs
-2024-12-13 22:49:33,286 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'rocr': no such table: indicator_configs
-2024-12-13 22:49:33,286 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'rocr100': no such table: indicator_configs
-2024-12-13 22:49:33,295 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'stochf': no such table: indicator_configs
-2024-12-13 22:49:33,297 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'stochrsi': no such table: indicator_configs
-2024-12-13 22:49:33,301 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'trix': no such table: indicator_configs
-2024-12-13 22:49:33,305 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'ultosc': no such table: indicator_configs
-2024-12-13 22:49:33,309 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'willr': no such table: indicator_configs
-2024-12-13 22:49:33,314 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'adosc': no such table: indicator_configs
-2024-12-13 22:49:33,314 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'atr': no such table: indicator_configs
-2024-12-13 22:49:33,314 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'natr': no such table: indicator_configs
-2024-12-13 22:49:33,314 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'beta': no such table: indicator_configs
-2024-12-13 22:49:33,328 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'correl': no such table: indicator_configs
-2024-12-13 22:49:33,334 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'linearreg': no such table: indicator_configs
-2024-12-13 22:49:33,337 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'linearreg_angle': no such table: indicator_configs
-2024-12-13 22:49:33,341 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'linearreg_intercept': no such table: indicator_configs
-2024-12-13 22:49:33,347 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'linearreg_slope': no such table: indicator_configs
-2024-12-13 22:49:33,350 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'stddev': no such table: indicator_configs
-2024-12-13 22:49:33,354 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'var': no such table: indicator_configs
-2024-12-13 22:49:33,357 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'mfi': no such table: indicator_configs
-2024-12-13 22:49:33,360 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'vortex': no such table: indicator_configs
-2024-12-13 22:49:33,365 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'ao': no such table: indicator_configs
-2024-12-13 22:49:33,367 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'fi': no such table: indicator_configs
-2024-12-13 22:49:33,367 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'kc': no such table: indicator_configs
-2024-12-13 22:49:33,375 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'rvi': no such table: indicator_configs
-2024-12-13 22:49:33,380 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'tsi': no such table: indicator_configs
-2024-12-13 22:49:33,382 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'EyeX MFV Volume': no such table: indicator_configs
-2024-12-13 22:49:33,382 - ERROR - [indicators.py:156(compute_configured_indicators)]: Error computing indicator 'EyeX MFV S/R Bull': no such table: indicator_configs
-2024-12-13 22:49:33,391 - INFO - [start.py:173(main)]: Default indicators computed successfully.
-2024-12-13 22:49:33,394 - INFO - [start.py:182(main)]: Computing correlations.
-2024-12-13 22:49:33,400 - ERROR - [start.py:193(main)]: Error computing configured indicators or correlations: 'macd'
+2024-12-13 23:08:18,730 - INFO - [start.py:157(main)]: Default indicators computed successfully.
+2024-12-13 23:08:18,733 - INFO - [start.py:164(main)]: Configured indicators computed successfully.
+2024-12-13 23:08:18,733 - INFO - [start.py:165(main)]: Computing correlations.
+2024-12-13 23:08:18,743 - ERROR - [start.py:176(main)]: Error computing configured indicators or correlations: 'macd'
 
 
 ====================
@@ -238,7 +184,20 @@ if __name__ == "__main__":
     download_binance_data()
 
 ====================
-2) correlation_database.py (located in the working directory):
+2) config.py (located in the working directory):
+# config.py
+import logging
+import os
+from pathlib import Path
+
+logger = logging.getLogger()
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+DB_PATH = SCRIPT_DIR / 'database' / 'klines.db'
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+====================
+3) correlation_database.py (located in the working directory):
 # correlation_database.py
 import logging
 import sqlite3
@@ -312,7 +271,7 @@ class CorrelationDatabase:
         self.conn.close()
 
 ====================
-3) correlation_utils.py (located in the working directory):
+4) correlation_utils.py (located in the working directory):
 # correlation_utils.py
 import logging
 import pandas as pd, numpy as np, sqlite3
@@ -398,7 +357,7 @@ def get_all_correlations(conn: sqlite3.Connection, sym_id: int, tf_id: int, ind_
     return [row[0] for row in cursor.fetchall()]
 
 ====================
-4) data_utils.py (located in the working directory):
+5) data_utils.py (located in the working directory):
 # data_utils.py
 import logging
 import os, sys, pandas as pd, numpy as np
@@ -453,7 +412,7 @@ def handle_missing_indicators(original_inds: List[str], data: pd.DataFrame, expe
     return [col for col in original_inds if col not in missing]
 
 ====================
-5) indicators.py (located in the working directory):
+6) indicators.py (located in the working directory):
 # indicators.py
 import logging
 import pandas as pd
@@ -464,6 +423,7 @@ import json
 from typing import List
 from indicator_config_parser import parse_indicators_json
 from sqlite_data_manager import create_connection, fetch_indicator_configs
+from config import DB_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -571,7 +531,7 @@ def compute_eyeX_MFV_support_resistance(data: pd.DataFrame, params: dict) -> pd.
     data['EyeX MFV S/R Bear'] = bear_attack
     return data
 
-def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str], db_path: str = 'indicators.db', indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
+def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str], db_path: str = DB_PATH, indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
     with open(indicator_params_path, 'r') as f:
         indicator_params = json.load(f)
     
@@ -615,7 +575,7 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
     data.dropna(inplace=True)
     return data
 
-def compute_all_indicators(data: pd.DataFrame, db_path: str = 'indicators.db', indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
+def compute_all_indicators(data: pd.DataFrame, db_path: str = DB_PATH, indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
     with open(indicator_params_path, 'r') as f:
         indicator_params = json.load(f)
     
@@ -624,8 +584,9 @@ def compute_all_indicators(data: pd.DataFrame, db_path: str = 'indicators.db', i
     data = compute_configured_indicators(data, indicators_list, db_path, indicator_params_path)
     
     return data
+
 ====================
-6) indicator_config_parser.py (located in the working directory):
+7) indicator_config_parser.py (located in the working directory):
 # indicator_config_parser.py
 import json
 from typing import Dict, List, Optional
@@ -643,7 +604,7 @@ def get_indicator_parameters(indicator_name: str, indicator_params_path: str = '
     indicator_params = parse_indicators_json(indicator_params_path)
     return indicator_params.get(indicator_name)
 ====================
-7) launch.py (located in the working directory):
+8) launch.py (located in the working directory):
 # launch.py
 import sys
 import logging
@@ -679,7 +640,7 @@ def main():
 if __name__ == "__main__":
     main()
 ====================
-8) load_data.py (located in the working directory):
+9) load_data.py (located in the working directory):
 # load_data.py
 import logging
 import os
@@ -721,7 +682,7 @@ if __name__ == "__main__":
         print("No data available.")
 
 ====================
-9) logging_setup.py (located in the working directory):
+10) logging_setup.py (located in the working directory):
 # logging_setup.py
 import logging
 import sys
@@ -801,7 +762,7 @@ def configure_logging(log_file_prefix='predictions'):
         sys.exit(1)
 
 ====================
-10) repair-remarks.py (located in the working directory):
+11) repair-remarks.py (located in the working directory):
 import os
 import sys
 
@@ -903,7 +864,7 @@ def main():
 if __name__ == "__main__":
     main()
 ====================
-11) restore_backup.py (located in the working directory):
+12) restore_backup.py (located in the working directory):
 # restore_backup.py
 import os
 from pathlib import Path
@@ -932,7 +893,7 @@ if __name__=="__main__":
     rename_files(r"C:\code\prediction")
 
 ====================
-12) sqlite_data_manager.py (located in the working directory):
+13) sqlite_data_manager.py (located in the working directory):
 # sqlite_data_manager.py
 
 import json
@@ -1135,7 +1096,7 @@ def save_to_sqlite(df, db_path, symbol, timeframe):
         print("Cannot connect to the database.")
 
 ====================
-13) start.py (located in the working directory):
+14) start.py (located in the working directory):
 # start.py
 import logging
 import os
@@ -1246,18 +1207,6 @@ def run_tweak_indicator(symbol: str, timeframe: str):
 
     return selected_indicator
 
-def get_selected_indicator_configs(indicator_name: str):
-    conn = create_connection(DB_PATH)
-    if not conn:
-        logger.error("Database connection failed.")
-        sys.exit(1)
-    create_tables(conn)
-    cursor = conn.cursor()
-    cursor.execute("SELECT name FROM indicators WHERE name LIKE ? ESCAPE '\\'", (f"{indicator_name}_%",))
-    rows = cursor.fetchall()
-    conn.close()
-    return [row[0] for row in rows]
-
 def main():
     log_dir = Path('logs')
     log_dir.mkdir(exist_ok=True)
@@ -1294,11 +1243,7 @@ def main():
             sys.exit(1)
 
         if selected_indicator:
-            configs = get_selected_indicator_configs(selected_indicator)
-            if not configs:
-                indicators_list = [selected_indicator]
-            else:
-                indicators_list = configs
+            indicators_list = [selected_indicator]
 
             from load_data import load_data as load_db_data
             data, is_rev, db_fn = load_db_data(symbol, timeframe)
@@ -1307,16 +1252,15 @@ def main():
                 sys.exit(1)
 
             try:
-                data = compute_all_indicators(data)
+                data = compute_all_indicators(data, db_path=DB_PATH)
                 logger.info("Default indicators computed successfully.")
             except Exception as e:
                 logger.error(f"Error computing default indicators: {e}")
                 sys.exit(1)
 
             try:
-                if configs:
-                    data = compute_configured_indicators(data, configs)
-                    logger.info("Configured indicators computed successfully.")
+                data = compute_configured_indicators(data, indicators_list, db_path=DB_PATH)
+                logger.info("Configured indicators computed successfully.")
                 logger.info("Computing correlations.")
                 load_or_calculate_correlations(
                     data=data,
@@ -1343,7 +1287,7 @@ if __name__ == "__main__":
     main()
 
 ====================
-14) table_generation.py (located in the working directory):
+15) table_generation.py (located in the working directory):
 # table_generation.py
 import os, pandas as pd, numpy as np, logging
 
@@ -1364,7 +1308,7 @@ def generate_correlation_csv(correlations: dict, max_lag: int, base_filename: st
     df.to_csv(os.path.join(csv_dir, f"{base_filename}_correlations.csv"), index_label='Lag')
 
 ====================
-15) tweak_indicator.py (located in the working directory):
+16) tweak_indicator.py (located in the working directory):
 # tweak_indicator.py
 
 import sys
@@ -1516,7 +1460,7 @@ if __name__ == "__main__":
     main()
 
 ====================
-16) utils.py (located in the working directory):
+17) utils.py (located in the working directory):
 # utils.py
 import logging
 import os, sys, json, shutil, subprocess, re
