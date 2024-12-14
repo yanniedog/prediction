@@ -36,7 +36,7 @@ def backup_existing_gpt_files(current_dir, work_dir_name):
     for item in os.listdir(current_dir):
         if item.lower().endswith('.gpt'):
             original_path = os.path.join(current_dir, item)
-            bak_filename = os.path.splitext(item)[0] + '.GPTSELECTIVEBAK'
+            bak_filename = os.path.splitext(item)[0] + '.SELECTIVEBAK'
             backup_path = os.path.join(backup_dir, bak_filename)
             try:
                 os.rename(original_path, os.path.join(current_dir, bak_filename))
