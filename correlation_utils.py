@@ -36,7 +36,7 @@ def load_or_calculate_correlations(data: pd.DataFrame, indicators: List[str], ma
             config_name = f"{indicator}_config_{config_id}"
             if config_name not in data.columns:
                 logger.error(f"Indicator column '{config_name}' not found in data.")
-                raise KeyError(config_name)
+                continue
             if not is_valid_indicator(data[config_name]):
                 logger.warning(f"Invalid indicator '{config_name}'. Skipping.")
                 continue
