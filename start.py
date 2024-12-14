@@ -7,16 +7,16 @@ from pathlib import Path
 from datetime import datetime
 from config import DB_PATH
 from sqlite_data_manager import initialize_database, create_connection, insert_indicator_configs
-from tweak_indicator import (
-    fetch_available_indicators,
-    generate_configurations,
-    parse_indicator_parameters
-)
 from correlation_utils import load_or_calculate_correlations
 from indicators import compute_configured_indicators
 from load_data import load_data
 from binance_historical_data_downloader import download_binance_data
 from logging_setup import configure_logging
+from tweak_indicator import (
+    fetch_available_indicators,
+    generate_configurations,
+    parse_indicator_parameters
+)
 
 logger = logging.getLogger()
 
@@ -81,7 +81,11 @@ def run_tweak_indicator(symbol: str, timeframe: str):
     else:
         logger.info(f"Parameters for '{selected_indicator}': {parameters}")
 
-    configurations = generate_configurations(parameters.keys(), parameters) if parameters else []
+    if 'parameters' in parameters:
+        configurations = generate_configurations(parameters['parameters'].keys(), parameters['parameters'])
+    else:
+        configurations = []
+
     if not configurations:
         logger.error(f"No configurations generated for '{selected_indicator}'. Using base indicator.")
     else:
@@ -134,7 +138,6 @@ def main():
 
         logger.info("Proceeding with main execution.")
 
-        from binance_historical_data_downloader import download_binance_data
         if symbol and timeframe:
             download_binance_data(symbol, timeframe, DB_PATH)
             logger.info("Price data download and insertion completed.")
