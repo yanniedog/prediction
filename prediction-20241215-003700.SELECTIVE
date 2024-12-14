@@ -4,25 +4,23 @@ See the error I receive here:
 
 ====================
 
-2024-12-15 00:28:58,323 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'correlations' ensured in database.
-2024-12-15 00:28:58,332 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_open_time
-2024-12-15 00:28:58,339 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_close_time
-2024-12-15 00:28:58,348 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlation_computed
-2024-12-15 00:28:58,356 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlations
-2024-12-15 00:28:58,361 - INFO - [sqlite_data_manager.py:101(create_tables)]: All tables and indexes are set up successfully.
-2024-12-15 00:28:58,369 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
-2024-12-15 00:28:58,385 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
-2024-12-15 00:29:00,987 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'adosc': module 'pandas_ta' has no attribute 'indicators'
-2024-12-15 00:29:00,995 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'adosc': module 'pandas_ta' has no attribute 'indicators'
-2024-12-15 00:29:01,005 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'adosc': module 'pandas_ta' has no attribute 'indicators'
-2024-12-15 00:29:01,013 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'adosc': module 'pandas_ta' has no attribute 'indicators'
-2024-12-15 00:29:01,024 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'adosc': module 'pandas_ta' has no attribute 'indicators'
-2024-12-15 00:29:01,034 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'adosc': module 'pandas_ta' has no attribute 'indicators'
-2024-12-15 00:29:01,044 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'adosc': module 'pandas_ta' has no attribute 'indicators'
-2024-12-15 00:29:01,056 - INFO - [start.py:155(main)]: Configured indicators computed successfully.
-2024-12-15 00:29:01,068 - INFO - [start.py:156(main)]: Computing correlations.
-2024-12-15 00:29:01,086 - ERROR - [correlation_utils.py:38(load_or_calculate_correlations)]: Indicator column 'adosc_config_23' not found in data.
-2024-12-15 00:29:01,101 - ERROR - [start.py:167(main)]: Error computing configured indicators or correlations: 'adosc_config_23'
+2024-12-15 00:36:53,319 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'correlations' ensured in database.
+2024-12-15 00:36:53,322 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_open_time
+2024-12-15 00:36:53,327 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_close_time
+2024-12-15 00:36:53,330 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlation_computed
+2024-12-15 00:36:53,333 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlations
+2024-12-15 00:36:53,336 - INFO - [sqlite_data_manager.py:101(create_tables)]: All tables and indexes are set up successfully.
+2024-12-15 00:36:53,340 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
+2024-12-15 00:36:53,353 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
+2024-12-15 00:36:53,479 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'adx': module 'pandas_ta' has no attribute 'indicators'
+2024-12-15 00:36:53,482 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'adx': module 'pandas_ta' has no attribute 'indicators'
+2024-12-15 00:36:53,484 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'adx': module 'pandas_ta' has no attribute 'indicators'
+2024-12-15 00:36:53,487 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'adx': module 'pandas_ta' has no attribute 'indicators'
+2024-12-15 00:36:53,490 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'adx': module 'pandas_ta' has no attribute 'indicators'
+2024-12-15 00:36:53,495 - INFO - [start.py:155(main)]: Configured indicators computed successfully.
+2024-12-15 00:36:53,498 - INFO - [start.py:156(main)]: Computing correlations.
+2024-12-15 00:36:53,501 - ERROR - [correlation_utils.py:38(load_or_calculate_correlations)]: Indicator column 'adx_config_6' not found in data.
+2024-12-15 00:36:53,504 - ERROR - [start.py:167(main)]: Error computing configured indicators or correlations: 'adx_config_6'
 
 
 ====================
@@ -583,7 +581,7 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                 data[f'EyeX MFV S/R Bull_config_{config_id}'] = bull_attack
                 data[f'EyeX MFV S/R Bear_config_{config_id}'] = bear_attack
 
-        elif indicator_name.upper() in pta.indicators:
+        elif indicator_name.upper() in pta.indicators():
             try:
                 clean_params = {k: v for k, v in params.items() if k != 'input_columns'}
                 inputs = [data[col] for col in input_columns]
@@ -598,7 +596,7 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                     data[column_name] = result
             except Exception as e:
                 logger.error(f"Error computing indicator '{indicator_name}': {e}")
-        elif indicator_name.lower() in [i.lower() for i in pta.indicators]:
+        elif indicator_name.lower() in [i.lower() for i in pta.indicators()]:
             try:
                 clean_params = {k: v for k, v in params.items() if k != 'input_columns'}
                 pta_func = getattr(pta, indicator_name.lower())
