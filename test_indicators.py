@@ -1,4 +1,5 @@
 # test_indicators.py
+
 import json
 import logging
 import pandas as pd
@@ -6,7 +7,7 @@ import numpy as np
 import talib
 import pandas_ta as ta
 import os
-from logging_setup import configure_logging
+from logging_setup import configure_logging  # Ensure this module exists and is correctly configured
 
 def load_indicator_params(json_path):
     try:
@@ -33,72 +34,8 @@ def generate_simulated_data(num_rows=200):
 
 def compute_custom_indicator(indicator_name, params, data):
     try:
-        if indicator_name == 'obv_price_divergence':
-            # Example implementation: On-Balance Volume divergence calculation
-            method = params['method']['default']
-            obv_method = params['obv_method']['default']
-            obv_period = params['obv_period']['default']
-            price_input_type = params['price_input_type']['default']
-            price_method = params['price_method']['default']
-            price_period = params['price_period']['default']
-            smoothing = params['smoothing']['default']
-            
-            # Select price input
-            if price_input_type == 'close':
-                price = data['close']
-            elif price_input_type == 'open':
-                price = data['open']
-            elif price_input_type == 'high':
-                price = data['high']
-            elif price_input_type == 'low':
-                price = data['low']
-            elif price_input_type == 'hl/2':
-                price = (data['high'] + data['low']) / 2
-            elif price_input_type == 'ohlc/4':
-                price = (data['open'] + data['high'] + data['low'] + data['close']) / 4
-            else:
-                logging.warning(f"Unknown price_input_type '{price_input_type}' for indicator '{indicator_name}'. Using 'close'.")
-                price = data['close']
-            
-            # Compute OBV
-            obv = talib.OBV(data['close'], data['volume'])
-            if obv_method.upper() == 'SMA':
-                obv = talib.SMA(obv, timeperiod=obv_period)
-            elif obv_method.upper() == 'EMA':
-                obv = talib.EMA(obv, timeperiod=obv_period)
-            else:
-                logging.warning(f"Unknown obv_method '{obv_method}' for indicator '{indicator_name}'. Using 'SMA'.")
-                obv = talib.SMA(obv, timeperiod=obv_period)
-            
-            # Compute price moving average
-            if price_method.upper() == 'SMA':
-                price_ma = talib.SMA(price, timeperiod=price_period)
-            elif price_method.upper() == 'EMA':
-                price_ma = talib.EMA(price, timeperiod=price_period)
-            else:
-                logging.warning(f"Unknown price_method '{price_method}' for indicator '{indicator_name}'. Using 'SMA'.")
-                price_ma = talib.SMA(price, timeperiod=price_period)
-            
-            # Calculate divergence based on method
-            if method == 'Difference':
-                divergence = price_ma - obv
-            elif method == 'Ratio':
-                divergence = price_ma / (obv + 1e-10)  # Avoid division by zero
-            elif method == 'Log':
-                divergence = np.log(price_ma + 1) - np.log(obv + 1)
-            else:
-                logging.warning(f"Unknown method '{method}' for indicator '{indicator_name}'. Using 'Difference'.")
-                divergence = price_ma - obv
-            
-            # Apply smoothing if necessary
-            divergence_smoothed = divergence * (1 - smoothing)
-            
-            # Assign to data
-            data[f"{indicator_name.upper()}"] = divergence_smoothed
-            logging.info(f"Indicator '{indicator_name}' computed successfully.")
-        
-        elif indicator_name == 'EyeX MFV Volume':
-            # Example implementation: Volume-based moving averages
+        if indicator_name == 'EyeX MFV Volume':
+            # Volume-based moving averages
             ranges = params['ranges']['default']
             ranges = sorted(ranges)
             for r in ranges:
@@ -107,7 +44,7 @@ def compute_custom_indicator(indicator_name, params, data):
             logging.info(f"Indicator '{indicator_name}' computed successfully.")
         
         elif indicator_name == 'EyeX MFV S/R Bull':
-            # Example implementation: Support/Resistance based on volume moving averages
+            # Support/Resistance based on volume moving averages
             ranges = params['ranges']['default']
             pivot_lookback = params['pivot_lookback']['default']
             price_proximity = params['price_proximity']['default']
@@ -153,21 +90,24 @@ def compute_ta_lib_indicator(indicator_name, params, data):
         # Get the TA-Lib function
         func = getattr(talib, indicator_name.upper())
         
-        # Prepare arguments
+        # Prepare positional arguments
         required_inputs = params.get('required_inputs', [])
-        args = {}
+        positional_args = []
         for inp in required_inputs:
             if inp in data.columns:
-                args[inp] = data[inp].values
+                positional_args.append(data[inp].values)
             else:
                 logging.warning(f"Required input '{inp}' for indicator '{indicator_name}' is missing in data.")
-                args[inp] = np.nan  # or handle appropriately
+                positional_args.append(np.nan)  # or handle appropriately
         
-        # Add the parameters
-        args.update(extracted_params)
+        # Add the parameters as keyword arguments
+        keyword_args = extracted_params
+        
+        # Log the function call details for debugging
+        logging.debug(f"Calling TA-Lib {indicator_name.upper()} with positional args: {positional_args} and keyword args: {keyword_args}")
         
         # Compute the indicator
-        result = func(**args)
+        result = func(*positional_args, **keyword_args)
         
         # TA-Lib functions typically return a numpy array
         # Assign to DataFrame
@@ -202,21 +142,24 @@ def compute_pandas_ta_indicator(indicator_name, params, data):
         # Get the pandas-ta function
         func = getattr(ta, indicator_name.lower())
         
-        # Determine required inputs
+        # Prepare keyword arguments
         required_inputs = params.get('required_inputs', [])
-        args = {}
+        keyword_args = {}
         for inp in required_inputs:
             if inp in data.columns:
-                args[inp] = data[inp]
+                keyword_args[inp] = data[inp]
             else:
                 logging.warning(f"Required input '{inp}' for indicator '{indicator_name}' is missing in data.")
-                args[inp] = np.nan  # or handle appropriately
+                keyword_args[inp] = np.nan  # or handle appropriately
         
         # Add the parameters
-        args.update(extracted_params)
+        keyword_args.update(extracted_params)
+        
+        # Log the function call details for debugging
+        logging.debug(f"Calling pandas-ta {indicator_name.lower()} with keyword args: {keyword_args}")
         
         # Compute the indicator
-        result = func(**args)
+        result = func(**keyword_args)
         
         # Assign to DataFrame
         # Some pandas-ta functions return a DataFrame, others return Series
@@ -224,8 +167,11 @@ def compute_pandas_ta_indicator(indicator_name, params, data):
             for col in result.columns:
                 data[col] = result[col]
         else:
-            param_values = '_'.join(map(str, extracted_params.values()))
-            data[f"{indicator_name.upper()}_{param_values}"] = result
+            # Handle cases where parameters affect the column name
+            # Generate a unique column name based on parameters
+            param_values = '_'.join([str(v) for v in extracted_params.values() if v is not None])
+            column_name = f"{indicator_name.upper()}_{param_values}" if param_values else indicator_name.upper()
+            data[column_name] = result
         logging.info(f"Indicator '{indicator_name}' computed successfully.")
     
     except AttributeError:
@@ -320,17 +266,9 @@ def validate_indicators(indicators, data):
         # Check if the indicator's columns exist in data
         if config['type'] == 'custom':
             # For custom indicators, might have multiple columns
-            if indicator_name == 'obv_price_divergence':
-                col = indicator_name.upper()
-                if col not in data.columns:
-                    logging.error(f"No columns found for indicator '{indicator_name}'.")
-                    continue
-                non_nan = data[col].notna().sum()
-                total = len(data)
-                logging.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
-            elif indicator_name == 'EyeX MFV Volume':
-                # Check for MFV_Volume and MFV_Volume_r
-                col_prefix = 'MFV_Volume'
+            if indicator_name == 'EyeX MFV Volume':
+                # Check for MFV_Volume_* columns
+                col_prefix = 'MFV_Volume_'
                 mfv_cols = [col for col in data.columns if col.startswith(col_prefix)]
                 if not mfv_cols:
                     logging.error(f"No columns found for indicator '{indicator_name}'.")
@@ -340,8 +278,8 @@ def validate_indicators(indicators, data):
                     total = len(data)
                     logging.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
             elif indicator_name == 'EyeX MFV S/R Bull':
-                # Check for MFV_SRB, Pivot_High, Pivot_Low, Support, Resistance
-                required_cols = [col for col in data.columns if col.startswith('MFV_SRB')] + ['Pivot_High', 'Pivot_Low', 'Support', 'Resistance']
+                # Check for MFV_SRB_*, Pivot_High, Pivot_Low, Support, Resistance
+                required_cols = [col for col in data.columns if col.startswith('MFV_SRB_')] + ['Pivot_High', 'Pivot_Low', 'Support', 'Resistance']
                 missing_cols = [col for col in required_cols if col not in data.columns]
                 if missing_cols:
                     logging.error(f"No columns found for indicator '{indicator_name}'. Missing: {missing_cols}")
@@ -351,7 +289,7 @@ def validate_indicators(indicators, data):
                     total = len(data)
                     logging.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
         else:
-            # For ta-lib and pandas-ta indicators, expect a single column
+            # For ta-lib and pandas-ta indicators, expect a single column or parameterized columns
             # Handle cases where pandas-ta might append parameters to the column name
             possible_cols = [indicator_name.upper()]
             # Also consider parameterized column names for pandas-ta
