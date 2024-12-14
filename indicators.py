@@ -5,7 +5,7 @@ import numpy as np
 import talib as ta
 import pandas_ta as pta
 import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from indicator_config_parser import parse_indicators_json
 from sqlite_data_manager import create_connection, fetch_indicator_configs
 from config import DB_PATH
@@ -82,7 +82,7 @@ def generate_parameter_combinations(parameters: Dict[str, Any], conditions: List
             valid_combinations.append(combo)
     return valid_combinations
 
-def compute_indicator(data: pd.DataFrame, indicator_name: str, params: Dict[str, Any], input_columns: List[str]) -> pd.DataFrame:
+def compute_indicator(data: pd.DataFrame, indicator_name: str, params: Dict[str, Any], input_columns: List[str], config_id: int) -> pd.DataFrame:
     try:
         indicator_type = params.get('type')
         parameters = params.get('parameters', {})
@@ -91,15 +91,15 @@ def compute_indicator(data: pd.DataFrame, indicator_name: str, params: Dict[str,
             if not ta_func:
                 logger.error(f"TA-Lib function for indicator '{indicator_name}' not found.")
                 return data
-            func_params = {k: v for k, v in parameters.items() if k != 'type' and k != 'conditions'}
+            func_params = {k: v for k, v in parameters.items() if k != 'config_id'}
             func_args = [data[col].values for col in input_columns]
             result = ta_func(*func_args, **func_params)
             if isinstance(result, tuple):
                 for idx, res in enumerate(result):
-                    column_name = f"{indicator_name}_param_{idx}"
+                    column_name = f"{indicator_name}_config_{config_id}_{idx}"
                     data[column_name] = res
             else:
-                column_name = f"{indicator_name}_param"
+                column_name = f"{indicator_name}_config_{config_id}"
                 data[column_name] = result
         elif indicator_type == 'pandas-ta':
             pta_func = getattr(pta, indicator_name.lower(), None)
@@ -110,10 +110,10 @@ def compute_indicator(data: pd.DataFrame, indicator_name: str, params: Dict[str,
             result = pta_func(**func_params, **{col: data[col] for col in input_columns})
             if isinstance(result, pd.DataFrame):
                 for col in result.columns:
-                    column_name = f"{col}_param"
+                    column_name = f"{col}_config_{config_id}"
                     data[column_name] = result[col]
             else:
-                column_name = f"{indicator_name}_param"
+                column_name = f"{indicator_name}_config_{config_id}"
                 data[column_name] = result
         elif indicator_type == 'custom':
             logger.warning(f"Custom indicator '{indicator_name}' computation is not implemented.")
@@ -153,15 +153,11 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
                     logger.error(f"Indicator '{indicator_name}' not found in parameters JSON.")
                     continue
                 conditions = indicator_details.get('conditions', [])
-                parameters = config
-                valid_combinations = generate_parameter_combinations(parameters, conditions)
-                for combo in valid_combinations:
-                    combo_with_id = combo.copy()
-                    combo_with_id['config_id'] = config_id
-                    data = compute_indicator(data, indicator_name, {
-                        'type': indicator_details.get('type'),
-                        'parameters': combo_with_id
-                    }, indicator_details.get('input_columns', []))
+                parameters = config.copy()
+                data = compute_indicator(data, indicator_name, {
+                    'type': indicator_details.get('type'),
+                    'parameters': parameters
+                }, indicator_details.get('input_columns', []), config_id)
         except Exception as e:
             logger.error(f"Error computing indicator '{indicator_name}': {e}")
             raise e
