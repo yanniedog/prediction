@@ -1,3 +1,4 @@
+# test_indicators.py
 import json
 import logging
 import pandas as pd
@@ -5,29 +6,16 @@ import numpy as np
 import talib
 import pandas_ta as ta
 import os
-
-def setup_logging():
-    log_filename = "predictions_20241215-030314.log"
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d(<module>)]: %(message)s',
-        handlers=[
-            logging.FileHandler(log_filename),
-            logging.StreamHandler()
-        ]
-    )
-    return logging.getLogger()
-
-logger = setup_logging()
+from logging_setup import configure_logging
 
 def load_indicator_params(json_path):
     try:
         with open(json_path, 'r') as f:
             params = json.load(f)
-        logger.info(f"Indicator Parameters Loaded: {list(params['indicators'].keys())}")
+        logging.info(f"Indicator Parameters Loaded: {list(params['indicators'].keys())}")
         return params['indicators']
     except Exception as e:
-        logger.error(f"Failed to load indicator parameters from {json_path}: {e}")
+        logging.error(f"Failed to load indicator parameters from {json_path}: {e}")
         raise
 
 def generate_simulated_data(num_rows=200):
@@ -39,8 +27,8 @@ def generate_simulated_data(num_rows=200):
         'close': np.random.uniform(100, 200, num_rows),
         'volume': np.random.uniform(1000, 5000, num_rows)
     })
-    logger.info("Generating simulated market data.")
-    logger.debug(f"Simulated Data (first 5 rows):\n{data.head()}")
+    logging.info("Generating simulated market data.")
+    logging.debug(f"Simulated Data (first 5 rows):\n{data.head()}")
     return data
 
 def compute_custom_indicator(indicator_name, params, data):
@@ -69,7 +57,7 @@ def compute_custom_indicator(indicator_name, params, data):
             elif price_input_type == 'ohlc/4':
                 price = (data['open'] + data['high'] + data['low'] + data['close']) / 4
             else:
-                logger.warning(f"Unknown price_input_type '{price_input_type}' for indicator '{indicator_name}'. Using 'close'.")
+                logging.warning(f"Unknown price_input_type '{price_input_type}' for indicator '{indicator_name}'. Using 'close'.")
                 price = data['close']
             
             # Compute OBV
@@ -79,7 +67,7 @@ def compute_custom_indicator(indicator_name, params, data):
             elif obv_method.upper() == 'EMA':
                 obv = talib.EMA(obv, timeperiod=obv_period)
             else:
-                logger.warning(f"Unknown obv_method '{obv_method}' for indicator '{indicator_name}'. Using 'SMA'.")
+                logging.warning(f"Unknown obv_method '{obv_method}' for indicator '{indicator_name}'. Using 'SMA'.")
                 obv = talib.SMA(obv, timeperiod=obv_period)
             
             # Compute price moving average
@@ -88,7 +76,7 @@ def compute_custom_indicator(indicator_name, params, data):
             elif price_method.upper() == 'EMA':
                 price_ma = talib.EMA(price, timeperiod=price_period)
             else:
-                logger.warning(f"Unknown price_method '{price_method}' for indicator '{indicator_name}'. Using 'SMA'.")
+                logging.warning(f"Unknown price_method '{price_method}' for indicator '{indicator_name}'. Using 'SMA'.")
                 price_ma = talib.SMA(price, timeperiod=price_period)
             
             # Calculate divergence based on method
@@ -99,7 +87,7 @@ def compute_custom_indicator(indicator_name, params, data):
             elif method == 'Log':
                 divergence = np.log(price_ma + 1) - np.log(obv + 1)
             else:
-                logger.warning(f"Unknown method '{method}' for indicator '{indicator_name}'. Using 'Difference'.")
+                logging.warning(f"Unknown method '{method}' for indicator '{indicator_name}'. Using 'Difference'.")
                 divergence = price_ma - obv
             
             # Apply smoothing if necessary
@@ -107,7 +95,7 @@ def compute_custom_indicator(indicator_name, params, data):
             
             # Assign to data
             data[f"{indicator_name.upper()}"] = divergence_smoothed
-            logger.info(f"Indicator '{indicator_name}' computed successfully.")
+            logging.info(f"Indicator '{indicator_name}' computed successfully.")
         
         elif indicator_name == 'EyeX MFV Volume':
             # Example implementation: Volume-based moving averages
@@ -116,7 +104,7 @@ def compute_custom_indicator(indicator_name, params, data):
             for r in ranges:
                 column_name = f"MFV_Volume_{r}"
                 data[column_name] = data['volume'].rolling(window=r).mean()
-            logger.info(f"Indicator '{indicator_name}' computed successfully.")
+            logging.info(f"Indicator '{indicator_name}' computed successfully.")
         
         elif indicator_name == 'EyeX MFV S/R Bull':
             # Example implementation: Support/Resistance based on volume moving averages
@@ -136,13 +124,13 @@ def compute_custom_indicator(indicator_name, params, data):
             data['Support'] = np.where(abs(data['close'] - data['Pivot_Low']) <= price_proximity, data['Pivot_Low'], np.nan)
             data['Resistance'] = np.where(abs(data['close'] - data['Pivot_High']) <= price_proximity, data['Pivot_High'], np.nan)
             
-            logger.info(f"Indicator '{indicator_name}' computed successfully.")
+            logging.info(f"Indicator '{indicator_name}' computed successfully.")
         
         else:
-            logger.warning(f"Custom indicator '{indicator_name}' is not implemented.")
+            logging.warning(f"Custom indicator '{indicator_name}' is not implemented.")
             return
     except Exception as e:
-        logger.error(f"Error computing Custom Indicator '{indicator_name}': {e}")
+        logging.error(f"Error computing Custom Indicator '{indicator_name}': {e}")
         raise
 
 def compute_ta_lib_indicator(indicator_name, params, data):
@@ -160,7 +148,7 @@ def compute_ta_lib_indicator(indicator_name, params, data):
         # Ensure all parameters are of correct type
         for key, val in extracted_params.items():
             if val is None:
-                logger.warning(f"Parameter '{key}' for indicator '{indicator_name}' is missing. Using default value.")
+                logging.warning(f"Parameter '{key}' for indicator '{indicator_name}' is missing. Using default value.")
         
         # Get the TA-Lib function
         func = getattr(talib, indicator_name.upper())
@@ -172,7 +160,7 @@ def compute_ta_lib_indicator(indicator_name, params, data):
             if inp in data.columns:
                 args[inp] = data[inp].values
             else:
-                logger.warning(f"Required input '{inp}' for indicator '{indicator_name}' is missing in data.")
+                logging.warning(f"Required input '{inp}' for indicator '{indicator_name}' is missing in data.")
                 args[inp] = np.nan  # or handle appropriately
         
         # Add the parameters
@@ -184,18 +172,18 @@ def compute_ta_lib_indicator(indicator_name, params, data):
         # TA-Lib functions typically return a numpy array
         # Assign to DataFrame
         data[f"{indicator_name.upper()}"] = result
-        logger.info(f"Indicator '{indicator_name}' computed successfully.")
+        logging.info(f"Indicator '{indicator_name}' computed successfully.")
     
     except AttributeError:
-        logger.error(f"TA-Lib does not have a function named '{indicator_name.upper()}'.")
+        logging.error(f"TA-Lib does not have a function named '{indicator_name.upper()}'.")
         # Optionally, attempt pandas-ta computation
         raise
     except TypeError as te:
-        logger.error(f"Error computing TA-Lib indicator '{indicator_name}': {te}")
+        logging.error(f"Error computing TA-Lib indicator '{indicator_name}': {te}")
         # Optionally, attempt pandas-ta computation
         raise
     except Exception as e:
-        logger.error(f"Error computing TA-Lib indicator '{indicator_name}': {e}")
+        logging.error(f"Error computing TA-Lib indicator '{indicator_name}': {e}")
         # Optionally, attempt pandas-ta computation
         raise
 
@@ -221,7 +209,7 @@ def compute_pandas_ta_indicator(indicator_name, params, data):
             if inp in data.columns:
                 args[inp] = data[inp]
             else:
-                logger.warning(f"Required input '{inp}' for indicator '{indicator_name}' is missing in data.")
+                logging.warning(f"Required input '{inp}' for indicator '{indicator_name}' is missing in data.")
                 args[inp] = np.nan  # or handle appropriately
         
         # Add the parameters
@@ -238,21 +226,21 @@ def compute_pandas_ta_indicator(indicator_name, params, data):
         else:
             param_values = '_'.join(map(str, extracted_params.values()))
             data[f"{indicator_name.upper()}_{param_values}"] = result
-        logger.info(f"Indicator '{indicator_name}' computed successfully.")
+        logging.info(f"Indicator '{indicator_name}' computed successfully.")
     
     except AttributeError:
-        logger.error(f"pandas-ta does not have a function named '{indicator_name.lower()}'.")
+        logging.error(f"pandas-ta does not have a function named '{indicator_name.lower()}'.")
         raise
     except TypeError as te:
-        logger.error(f"Error computing pandas-ta indicator '{indicator_name}': {te}")
+        logging.error(f"Error computing pandas-ta indicator '{indicator_name}': {te}")
         raise
     except Exception as e:
-        logger.error(f"Error computing pandas-ta indicator '{indicator_name}': {e}")
+        logging.error(f"Error computing pandas-ta indicator '{indicator_name}': {e}")
         raise
 
 def compute_indicators(indicators, data):
     for indicator_name, config in indicators.items():
-        logger.info(f"Processing Indicator: {indicator_name}")
+        logging.info(f"Processing Indicator: {indicator_name}")
         indicator_type = config.get('type', '').lower()
         params = config.get('parameters', {})
         required_inputs = config.get('required_inputs', [])
@@ -296,7 +284,7 @@ def compute_indicators(indicators, data):
                                 break
                         # Add more condition types as needed
                 if not condition_met:
-                    logger.info(f"Conditions not met for indicator '{indicator_name}'. Skipping computation.")
+                    logging.info(f"Conditions not met for indicator '{indicator_name}'. Skipping computation.")
                     break
             if not condition_met:
                 continue  # Skip this indicator
@@ -304,7 +292,7 @@ def compute_indicators(indicators, data):
         # Check if required inputs are present
         missing_inputs = [inp for inp in required_inputs if inp not in data.columns]
         if missing_inputs:
-            logger.warning(f"Missing required inputs {missing_inputs} for indicator '{indicator_name}'. Skipping.")
+            logging.warning(f"Missing required inputs {missing_inputs} for indicator '{indicator_name}'. Skipping.")
             continue
         
         try:
@@ -312,56 +300,56 @@ def compute_indicators(indicators, data):
                 try:
                     compute_ta_lib_indicator(indicator_name, params, data)
                 except Exception as e:
-                    logger.warning(f"TA-Lib computation failed for indicator '{indicator_name}': {e}. Attempting pandas-ta.")
+                    logging.warning(f"TA-Lib computation failed for indicator '{indicator_name}': {e}. Attempting pandas-ta.")
                     try:
                         compute_pandas_ta_indicator(indicator_name, params, data)
                     except Exception as e_pandas:
-                        logger.error(f"Pandas-ta computation also failed for indicator '{indicator_name}': {e_pandas}.")
+                        logging.error(f"Pandas-ta computation also failed for indicator '{indicator_name}': {e_pandas}.")
             elif indicator_type == 'pandas-ta':
                 compute_pandas_ta_indicator(indicator_name, params, data)
             elif indicator_type == 'custom':
                 compute_custom_indicator(indicator_name, params, data)
             else:
-                logger.warning(f"Unknown indicator type '{indicator_type}' for indicator '{indicator_name}'. Skipping.")
+                logging.warning(f"Unknown indicator type '{indicator_type}' for indicator '{indicator_name}'. Skipping.")
         except Exception as e:
-            logger.warning(f"Indicator '{indicator_name}' failed to compute: {e}")
+            logging.warning(f"Indicator '{indicator_name}' failed to compute: {e}")
 
 def validate_indicators(indicators, data):
     for indicator_name, config in indicators.items():
-        logger.info(f"Validating Indicator: {indicator_name}")
+        logging.info(f"Validating Indicator: {indicator_name}")
         # Check if the indicator's columns exist in data
         if config['type'] == 'custom':
             # For custom indicators, might have multiple columns
             if indicator_name == 'obv_price_divergence':
                 col = indicator_name.upper()
                 if col not in data.columns:
-                    logger.error(f"No columns found for indicator '{indicator_name}'.")
+                    logging.error(f"No columns found for indicator '{indicator_name}'.")
                     continue
                 non_nan = data[col].notna().sum()
                 total = len(data)
-                logger.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
+                logging.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
             elif indicator_name == 'EyeX MFV Volume':
                 # Check for MFV_Volume and MFV_Volume_r
                 col_prefix = 'MFV_Volume'
                 mfv_cols = [col for col in data.columns if col.startswith(col_prefix)]
                 if not mfv_cols:
-                    logger.error(f"No columns found for indicator '{indicator_name}'.")
+                    logging.error(f"No columns found for indicator '{indicator_name}'.")
                     continue
                 for col in mfv_cols:
                     non_nan = data[col].notna().sum()
                     total = len(data)
-                    logger.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
+                    logging.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
             elif indicator_name == 'EyeX MFV S/R Bull':
                 # Check for MFV_SRB, Pivot_High, Pivot_Low, Support, Resistance
                 required_cols = [col for col in data.columns if col.startswith('MFV_SRB')] + ['Pivot_High', 'Pivot_Low', 'Support', 'Resistance']
                 missing_cols = [col for col in required_cols if col not in data.columns]
                 if missing_cols:
-                    logger.error(f"No columns found for indicator '{indicator_name}'. Missing: {missing_cols}")
+                    logging.error(f"No columns found for indicator '{indicator_name}'. Missing: {missing_cols}")
                     continue
                 for col in required_cols:
                     non_nan = data[col].notna().sum()
                     total = len(data)
-                    logger.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
+                    logging.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
         else:
             # For ta-lib and pandas-ta indicators, expect a single column
             # Handle cases where pandas-ta might append parameters to the column name
@@ -375,24 +363,27 @@ def validate_indicators(indicators, data):
                 if col in data.columns:
                     non_nan = data[col].notna().sum()
                     total = len(data)
-                    logger.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
+                    logging.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
                     found = True
             if not found:
-                logger.error(f"No columns found for indicator '{indicator_name}'.")
+                logging.error(f"No columns found for indicator '{indicator_name}'.")
                 continue
         
         # Additional validation criteria can be added here
         # For example, minimum number of non-NaN values
         # For simplicity, we'll skip this in this script
-        
-    logger.info("Completed validation of computed indicators.")
+    
+    logging.info("Completed validation of computed indicators.")
 
 def main():
     try:
+        # Configure logging using logging_setup.py
+        configure_logging(log_file_prefix='predictions')
+        
         # Load indicator parameters
         json_path = 'indicator_params.json'
         if not os.path.exists(json_path):
-            logger.error(f"Indicator parameters file '{json_path}' does not exist.")
+            logging.error(f"Indicator parameters file '{json_path}' does not exist.")
             return
         
         indicators = load_indicator_params(json_path)
@@ -401,17 +392,17 @@ def main():
         data = generate_simulated_data(num_rows=200)
         
         # Compute indicators
-        logger.info("Starting computation of indicators.")
+        logging.info("Starting computation of indicators.")
         compute_indicators(indicators, data)
         
         # Validate indicators
-        logger.info("Starting validation of computed indicators.")
+        logging.info("Starting validation of computed indicators.")
         validate_indicators(indicators, data)
         
-        logger.info("Indicator testing completed.")
+        logging.info("Indicator testing completed.")
     
     except Exception as e:
-        logger.error(f"An error occurred in the main execution: {e}")
+        logging.error(f"An error occurred in the main execution: {e}")
 
 if __name__ == "__main__":
     main()
