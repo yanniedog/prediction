@@ -32,59 +32,8 @@ def generate_simulated_data(num_rows=200):
 
 def compute_custom_indicator(indicator_name, params, data):
     try:
-        if indicator_name == 'obv_price_divergence':
-            method = params['method']['default']
-            obv_method = params['obv_method']['default']
-            obv_period = params['obv_period']['default']
-            price_input_type = params['price_input_type']['default']
-            price_method = params['price_method']['default']
-            price_period = params['price_period']['default']
-            smoothing = params['smoothing']['default']
-            if price_input_type == 'close':
-                price = data['close']
-            elif price_input_type == 'open':
-                price = data['open']
-            elif price_input_type == 'high':
-                price = data['high']
-            elif price_input_type == 'low':
-                price = data['low']
-            elif price_input_type == 'hl/2':
-                price = (data['high'] + data['low']) / 2
-            elif price_input_type == 'ohlc/4':
-                price = (data['open'] + data['high'] + data['low'] + data['close']) / 4
-            else:
-                logging.warning(f"Unknown price_input_type '{price_input_type}' for indicator '{indicator_name}'. Using 'close'.")
-                price = data['close']
-            obv = talib.OBV(data['close'], data['volume'])
-            if obv_method.upper() == 'SMA':
-                obv = talib.SMA(obv, timeperiod=obv_period)
-            elif obv_method.upper() == 'EMA':
-                obv = talib.EMA(obv, timeperiod=obv_period)
-            else:
-                logging.warning(f"Unknown obv_method '{obv_method}' for indicator '{indicator_name}'. Using 'SMA'.")
-                obv = talib.SMA(obv, timeperiod=obv_period)
-            if price_method.upper() == 'SMA':
-                price_ma = talib.SMA(price, timeperiod=price_period)
-            elif price_method.upper() == 'EMA':
-                price_ma = talib.EMA(price, timeperiod=price_period)
-            else:
-                logging.warning(f"Unknown price_method '{price_method}' for indicator '{indicator_name}'. Using 'SMA'.")
-                price_ma = talib.SMA(price, timeperiod=price_period)
-            if method == 'Difference':
-                divergence = price_ma - obv
-            elif method == 'Ratio':
-                divergence = price_ma / (obv + 1e-10)
-            elif method == 'Log':
-                divergence = np.log(price_ma + 1) - np.log(obv + 1)
-            else:
-                logging.warning(f"Unknown method '{method}' for indicator '{indicator_name}'. Using 'Difference'.")
-                divergence = price_ma - obv
-            divergence_smoothed = divergence * (1 - smoothing)
-            data[f"{indicator_name.upper()}"] = divergence_smoothed
-            logging.info(f"Indicator '{indicator_name}' computed successfully.")
-        
-        elif indicator_name == 'EyeX MFV Volume':
-            ranges = params['ranges']['default']
+        if indicator_name == 'EyeX MFV Volume':
+            ranges = params.get('ranges', {}).get('default', [])
             ranges = sorted(ranges)
             for r in ranges:
                 column_name = f"MFV_Volume_{r}"
@@ -92,9 +41,9 @@ def compute_custom_indicator(indicator_name, params, data):
             logging.info(f"Indicator '{indicator_name}' computed successfully.")
         
         elif indicator_name == 'EyeX MFV S/R Bull':
-            ranges = params['ranges']['default']
-            pivot_lookback = params['pivot_lookback']['default']
-            price_proximity = params['price_proximity']['default']
+            ranges = params.get('ranges', {}).get('default', [])
+            pivot_lookback = params.get('pivot_lookback', {}).get('default', 5)
+            price_proximity = params.get('price_proximity', {}).get('default', 0.00001)
             for r in ranges:
                 data[f"MFV_SRB_{r}"] = data['volume'].rolling(window=r).mean()
             data['Pivot_High'] = data['high'].rolling(window=pivot_lookback, center=True).max()
@@ -113,11 +62,10 @@ def compute_custom_indicator(indicator_name, params, data):
 def compute_ta_lib_indicator(indicator_name, params, data):
     try:
         extracted_params = {k: v['default'] for k, v in params.items() if 'default' in v and k not in ['required_inputs', 'input_columns', 'conditions']}
-        required_inputs = params.get('required_inputs', [])
-        args_ordered = [data[inp].values for inp in required_inputs]
-        args_kwargs = {k: v for k, v in extracted_params.items()}
         func = getattr(talib, indicator_name.upper())
-        result = func(*args_ordered, **args_kwargs)
+        required_inputs = params.get('required_inputs', [])
+        inputs = [data[inp].values for inp in required_inputs if inp in data.columns]
+        result = func(*inputs, **extracted_params)
         if isinstance(result, tuple):
             for idx, res in enumerate(result):
                 data[f"{indicator_name.upper()}_{idx}"] = res
@@ -137,11 +85,10 @@ def compute_ta_lib_indicator(indicator_name, params, data):
 def compute_pandas_ta_indicator(indicator_name, params, data):
     try:
         extracted_params = {k: v['default'] for k, v in params.items() if 'default' in v and k not in ['required_inputs', 'input_columns', 'conditions']}
-        required_inputs = params.get('required_inputs', [])
-        args_ordered = [data[inp] for inp in required_inputs]
-        args_kwargs = {k: v for k, v in extracted_params.items()}
         func = getattr(ta, indicator_name.lower())
-        result = func(*args_ordered, **args_kwargs)
+        required_inputs = params.get('required_inputs', [])
+        inputs = [data[inp] for inp in required_inputs if inp in data.columns]
+        result = func(*inputs, **extracted_params)
         if isinstance(result, pd.DataFrame):
             for col in result.columns:
                 data[col] = result[col]
@@ -165,31 +112,26 @@ def compute_indicators(indicators, data):
         indicator_type = config.get('type', '').lower()
         params = config.get('parameters', {})
         required_inputs = config.get('required_inputs', [])
-        input_columns = config.get('input_columns', [])
         conditions = config.get('conditions', [])
         if conditions:
             condition_met = True
             for condition in conditions:
                 for param, rule in condition.items():
                     for rule_type, rule_value in rule.items():
-                        if rule_type == 'greater_than':
-                            param_value = params[param]['default']
-                            compare_to = params[rule_value]['default'] if isinstance(rule_value, str) and rule_value in params else float(rule_value)
-                            if param_value <= compare_to:
-                                condition_met = False
-                                break
-                        elif rule_type == 'less_than':
-                            param_value = params[param]['default']
-                            compare_to = params[rule_value]['default'] if isinstance(rule_value, str) and rule_value in params else float(rule_value)
-                            if param_value >= compare_to:
-                                condition_met = False
-                                break
-                        elif rule_type == 'less_than_or_equal':
-                            param_value = params[param]['default']
-                            compare_to = params[rule_value]['default'] if isinstance(rule_value, str) and rule_value in params else float(rule_value)
-                            if param_value > compare_to:
-                                condition_met = False
-                                break
+                        param_value = params[param]['default']
+                        if isinstance(rule_value, str) and rule_value in params:
+                            compare_to = params[rule_value]['default']
+                        else:
+                            compare_to = float(rule_value)
+                        if rule_type == 'greater_than' and not (param_value > compare_to):
+                            condition_met = False
+                            break
+                        elif rule_type == 'less_than' and not (param_value < compare_to):
+                            condition_met = False
+                            break
+                        elif rule_type == 'less_than_or_equal' and not (param_value <= compare_to):
+                            condition_met = False
+                            break
                 if not condition_met:
                     logging.info(f"Conditions not met for indicator '{indicator_name}'. Skipping computation.")
                     break
@@ -222,15 +164,7 @@ def validate_indicators(indicators, data):
     for indicator_name, config in indicators.items():
         logging.info(f"Validating Indicator: {indicator_name}")
         if config['type'] == 'custom':
-            if indicator_name == 'obv_price_divergence':
-                col = indicator_name.upper()
-                if col not in data.columns:
-                    logging.error(f"No columns found for indicator '{indicator_name}'.")
-                    continue
-                non_nan = data[col].notna().sum()
-                total = len(data)
-                logging.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
-            elif indicator_name == 'EyeX MFV Volume':
+            if indicator_name == 'EyeX MFV Volume':
                 col_prefix = 'MFV_Volume'
                 mfv_cols = [col for col in data.columns if col.startswith(col_prefix)]
                 if not mfv_cols:
