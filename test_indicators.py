@@ -54,24 +54,36 @@ def compute_custom_indicator(indicator_name, params, data):
         
         else:
             logging.warning(f"Custom indicator '{indicator_name}' is not implemented.")
-            return
     except Exception as e:
         logging.error(f"Error computing Custom Indicator '{indicator_name}': {e}")
         raise
 
 def compute_ta_lib_indicator(indicator_name, params, data):
     try:
+        # Extract parameters excluding 'required_inputs' and others
         extracted_params = {k: v['default'] for k, v in params.items() if 'default' in v and k not in ['required_inputs', 'input_columns', 'conditions']}
         func = getattr(talib, indicator_name.upper())
         required_inputs = params.get('required_inputs', [])
-        inputs = [data[inp].values for inp in required_inputs if inp in data.columns]
+        
+        # Ensure all required inputs are present
+        inputs = []
+        for inp in required_inputs:
+            if inp in data.columns:
+                inputs.append(data[inp].values)
+            else:
+                logging.error(f"Required input '{inp}' for indicator '{indicator_name}' is missing in data.")
+                raise ValueError(f"Missing required input: {inp}")
+        
+        # Call the TA-Lib function with inputs and parameters
         result = func(*inputs, **extracted_params)
+        
+        # Handle multiple outputs (e.g., MACD returns macd, signal, hist)
         if isinstance(result, tuple):
             for idx, res in enumerate(result):
                 data[f"{indicator_name.upper()}_{idx}"] = res
         else:
             data[f"{indicator_name.upper()}"] = result
-        logging.info(f"Indicator '{indicator_name}' computed successfully.")
+        logging.info(f"Indicator '{indicator_name}' computed successfully using TA-Lib.")
     except AttributeError:
         logging.error(f"TA-Lib does not have a function named '{indicator_name.upper()}'.")
         raise
@@ -84,18 +96,31 @@ def compute_ta_lib_indicator(indicator_name, params, data):
 
 def compute_pandas_ta_indicator(indicator_name, params, data):
     try:
+        # Extract parameters excluding 'required_inputs' and others
         extracted_params = {k: v['default'] for k, v in params.items() if 'default' in v and k not in ['required_inputs', 'input_columns', 'conditions']}
         func = getattr(ta, indicator_name.lower())
         required_inputs = params.get('required_inputs', [])
-        inputs = [data[inp] for inp in required_inputs if inp in data.columns]
+        
+        # Ensure all required inputs are present
+        inputs = []
+        for inp in required_inputs:
+            if inp in data.columns:
+                inputs.append(data[inp])
+            else:
+                logging.error(f"Required input '{inp}' for indicator '{indicator_name}' is missing in data.")
+                raise ValueError(f"Missing required input: {inp}")
+        
+        # Call the pandas-ta function with inputs and parameters
         result = func(*inputs, **extracted_params)
+        
+        # Handle if the result is a DataFrame (multiple outputs)
         if isinstance(result, pd.DataFrame):
             for col in result.columns:
                 data[col] = result[col]
         else:
             param_values = '_'.join(map(str, extracted_params.values()))
             data[f"{indicator_name.upper()}_{param_values}"] = result
-        logging.info(f"Indicator '{indicator_name}' computed successfully.")
+        logging.info(f"Indicator '{indicator_name}' computed successfully using pandas-ta.")
     except AttributeError:
         logging.error(f"pandas-ta does not have a function named '{indicator_name.lower()}'.")
         raise
@@ -113,6 +138,8 @@ def compute_indicators(indicators, data):
         params = config.get('parameters', {})
         required_inputs = config.get('required_inputs', [])
         conditions = config.get('conditions', [])
+        
+        # Evaluate conditions if any
         if conditions:
             condition_met = True
             for condition in conditions:
@@ -122,7 +149,12 @@ def compute_indicators(indicators, data):
                         if isinstance(rule_value, str) and rule_value in params:
                             compare_to = params[rule_value]['default']
                         else:
-                            compare_to = float(rule_value)
+                            try:
+                                compare_to = float(rule_value)
+                            except ValueError:
+                                logging.error(f"Invalid comparison value '{rule_value}' in conditions for indicator '{indicator_name}'.")
+                                condition_met = False
+                                break
                         if rule_type == 'greater_than' and not (param_value > compare_to):
                             condition_met = False
                             break
@@ -137,10 +169,14 @@ def compute_indicators(indicators, data):
                     break
             if not condition_met:
                 continue
+        
+        # Check for missing required inputs
         missing_inputs = [inp for inp in required_inputs if inp not in data.columns]
         if missing_inputs:
             logging.warning(f"Missing required inputs {missing_inputs} for indicator '{indicator_name}'. Skipping.")
             continue
+        
+        # Compute the indicator based on its type
         try:
             if indicator_type == 'ta-lib':
                 try:
@@ -185,7 +221,10 @@ def validate_indicators(indicators, data):
                     total = len(data)
                     logging.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
         else:
+            # For ta-lib and pandas-ta indicators
             possible_cols = [indicator_name.upper()]
+            # TA-Lib indicators may return multiple outputs like MACD returns macd, signal, hist
+            # pandas-ta might return multiple columns as well
             for col in data.columns:
                 if col.startswith(indicator_name.upper()):
                     possible_cols.append(col)
