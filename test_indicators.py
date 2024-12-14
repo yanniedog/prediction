@@ -18,6 +18,15 @@ except ImportError as e:
 configure_logging()
 logger = logging.getLogger(__name__)
 
+# Mapping of TA-Lib indicators to their required input columns
+# Extend this mapping as needed based on your JSON configuration
+INDICATOR_INPUT_MAPPING = {
+    'adosc': ['high', 'low', 'close', 'volume'],
+    'macd': ['close'],
+    'ppo': ['close'],
+    # Add other indicators as necessary
+}
+
 def load_indicator_params(params_path: str) -> dict:
     """
     Load indicator configurations from a JSON file.
@@ -41,7 +50,7 @@ def load_indicator_params(params_path: str) -> dict:
         logger.error(f"Error decoding JSON from '{params_path}': {e}")
         sys.exit(1)
 
-def generate_simulated_data(num_rows: int = 100) -> pd.DataFrame:
+def generate_simulated_data(num_rows: int = 200) -> pd.DataFrame:
     """
     Generate simulated market data.
 
@@ -84,21 +93,11 @@ def compute_ta_lib_indicator(data: pd.DataFrame, indicator_name: str, params: di
         return False
 
     try:
-        # Extract required input columns based on indicator
-        required_columns = []
-        if 'input_columns' in params:
-            required_columns = params['input_columns']
-        elif indicator_name.lower() in ['macd', 'ppo', 'stoch', 'ultosc']:
-            required_columns = ['high', 'low', 'close']
-        elif indicator_name.lower() in ['rsi', 'ao', 'sma', 'ema', 'adx', 'cmo', 'cci', 'dx', 'mom', 'roc', 'rocp', 'rocr', 'rocr100', 'tsi', 'natr', 'atr', 'fi', 'var', 'stddev']:
-            required_columns = ['close']
-        else:
-            # Default to close if not specified
-            required_columns = ['close']
+        # Extract required input columns from the JSON config
+        required_inputs = params.pop('required_inputs', params.pop('input_columns', ['close']))
+        inputs = [data[col].values for col in required_inputs]
 
-        inputs = [data[col].values for col in required_columns]
-
-        # Pass parameters to the TA-Lib function
+        # Pass only the numerical parameters to the TA-Lib function
         indicator_values = ta_func(*inputs, **params)
 
         # Handle functions that return multiple arrays (e.g., MACD)
@@ -140,14 +139,12 @@ def compute_pandas_ta_indicator(data: pd.DataFrame, indicator_name: str, params:
         return False
 
     try:
-        # Extract required input columns based on indicator
-        required_columns = params.get('input_columns', ['close'])
-
-        # Prepare the parameters excluding 'type' and 'input_columns'
-        indicator_params = {k: v for k, v in params.items() if k not in ['type', 'input_columns']}
-
+        # Extract required input columns from the JSON config
+        required_inputs = params.pop('required_inputs', params.pop('input_columns', ['close']))
+        # Prepare the parameters excluding 'type' and 'required_inputs'
+        indicator_params = {k: v['default'] for k, v in params.items() if k not in ['type', 'input_columns', 'required_inputs']}
         # Pass parameters to the pandas-ta function
-        indicator_df = pta_func(**indicator_params, **{col: data[col] for col in required_columns})
+        indicator_df = pta_func(**indicator_params, **{col: data[col] for col in required_inputs})
 
         # pandas-ta functions typically return a DataFrame
         if isinstance(indicator_df, pd.DataFrame):
@@ -169,7 +166,7 @@ def compute_pandas_ta_indicator(data: pd.DataFrame, indicator_name: str, params:
 
 def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: dict) -> bool:
     """
-    Placeholder for computing a custom indicator.
+    Compute a custom indicator based on the indicator name.
 
     Args:
         data (pd.DataFrame): DataFrame containing market data.
@@ -179,8 +176,72 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
     Returns:
         bool: True if computation was successful, False otherwise.
     """
-    logger.info(f"Custom Indicator '{indicator_name}' computation is not implemented.")
-    return False
+    logger.info(f"Computing Custom Indicator: {indicator_name} with parameters {params}")
+    try:
+        if indicator_name == 'obv_price_divergence':
+            # Example implementation for On-Balance Volume (OBV) Price Divergence
+            obv = ta.OBV(data['close'].values, data['volume'].values)
+            data['OBV'] = obv
+            # Compute divergence based on the 'method' parameter
+            method = params.get('method', 'Difference')
+            if method == 'Difference':
+                data['OBV_Price_Diff'] = data['OBV'] - data['close']
+            elif method == 'Ratio':
+                data['OBV_Price_Ratio'] = data['OBV'] / data['close']
+            elif method == 'Log':
+                # Avoid division by zero
+                with np.errstate(divide='ignore', invalid='ignore'):
+                    data['OBV_Price_Log'] = np.log(data['OBV'] / data['close'])
+            else:
+                logger.warning(f"Unknown method '{method}' for indicator '{indicator_name}'.")
+                return False
+            logger.info(f"Custom Indicator '{indicator_name}' computed successfully.")
+            return True
+
+        elif indicator_name == 'EyeX MFV Volume':
+            # Example implementation for 'EyeX MFV Volume'
+            ranges = params.get('ranges', [50, 75, 100, 200])
+            # Compute Moving Finite Volume (MFV) as rolling sum over 'volume' for each range
+            for r in ranges:
+                col_name = f"EyeX_MFV_Volume_{r}"
+                data[col_name] = data['volume'].rolling(window=r).sum()
+                logger.debug(f"Computed {col_name}: {data[col_name].head().tolist()}")
+            logger.info(f"Custom Indicator '{indicator_name}' computed successfully.")
+            return True
+
+        elif indicator_name == 'EyeX MFV S/R Bull':
+            # Example implementation for 'EyeX MFV S/R Bull'
+            ranges = params.get('ranges', [50, 75, 100, 200])
+            pivot_lookback = params.get('pivot_lookback', 5)
+            price_proximity = params.get('price_proximity', 0.00001)
+            # Identify support/resistance levels based on MFV and pivot lookback
+            for r in ranges:
+                pivot_high = data['high'].rolling(window=pivot_lookback).max()
+                pivot_low = data['low'].rolling(window=pivot_lookback).min()
+                # Calculate proximity to pivot high
+                data[f"EyeX_MFV_S_R_Bull_High_{r}"] = np.where(
+                    (data['close'] >= (pivot_high - price_proximity)) &
+                    (data['close'] <= (pivot_high + price_proximity)),
+                    1, 0
+                )
+                # Calculate proximity to pivot low
+                data[f"EyeX_MFV_S_R_Bull_Low_{r}"] = np.where(
+                    (data['close'] >= (pivot_low - price_proximity)) &
+                    (data['close'] <= (pivot_low + price_proximity)),
+                    1, 0
+                )
+                logger.debug(f"Computed EyeX_MFV_S_R_Bull_High_{r}: {data[f'EyeX_MFV_S_R_Bull_High_{r}'].head().tolist()}")
+                logger.debug(f"Computed EyeX_MFV_S_R_Bull_Low_{r}: {data[f'EyeX_MFV_S_R_Bull_Low_{r}'].head().tolist()}")
+            logger.info(f"Custom Indicator '{indicator_name}' computed successfully.")
+            return True
+
+        else:
+            logger.error(f"Unknown custom indicator '{indicator_name}'.")
+            return False
+
+    except Exception as e:
+        logger.error(f"Error computing Custom Indicator '{indicator_name}': {e}")
+        return False
 
 def compute_indicators(data: pd.DataFrame, indicator_params: dict) -> pd.DataFrame:
     """
@@ -201,11 +262,17 @@ def compute_indicators(data: pd.DataFrame, indicator_params: dict) -> pd.DataFra
         params = config.get('parameters', {})
         input_columns = config.get('input_columns', ['close'])
 
-        # Append input_columns to params for later use
-        params['input_columns'] = input_columns
+        # Append required_inputs to params for later use
+        # Use 'required_inputs' if defined, else default to 'input_columns'
+        required_inputs = config.get('required_inputs', input_columns)
+        params['required_inputs'] = required_inputs
 
         if indicator_type.lower() == 'ta-lib':
             success = compute_ta_lib_indicator(data, indicator_name, params)
+            if not success and hasattr(pta, indicator_name.lower()):
+                logger.info(f"Attempting to compute '{indicator_name}' using pandas-ta.")
+                config['type'] = 'pandas-ta'
+                success = compute_pandas_ta_indicator(data, indicator_name, params)
         elif indicator_type.lower() == 'pandas-ta':
             success = compute_pandas_ta_indicator(data, indicator_name, params)
         elif indicator_type.lower() == 'custom':
