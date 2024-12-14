@@ -51,7 +51,7 @@
                 }
             }
         ],
-        "input_columns": ["close", "volume", "open", "high", "low"]
+        "input_columns": ["close", "volume"]
     },
     "dema": {
         "type": "ta-lib",
@@ -660,7 +660,7 @@
                 }
             }
         ],
-        "input_columns": ["high", "low", "close", "volume"]
+        "input_columns": ["close", "volume"]
     },
     "atr": {
         "type": "ta-lib",
