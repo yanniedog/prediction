@@ -28,6 +28,14 @@ class StreamToLogger:
     def flush(self):
         self.stream.flush()
 
+class ExcludeFilter(logging.Filter):
+    def __init__(self, exclude_substrings):
+        super().__init__()
+        self.exclude_substrings = exclude_substrings
+
+    def filter(self, record):
+        return not any(sub in record.getMessage() for sub in self.exclude_substrings)
+
 _configured = False
 
 def configure_logging(log_file_prefix='predictions'):
@@ -49,6 +57,8 @@ def configure_logging(log_file_prefix='predictions'):
         file_handler.setLevel(logging.DEBUG)
         formatter = TaskAwareFormatter('%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d(%(funcName)s)]: %(message)s')
         file_handler.setFormatter(formatter)
+        exclude_filter = ExcludeFilter(['copyscripts', 'COPYSCRIPTS_SELECTIVE', 'eucjpprober', 'mbcharsetprober', 'charsetgroupprober'])
+        file_handler.addFilter(exclude_filter)
         logger.addHandler(file_handler)
 
         stream_handler = logging.StreamHandler()

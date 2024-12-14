@@ -4,82 +4,57 @@ See the error I receive here:
 
 ====================
 
-2024-12-15 00:52:44,510 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'correlations' ensured in database.
-2024-12-15 00:52:44,519 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_open_time
-2024-12-15 00:52:44,525 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_close_time
-2024-12-15 00:52:44,531 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlation_computed
-2024-12-15 00:52:44,539 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlations
-2024-12-15 00:52:44,544 - INFO - [sqlite_data_manager.py:101(create_tables)]: All tables and indexes are set up successfully.
-2024-12-15 00:52:44,554 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
-2024-12-15 00:52:44,572 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
-2024-12-15 00:52:44,577 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,586 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,592 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,599 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,605 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,612 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,619 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,625 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,630 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,637 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,642 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,648 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,654 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,660 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,667 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,672 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,677 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,684 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,690 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,696 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'ao': module 'talib' has no attribute 'AO'
-2024-12-15 00:52:44,704 - INFO - [start.py:155(main)]: Configured indicators computed successfully.
-2024-12-15 00:52:44,709 - INFO - [start.py:156(main)]: Computing correlations.
-2024-12-15 00:52:44,717 - ERROR - [correlation_utils.py:38(load_or_calculate_correlations)]: Indicator column 'ao_config_19' not found in data.
-2024-12-15 00:52:44,723 - ERROR - [start.py:167(main)]: Error computing configured indicators or correlations: 'ao_config_19'
-2024-12-15 00:52:44,728 - WARNING - [LAUNCH.py:42(run_script)]: SystemExit encountered in start.py with code: 1
-2024-12-15 00:52:44,734 - WARNING - [LAUNCH.py:75(main)]: start.py exited with code: 1
-2024-12-15 00:52:44,738 - INFO - [LAUNCH.py:37(run_script)]: Executing copyscripts.py...
-2024-12-15 00:52:44,954 - DEBUG - [eucjpprober.py:66(feed)]: EUC-JP Japanese prober hit error at byte 3704
-2024-12-15 00:52:44,975 - DEBUG - [mbcharsetprober.py:64(feed)]: EUC-KR Korean prober hit error at byte 3704
-2024-12-15 00:52:44,986 - DEBUG - [mbcharsetprober.py:64(feed)]: CP949 Korean prober hit error at byte 3704
-2024-12-15 00:52:44,995 - DEBUG - [mbcharsetprober.py:64(feed)]: Big5 Chinese prober hit error at byte 3705
-2024-12-15 00:52:45,005 - DEBUG - [mbcharsetprober.py:64(feed)]: EUC-TW Taiwan prober hit error at byte 3704
-2024-12-15 00:52:45,014 - DEBUG - [mbcharsetprober.py:64(feed)]: Johab Korean prober hit error at byte 3704
-2024-12-15 00:52:45,030 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: utf-8  confidence = 0.87625
-2024-12-15 00:52:45,037 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: SHIFT_JIS Japanese confidence = 0.01
-2024-12-15 00:52:45,042 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: EUC-JP not active
-2024-12-15 00:52:45,047 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: GB2312 Chinese confidence = 0.01
-2024-12-15 00:52:45,052 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: EUC-KR not active
-2024-12-15 00:52:45,057 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: CP949 not active
-2024-12-15 00:52:45,062 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: Big5 not active
-2024-12-15 00:52:45,067 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: EUC-TW not active
-2024-12-15 00:52:45,073 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: Johab not active
-2024-12-15 00:52:45,077 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: windows-1251 Russian confidence = 0.01
-2024-12-15 00:52:45,083 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: KOI8-R Russian confidence = 0.01
-2024-12-15 00:52:45,089 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: ISO-8859-5 Russian confidence = 0.01
-2024-12-15 00:52:45,095 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: MacCyrillic Russian confidence = 0.0
-2024-12-15 00:52:45,101 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: IBM866 Russian confidence = 0.0
-2024-12-15 00:52:45,107 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: IBM855 Russian confidence = 0.01
-2024-12-15 00:52:45,113 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: ISO-8859-7 Greek confidence = 0.0
-2024-12-15 00:52:45,118 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: windows-1253 Greek confidence = 0.0
-2024-12-15 00:52:45,123 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: ISO-8859-5 Bulgarian confidence = 0.0
-2024-12-15 00:52:45,130 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: windows-1251 Bulgarian confidence = 0.0
-2024-12-15 00:52:45,136 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: TIS-620 Thai confidence = 0.01
-2024-12-15 00:52:45,143 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: ISO-8859-9 Turkish confidence = 0.6204012609458383
-2024-12-15 00:52:45,149 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: windows-1255 Hebrew confidence = 0.0
-2024-12-15 00:52:45,155 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: windows-1255 Hebrew confidence = 0.076219202360966
-2024-12-15 00:52:45,160 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: windows-1255 Hebrew confidence = 0.076219202360966
-2024-12-15 00:52:45,166 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: utf-8  confidence = 0.87625
-2024-12-15 00:52:45,172 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: SHIFT_JIS Japanese confidence = 0.01
-2024-12-15 00:52:45,177 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: EUC-JP not active
-2024-12-15 00:52:45,182 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: GB2312 Chinese confidence = 0.01
-2024-12-15 00:52:45,188 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: EUC-KR not active
-2024-12-15 00:52:45,193 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: CP949 not active
-2024-12-15 00:52:45,200 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: Big5 not active
-2024-12-15 00:52:45,205 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: EUC-TW not active
-2024-12-15 00:52:45,213 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: Johab not active
-2024-12-15 00:52:45,322 - INFO - [LAUNCH.py:39(run_script)]: copyscripts.py executed successfully.
-2024-12-15 00:52:45,327 - INFO - [LAUNCH.py:37(run_script)]: Executing COPYSCRIPTS_SELECTIVE.py...
+2024-12-15 00:58:47,538 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_close_time
+2024-12-15 00:58:47,541 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlation_computed
+2024-12-15 00:58:47,544 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlations
+2024-12-15 00:58:47,549 - INFO - [sqlite_data_manager.py:101(create_tables)]: All tables and indexes are set up successfully.
+2024-12-15 00:58:47,554 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
+2024-12-15 00:58:47,566 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
+2024-12-15 00:58:47,581 - INFO - [start.py:155(main)]: Configured indicators computed successfully.
+2024-12-15 00:58:47,585 - INFO - [start.py:156(main)]: Computing correlations.
+2024-12-15 00:58:47,589 - ERROR - [correlation_utils.py:38(load_or_calculate_correlations)]: Indicator column 'aroon_config_3' not found in data.
+2024-12-15 00:58:47,592 - ERROR - [start.py:167(main)]: Error computing configured indicators or correlations: 'aroon_config_3'
+2024-12-15 00:58:47,595 - WARNING - [LAUNCH.py:42(run_script)]: SystemExit encountered in start.py with code: 1
+2024-12-15 00:58:47,603 - WARNING - [LAUNCH.py:75(main)]: start.py exited with code: 1
+2024-12-15 00:58:47,870 - DEBUG - [eucjpprober.py:66(feed)]: EUC-JP Japanese prober hit error at byte 3704
+2024-12-15 00:58:47,887 - DEBUG - [mbcharsetprober.py:64(feed)]: EUC-KR Korean prober hit error at byte 3704
+2024-12-15 00:58:47,895 - DEBUG - [mbcharsetprober.py:64(feed)]: CP949 Korean prober hit error at byte 3704
+2024-12-15 00:58:47,901 - DEBUG - [mbcharsetprober.py:64(feed)]: Big5 Chinese prober hit error at byte 3705
+2024-12-15 00:58:47,908 - DEBUG - [mbcharsetprober.py:64(feed)]: EUC-TW Taiwan prober hit error at byte 3704
+2024-12-15 00:58:47,914 - DEBUG - [mbcharsetprober.py:64(feed)]: Johab Korean prober hit error at byte 3704
+2024-12-15 00:58:47,925 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: utf-8  confidence = 0.87625
+2024-12-15 00:58:47,929 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: SHIFT_JIS Japanese confidence = 0.01
+2024-12-15 00:58:47,933 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: EUC-JP not active
+2024-12-15 00:58:47,935 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: GB2312 Chinese confidence = 0.01
+2024-12-15 00:58:47,939 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: EUC-KR not active
+2024-12-15 00:58:47,941 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: CP949 not active
+2024-12-15 00:58:47,944 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: Big5 not active
+2024-12-15 00:58:47,948 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: EUC-TW not active
+2024-12-15 00:58:47,950 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: Johab not active
+2024-12-15 00:58:47,953 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: windows-1251 Russian confidence = 0.01
+2024-12-15 00:58:47,956 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: KOI8-R Russian confidence = 0.01
+2024-12-15 00:58:47,958 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: ISO-8859-5 Russian confidence = 0.01
+2024-12-15 00:58:47,961 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: MacCyrillic Russian confidence = 0.0
+2024-12-15 00:58:47,964 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: IBM866 Russian confidence = 0.0
+2024-12-15 00:58:47,967 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: IBM855 Russian confidence = 0.01
+2024-12-15 00:58:47,969 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: ISO-8859-7 Greek confidence = 0.0
+2024-12-15 00:58:47,972 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: windows-1253 Greek confidence = 0.0
+2024-12-15 00:58:47,974 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: ISO-8859-5 Bulgarian confidence = 0.0
+2024-12-15 00:58:47,977 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: windows-1251 Bulgarian confidence = 0.0
+2024-12-15 00:58:47,980 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: TIS-620 Thai confidence = 0.01
+2024-12-15 00:58:47,983 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: ISO-8859-9 Turkish confidence = 0.6204012609458383
+2024-12-15 00:58:47,985 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: windows-1255 Hebrew confidence = 0.0
+2024-12-15 00:58:47,988 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: windows-1255 Hebrew confidence = 0.076219202360966
+2024-12-15 00:58:47,990 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: windows-1255 Hebrew confidence = 0.076219202360966
+2024-12-15 00:58:47,993 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: utf-8  confidence = 0.87625
+2024-12-15 00:58:47,996 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: SHIFT_JIS Japanese confidence = 0.01
+2024-12-15 00:58:47,999 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: EUC-JP not active
+2024-12-15 00:58:48,001 - DEBUG - [charsetgroupprober.py:98(get_confidence)]: GB2312 Chinese confidence = 0.01
+2024-12-15 00:58:48,004 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: EUC-KR not active
+2024-12-15 00:58:48,008 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: CP949 not active
+2024-12-15 00:58:48,012 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: Big5 not active
+2024-12-15 00:58:48,017 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: EUC-TW not active
+2024-12-15 00:58:48,019 - DEBUG - [charsetgroupprober.py:95(get_confidence)]: Johab not active
 
 
 ====================
@@ -1169,6 +1144,14 @@ class StreamToLogger:
     def flush(self):
         self.stream.flush()
 
+class ExcludeFilter(logging.Filter):
+    def __init__(self, exclude_substrings):
+        super().__init__()
+        self.exclude_substrings = exclude_substrings
+
+    def filter(self, record):
+        return not any(sub in record.getMessage() for sub in self.exclude_substrings)
+
 _configured = False
 
 def configure_logging(log_file_prefix='predictions'):
@@ -1190,6 +1173,8 @@ def configure_logging(log_file_prefix='predictions'):
         file_handler.setLevel(logging.DEBUG)
         formatter = TaskAwareFormatter('%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d(%(funcName)s)]: %(message)s')
         file_handler.setFormatter(formatter)
+        exclude_filter = ExcludeFilter(['copyscripts', 'COPYSCRIPTS_SELECTIVE', 'eucjpprober', 'mbcharsetprober', 'charsetgroupprober'])
+        file_handler.addFilter(exclude_filter)
         logger.addHandler(file_handler)
 
         stream_handler = logging.StreamHandler()
