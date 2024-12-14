@@ -12,7 +12,6 @@ from config import DB_PATH
 
 logger = logging.getLogger(__name__)
 
-# Define TA-Lib supported indicators
 ta_lib_indicators = {
     'ADX', 'DEMA', 'T3', 'SMA', 'EMA', 'TSF', 'RSI', 'MACD', 'STOCH', 'CMO',
     'CCI', 'DX', 'AROON', 'AROONOSC', 'MACDEXT', 'MACDFIX', 'MINUS_DI', 
@@ -23,7 +22,6 @@ ta_lib_indicators = {
     'VORTEX', 'AO', 'FI', 'KC', 'RVI', 'TSI'
 }
 
-# Define pandas_ta supported indicators based on your indicator_params.json
 pta_indicators = [
     'dema', 't3', 'macd', 'stoch', 'cmo', 'cci', 'rsi', 'sma', 'ema', 'tsf',
     'macdext', 'macdfix', 'ppo', 'roc', 'rocp', 'rocr', 'rocr100', 'stochf',

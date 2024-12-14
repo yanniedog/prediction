@@ -1,4 +1,4 @@
-# launch.py
+# LAUNCH.py
 import sys
 import logging
 import runpy
@@ -23,44 +23,73 @@ def delete_old_logs(log_dir: Path, log_extension: str = ".log"):
         except Exception as e:
             logger.error(f"Error deleting log file {log_file}: {e}")
 
+def run_script(script_name: str) -> int:
+    """
+    Executes a Python script using runpy.run_path.
+
+    Args:
+        script_name (str): The name of the script to execute.
+
+    Returns:
+        int: Exit code from the script. 0 if successful, 1 otherwise.
+    """
+    try:
+        logger.info(f"Executing {script_name}...")
+        runpy.run_path(script_name, run_name="__main__")
+        logger.info(f"{script_name} executed successfully.")
+        return 0
+    except SystemExit as e:
+        logger.warning(f"SystemExit encountered in {script_name} with code: {e.code}")
+        return e.code
+    except Exception as e:
+        logger.exception(f"Uncaught exception during execution of {script_name}")
+        return 1
+
 def main():
     """
-    Main function to execute backup cleanup, run primary script, and execute additional scripts.
+    Main function to execute backup cleanup, run primary script, execute additional scripts,
+    and handle error codes appropriately.
     """
     current_dir = Path.cwd()
 
-    # Delete old log files
     delete_old_logs(current_dir)
 
-    # Configure logging with a prefix based on the current directory name
     configure_logging(log_file_prefix=current_dir.name)
 
-    try:
-        # Run backup cleanup
-        run_backup_cleanup()
-        logger.info("Backup cleanup completed successfully.")
+    exit_code = 0
 
-        # Execute the primary script: start.py
-        logger.info("Executing start.py...")
-        runpy.run_path("start.py", run_name="__main__")
-        logger.info("start.py executed successfully.")
+    primary_scripts = [
+        ("run_backup_cleanup", lambda: run_backup_cleanup()),
+        ("start.py", lambda: run_script("start.py"))
+    ]
 
-        # Execute the first additional script: copyscript.py
-        logger.info("Executing copyscript.py...")
-        runpy.run_path("copyscript.py", run_name="__main__")
-        logger.info("copyscript.py executed successfully.")
+    for script_name, script_func in primary_scripts:
+        try:
+            if script_name == "run_backup_cleanup":
+                logger.info(f"Executing {script_name}...")
+                script_func()
+                logger.info(f"{script_name} executed successfully.")
+            else:
+                script_exit_code = script_func()
+                if script_exit_code != 0:
+                    logger.warning(f"{script_name} exited with code: {script_exit_code}")
+                    if exit_code == 0:
+                        exit_code = script_exit_code
+        except Exception as e:
+            logger.exception(f"Exception occurred while executing {script_name}")
+            if exit_code == 0:
+                exit_code = 1
 
-        # Execute the second additional script: COPYSCRIPTS_SELECTIVE.py
-        logger.info("Executing COPYSCRIPTS_SELECTIVE.py...")
-        runpy.run_path("COPYSCRIPTS_SELECTIVE.py", run_name="__main__")
-        logger.info("COPYSCRIPTS_SELECTIVE.py executed successfully.")
+    additional_scripts = ["copyscripts.py", "COPYSCRIPTS_SELECTIVE.py"]
+    for script in additional_scripts:
+        script_exit_code = run_script(script)
+        if script_exit_code != 0:
+            logger.warning(f"{script} exited with code: {script_exit_code}")
+            if exit_code == 0:
+                exit_code = script_exit_code
 
-    except SystemExit as e:
-        logger.warning(f"SystemExit encountered with code: {e.code}")
-        sys.exit(e.code)
-    except Exception as e:
-        logger.exception("Uncaught exception during execution")
-        raise
+    logger.info(f"launch.py exiting with code: {exit_code}")
+    sys.exit(exit_code)
 
 if __name__ == "__main__":
     main()
