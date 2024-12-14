@@ -2,574 +2,274 @@
     "indicators": {
         "macd": {
             "type": "ta-lib",
+            "required_inputs": ["close"],
             "parameters": {
-                "fastperiod": {
-                    "default": 12,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                },
-                "slowperiod": {
-                    "default": 26,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                },
-                "signalperiod": {
-                    "default": 9,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "fastperiod": { "default": 12 },
+                "slowperiod": { "default": 26 },
+                "signalperiod": { "default": 9 },
+                "matype": { "default": 0 }
             },
-            "conditions": [
-                {
-                    "slowperiod": {
-                        "greater_than": "fastperiod"
-                    }
-                }
-            ],
-            "input_columns": ["close"],
-            "required_inputs": ["close"]
+            "conditions": []
         },
         "minus_di": {
             "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 14,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 14 }
             },
-            "conditions": [],
-            "input_columns": ["high", "low", "close"],
-            "required_inputs": ["high", "low", "close"]
+            "conditions": []
         },
         "minus_dm": {
             "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 14,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 14 }
             },
-            "conditions": [],
-            "input_columns": ["high", "low"],
-            "required_inputs": ["high", "low"]
+            "conditions": []
         },
         "mom": {
             "type": "ta-lib",
+            "required_inputs": ["close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 10,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 10 }
             },
-            "conditions": [],
-            "input_columns": ["close"],
-            "required_inputs": ["close"]
+            "conditions": []
         },
         "plus_di": {
             "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 14,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 14 }
             },
-            "conditions": [],
-            "input_columns": ["high", "low", "close"],
-            "required_inputs": ["high", "low", "close"]
+            "conditions": []
         },
         "plus_dm": {
             "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 14,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 14 }
             },
-            "conditions": [],
-            "input_columns": ["high", "low"],
-            "required_inputs": ["high", "low"]
+            "conditions": []
         },
         "ppo": {
             "type": "ta-lib",
+            "required_inputs": ["close"],
             "parameters": {
-                "fastperiod": {
-                    "default": 12,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                },
-                "slowperiod": {
-                    "default": 26,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                },
-                "matype": {
-                    "default": 0,
-                    "range": [0, 1],
-                    "step": 1,
-                    "type": "int"
-                }
+                "fastperiod": { "default": 12 },
+                "slowperiod": { "default": 26 },
+                "matype": { "default": 0 }
             },
-            "conditions": [
-                {
-                    "slowperiod": {
-                        "greater_than": "fastperiod"
-                    }
-                }
-            ],
-            "input_columns": ["close"],
-            "required_inputs": ["close"]
+            "conditions": []
         },
         "roc": {
             "type": "ta-lib",
+            "required_inputs": ["close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 10,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 10 }
             },
-            "conditions": [],
-            "input_columns": ["close"],
-            "required_inputs": ["close"]
+            "conditions": []
         },
         "rocp": {
             "type": "ta-lib",
+            "required_inputs": ["close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 10,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 10 }
             },
-            "conditions": [],
-            "input_columns": ["close"],
-            "required_inputs": ["close"]
+            "conditions": []
         },
         "rocr": {
             "type": "ta-lib",
+            "required_inputs": ["close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 10,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 10 }
             },
-            "conditions": [],
-            "input_columns": ["close"],
-            "required_inputs": ["close"]
+            "conditions": []
         },
         "rocr100": {
             "type": "ta-lib",
+            "required_inputs": ["close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 10,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 10 }
             },
-            "conditions": [],
-            "input_columns": ["close"],
-            "required_inputs": ["close"]
+            "conditions": []
         },
         "stochf": {
             "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
             "parameters": {
-                "fastk_period": {
-                    "default": 5,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                },
-                "fastd_period": {
-                    "default": 3,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                },
-                "fastd_matype": {
-                    "default": 0,
-                    "range": [0, 1],
-                    "step": 1,
-                    "type": "int"
-                }
+                "fastk_period": { "default": 5 },
+                "slowk_period": { "default": 3 },
+                "slowk_matype": { "default": 0 },
+                "slowd_period": { "default": 3 },
+                "slowd_matype": { "default": 0 }
             },
-            "conditions": [
-                {
-                    "fastd_period": {
-                        "greater_than": "fastk_period"
-                    }
-                }
-            ],
-            "input_columns": ["high", "low", "close"],
-            "required_inputs": ["high", "low", "close"]
+            "conditions": []
         },
         "stochrsi": {
             "type": "ta-lib",
+            "required_inputs": ["close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 14,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                },
-                "fastk_period": {
-                    "default": 5,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                },
-                "fastd_period": {
-                    "default": 3,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                },
-                "fastd_matype": {
-                    "default": 0,
-                    "range": [0, 1],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 14 },
+                "fastk_period": { "default": 5 },
+                "fastd_period": { "default": 3 },
+                "fastd_matype": { "default": 0 }
             },
-            "conditions": [
-                {
-                    "fastd_period": {
-                        "greater_than": "fastk_period"
-                    }
-                }
-            ],
-            "input_columns": ["close"],
-            "required_inputs": ["close"]
+            "conditions": []
         },
         "trix": {
             "type": "ta-lib",
+            "required_inputs": ["close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 30,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 30 }
             },
-            "conditions": [],
-            "input_columns": ["close"],
-            "required_inputs": ["close"]
+            "conditions": []
         },
         "ultosc": {
             "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
             "parameters": {
-                "timeperiod1": {
-                    "default": 7,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                },
-                "timeperiod2": {
-                    "default": 14,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                },
-                "timeperiod3": {
-                    "default": 28,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod1": { "default": 7 },
+                "timeperiod2": { "default": 14 },
+                "timeperiod3": { "default": 28 }
             },
-            "conditions": [
-                {
-                    "timeperiod2": {
-                        "greater_than": "timeperiod1"
-                    },
-                    "timeperiod3": {
-                        "greater_than": "timeperiod2"
-                    }
-                }
-            ],
-            "input_columns": ["high", "low", "close"],
-            "required_inputs": ["high", "low", "close"]
+            "conditions": []
         },
         "willr": {
             "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 14,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 14 }
             },
-            "conditions": [],
-            "input_columns": ["high", "low", "close"],
-            "required_inputs": ["high", "low", "close"]
+            "conditions": []
         },
         "adosc": {
             "type": "ta-lib",
+            "required_inputs": ["high", "low", "close", "volume"],
             "parameters": {
-                "fastperiod": {
-                    "default": 3,
-                    "range": [1, 20],
-                    "step": 1,
-                    "type": "int"
-                },
-                "slowperiod": {
-                    "default": 10,
-                    "range": [1, 30],
-                    "step": 1,
-                    "type": "int"
-                }
+                "fastperiod": { "default": 3 },
+                "slowperiod": { "default": 10 }
             },
-            "conditions": [
-                {
-                    "slowperiod": {
-                        "greater_than": "fastperiod"
-                    }
-                }
-            ],
-            "input_columns": ["high", "low", "close", "volume"],
-            "required_inputs": ["high", "low", "close", "volume"]
+            "conditions": []
         },
         "atr": {
             "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 14,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 14 }
             },
-            "conditions": [],
-            "input_columns": ["high", "low", "close"],
-            "required_inputs": ["high", "low", "close"]
+            "conditions": []
         },
         "natr": {
             "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 14,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 14 }
             },
-            "conditions": [],
-            "input_columns": ["high", "low", "close"],
-            "required_inputs": ["high", "low", "close"]
+            "conditions": []
         },
         "linearreg": {
             "type": "ta-lib",
+            "required_inputs": ["close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 14,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 14 }
             },
-            "conditions": [],
-            "input_columns": ["close"],
-            "required_inputs": ["close"]
+            "conditions": []
         },
         "stddev": {
             "type": "ta-lib",
+            "required_inputs": ["close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 5,
-                    "range": [1, 50],
-                    "step": 1,
-                    "type": "int"
-                },
-                "nbdev": {
-                    "default": 1,
-                    "range": [0.1, 5.0],
-                    "step": 0.1,
-                    "type": "float"
-                }
+                "timeperiod": { "default": 5 },
+                "nbdev": { "default": 1 }
             },
-            "conditions": [],
-            "input_columns": ["close"],
-            "required_inputs": ["close"]
+            "conditions": []
         },
         "var": {
             "type": "ta-lib",
+            "required_inputs": ["close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 5,
-                    "range": [1, 50],
-                    "step": 1,
-                    "type": "int"
-                },
-                "nbdev": {
-                    "default": 1,
-                    "range": [0.1, 5.0],
-                    "step": 0.1,
-                    "type": "float"
-                }
+                "timeperiod": { "default": 5 }
             },
-            "conditions": [],
-            "input_columns": ["close"],
-            "required_inputs": ["close"]
+            "conditions": []
         },
         "mfi": {
             "type": "ta-lib",
+            "required_inputs": ["high", "low", "close", "volume"],
             "parameters": {
-                "timeperiod": {
-                    "default": 14,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 14 }
             },
-            "conditions": [],
-            "input_columns": ["high", "low", "close", "volume"],
-            "required_inputs": ["high", "low", "close", "volume"]
+            "conditions": []
         },
         "vortex": {
-            "type": "ta-lib",
+            "type": "pandas-ta",
+            "required_inputs": ["high", "low", "close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 14,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "length": { "default": 14 }
             },
-            "conditions": [],
-            "input_columns": ["high", "low", "close"],
-            "required_inputs": ["high", "low", "close"]
+            "conditions": []
         },
         "ao": {
-            "type": "ta-lib",
+            "type": "pandas-ta",
+            "required_inputs": ["high", "low"],
             "parameters": {
-                "timeperiod": {
-                    "default": 5,
-                    "range": [1, 50],
-                    "step": 1,
-                    "type": "int"
-                }
+                "fast": { "default": 5 },
+                "slow": { "default": 34 }
             },
-            "conditions": [],
-            "input_columns": ["high", "low"],
-            "required_inputs": ["high", "low"]
+            "conditions": []
         },
         "kc": {
-            "type": "ta-lib",
+            "type": "pandas-ta",
+            "required_inputs": ["high", "low", "close"],
             "parameters": {
-                "length": {
-                    "default": 20,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                },
-                "scalar": {
-                    "default": 1.5,
-                    "range": [0.1, 5.0],
-                    "step": 0.1,
-                    "type": "float"
-                }
+                "length": { "default": 20 },
+                "mamode": { "default": "ema" },
+                "multup": { "default": 2 },
+                "multdn": { "default": 2 }
             },
-            "conditions": [],
-            "input_columns": ["high", "low", "close"],
-            "required_inputs": ["high", "low", "close"]
+            "conditions": []
         },
         "rvi": {
             "type": "ta-lib",
+            "required_inputs": ["close"],
             "parameters": {
-                "timeperiod": {
-                    "default": 10,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "timeperiod": { "default": 10 }
             },
-            "conditions": [],
-            "input_columns": ["close"],
-            "required_inputs": ["close"]
+            "conditions": []
         },
         "tsi": {
             "type": "ta-lib",
+            "required_inputs": ["close"],
             "parameters": {
-                "fastperiod": {
-                    "default": 25,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                },
-                "slowperiod": {
-                    "default": 13,
-                    "range": [1, 100],
-                    "step": 1,
-                    "type": "int"
-                }
+                "long": { "default": 25 },
+                "short": { "default": 13 }
             },
-            "conditions": [
-                {
-                    "slowperiod": {
-                        "less_than": "fastperiod"
-                    }
-                }
-            ],
-            "input_columns": ["close"],
-            "required_inputs": ["close"]
+            "conditions": []
         },
         "EyeX MFV Volume": {
             "type": "custom",
+            "required_inputs": [],
             "parameters": {
                 "ranges": {
-                    "default": [50, 75, 100, 200],
-                    "options": [[50, 75, 100, 200]],
-                    "type": "list"
+                    "default": [50, 75, 100, 200]
                 }
             },
-            "conditions": [],
-            "input_columns": ["close", "low", "high", "volume"],
-            "required_inputs": ["close", "low", "high", "volume"]
+            "conditions": []
         },
         "EyeX MFV S/R Bull": {
             "type": "custom",
+            "required_inputs": [],
             "parameters": {
                 "ranges": {
-                    "default": [50, 75, 100, 200],
-                    "options": [[50, 75, 100, 200]],
-                    "type": "list"
+                    "default": [50, 75, 100, 200]
                 },
                 "pivot_lookback": {
-                    "default": 5,
-                    "range": [1, 20],
-                    "step": 1,
-                    "type": "int"
+                    "default": 5
                 },
                 "price_proximity": {
-                    "default": 0.00001,
-                    "range": [0.000001, 0.1],
-                    "step": 0.00001,
-                    "type": "float"
+                    "default": 0.00001
                 }
             },
-            "conditions": [],
-            "input_columns": ["close", "low", "high", "volume"],
-            "required_inputs": ["close", "low", "high", "volume"]
+            "conditions": []
         }
     }
 }

@@ -11,8 +11,9 @@ def load_indicator_params(json_path):
     try:
         with open(json_path, 'r') as f:
             params = json.load(f)
-        logging.info(f"Indicator Parameters Loaded: {list(params['indicators'].keys())}")
-        return params['indicators']
+        indicators = params.get('indicators', {})
+        logging.info(f"Indicator Parameters Loaded: {list(indicators.keys())}")
+        return indicators
     except Exception as e:
         logging.error(f"Failed to load indicator parameters from {json_path}: {e}")
         raise
@@ -74,6 +75,9 @@ def compute_ta_lib_indicator(indicator_name, params, data):
                 logging.error(f"Required input '{inp}' for indicator '{indicator_name}' is missing in data.")
                 raise ValueError(f"Missing required input: {inp}")
         
+        # Debugging: Log the inputs and parameters
+        logging.debug(f"TA-Lib Indicator '{indicator_name}': Inputs = {required_inputs}, Parameters = {extracted_params}")
+        
         # Call the TA-Lib function with inputs and parameters
         result = func(*inputs, **extracted_params)
         
@@ -81,8 +85,10 @@ def compute_ta_lib_indicator(indicator_name, params, data):
         if isinstance(result, tuple):
             for idx, res in enumerate(result):
                 data[f"{indicator_name.upper()}_{idx}"] = res
+                logging.debug(f"Added column '{indicator_name.upper()}_{idx}' with {res.size} elements.")
         else:
             data[f"{indicator_name.upper()}"] = result
+            logging.debug(f"Added column '{indicator_name.upper()}' with {result.size} elements.")
         logging.info(f"Indicator '{indicator_name}' computed successfully using TA-Lib.")
     except AttributeError:
         logging.error(f"TA-Lib does not have a function named '{indicator_name.upper()}'.")
@@ -110,6 +116,9 @@ def compute_pandas_ta_indicator(indicator_name, params, data):
                 logging.error(f"Required input '{inp}' for indicator '{indicator_name}' is missing in data.")
                 raise ValueError(f"Missing required input: {inp}")
         
+        # Debugging: Log the inputs and parameters
+        logging.debug(f"pandas-ta Indicator '{indicator_name}': Inputs = {required_inputs}, Parameters = {extracted_params}")
+        
         # Call the pandas-ta function with inputs and parameters
         result = func(*inputs, **extracted_params)
         
@@ -117,9 +126,11 @@ def compute_pandas_ta_indicator(indicator_name, params, data):
         if isinstance(result, pd.DataFrame):
             for col in result.columns:
                 data[col] = result[col]
+                logging.debug(f"Added column '{col}' with {result[col].notna().sum()} non-NaN values.")
         else:
             param_values = '_'.join(map(str, extracted_params.values()))
             data[f"{indicator_name.upper()}_{param_values}"] = result
+            logging.debug(f"Added column '{indicator_name.upper()}_{param_values}' with {result.notna().sum()} non-NaN values.")
         logging.info(f"Indicator '{indicator_name}' computed successfully using pandas-ta.")
     except AttributeError:
         logging.error(f"pandas-ta does not have a function named '{indicator_name.lower()}'.")
