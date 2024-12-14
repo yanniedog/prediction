@@ -14,18 +14,26 @@ from logging_setup import configure_logging
 
 logger = logging.getLogger(__name__)
 
-def generate_configurations(parameter_keys: List[str], default_params: Dict) -> List[Dict]:
+def generate_configurations(parameter_keys: List[str], parameter_definitions: Dict) -> List[Dict]:
     param_ranges = {}
     for param in parameter_keys:
-        default = default_params[param]
-        if isinstance(default, int):
-            start = max(1, default - 5)
-            end = default + 5
-            param_ranges[param] = list(range(start, end + 1))
-        elif isinstance(default, float):
-            param_ranges[param] = [round(default * factor, 4) for factor in np.arange(0.8, 1.21, 0.05)]
-        elif isinstance(default, list):
-            param_ranges[param] = default
+        param_def = parameter_definitions[param]
+        p_type = param_def.get('type')
+        default = param_def.get('default')
+        step = param_def.get('step', 1)
+        if 'range' in param_def:
+            min_val, max_val = param_def['range']
+            if p_type == 'int':
+                param_ranges[param] = list(range(min_val, max_val + 1, step))
+            elif p_type == 'float':
+                values = []
+                current = min_val
+                while current <= max_val:
+                    values.append(round(current, 4))
+                    current += step
+                param_ranges[param] = values
+        elif 'options' in param_def:
+            param_ranges[param] = param_def['options']
         else:
             param_ranges[param] = [default]
     if param_ranges:
@@ -77,8 +85,8 @@ def fetch_available_indicators() -> List[str]:
 def parse_indicator_parameters(indicator_name: str) -> Optional[Dict]:
     return get_indicator_parameters(indicator_name)
 
-def generate_configurations_wrapper(parameter_keys: List[str], default_params: Dict) -> List[Dict]:
-    return generate_configurations(parameter_keys, default_params)
+def generate_configurations_wrapper(parameter_keys: List[str], parameter_definitions: Dict) -> List[Dict]:
+    return generate_configurations(parameter_keys, parameter_definitions)
 
 def main():
     parser = argparse.ArgumentParser(description="Tweak Indicator Configurations Dynamically")
