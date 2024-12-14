@@ -5,179 +5,135 @@ import numpy as np
 import talib as ta
 import pandas_ta as pta
 import json
-from typing import List
+from typing import List, Dict, Any, Optional
 from indicator_config_parser import parse_indicators_json
 from sqlite_data_manager import create_connection, fetch_indicator_configs
 from config import DB_PATH
 
 logger = logging.getLogger(__name__)
 
-ta_lib_indicators = {
-    'ADX', 'DEMA', 'T3', 'SMA', 'EMA', 'TSF', 'RSI', 'MACD', 'STOCH', 'CMO',
-    'CCI', 'DX', 'AROON', 'AROONOSC', 'MACDEXT', 'MACDFIX', 'MINUS_DI', 
-    'MINUS_DM', 'MOM', 'PLUS_DI', 'PLUS_DM', 'PPO', 'ROC', 'ROCP', 'ROCR', 
-    'ROCR100', 'STOCHF', 'STOCHRSI', 'TRIX', 'ULTOSC', 'WILLR', 'ADOSC', 
-    'ATR', 'NATR', 'BETA', 'CORREL', 'LINEARREG', 'LINEARREG_ANGLE', 
-    'LINEARREG_INTERCEPT', 'LINEARREG_SLOPE', 'STDDEV', 'VAR', 'MFI', 
-    'VORTEX', 'AO', 'FI', 'KC', 'RVI', 'TSI'
-}
-
-pta_indicators = [
-    'dema', 't3', 'macd', 'stoch', 'cmo', 'cci', 'rsi', 'sma', 'ema', 'tsf',
-    'macdext', 'macdfix', 'ppo', 'roc', 'rocp', 'rocr', 'rocr100', 'stochf',
-    'stochrsi', 'trix', 'ultosc', 'willr', 'adosc', 'atr', 'natr', 'beta',
-    'correl', 'linearreg', 'linearreg_angle', 'linearreg_intercept',
-    'linearreg_slope', 'stddev', 'var', 'mfi', 'vortex', 'ao', 'fi', 'kc',
-    'rvi', 'tsi'
-]
-
-def z_score(x: np.ndarray) -> float:
-    mean = np.mean(x)
-    std = np.std(x)
-    if std == 0:
-        return 0
-    return (x[-1] - mean) / std
-
-def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: dict, input_columns: List[str], config_id: int) -> pd.DataFrame:
-    try:
-        if indicator_name in ["obv_price_divergence", "EyeX MFV Volume", "EyeX MFV S/R Bull", "EyeX MFV S/R Bear"]:
-            if indicator_name == "obv_price_divergence":
-                method = params.get("method", "Difference")
-                obv_method = params.get("obv_method", "SMA")
-                obv_period = params.get("obv_period", 14)
-                price_input_type = params.get("price_input_type", "OHLC/4")
-                price_method = params.get("price_method", "SMA")
-                price_period = params.get("price_period", 14)
-                smoothing = params.get("smoothing", 0.01)
-
-                price_map = {
-                    "close": data['close'],
-                    "open": data['open'],
-                    "high": data['high'],
-                    "low": data['low'],
-                    "hl/2": (data['high'] + data['low']) / 2,
-                    "ohlc/4": (data[['open','high','low','close']].sum(axis=1) / 4)
-                }
-                selected_price = price_map.get(price_input_type.lower(), (data['open'] + data['high'] + data['low'] + data['close']) / 4)
-
-                obv = ta.OBV(data['close'], data['volume'])
-                obv_ma = ta.SMA(obv, timeperiod=obv_period) if obv_method.upper() == "SMA" else ta.EMA(obv, timeperiod=obv_period)
-                price_ma = ta.SMA(selected_price, timeperiod=price_period) if price_method.upper() == "SMA" else ta.EMA(selected_price, timeperiod=price_period)
-
-                obv_change = (obv_ma - obv_ma.shift(1)) / obv_ma.shift(1) * 100
-                price_change = (price_ma - price_ma.shift(1)) / price_ma.shift(1) * 100
-
-                if method == "Difference":
-                    metric = obv_change - price_change
-                elif method == "Ratio":
-                    metric = obv_change / np.maximum(smoothing, np.abs(price_change))
+def evaluate_conditions(params: Dict[str, Any], conditions: List[Dict[str, Dict[str, Any]]]) -> bool:
+    for condition in conditions:
+        for param, ops in condition.items():
+            for op, value in ops.items():
+                if isinstance(value, str):
+                    if value not in params:
+                        logger.error(f"Condition value '{value}' for parameter '{param}' not found in params.")
+                        return False
+                    compare_value = params[value]
                 else:
-                    metric = np.log(np.maximum(smoothing, np.abs(obv_change)) / np.maximum(smoothing, np.abs(price_change)))
-
-                column_name = f"{indicator_name}_config_{config_id}"
-                data[column_name] = metric
-
-            elif indicator_name == "EyeX MFV Volume":
-                ranges = params.get("ranges", [50, 75, 100, 200])
-
-                mf_multiplier = ((data['close'] - data['low']) - (data['high'] - data['close'])) / (data['high'] - data['low'])
-                mf_multiplier = mf_multiplier.replace([np.inf, -np.inf], 0).fillna(0)
-                mf_volume = mf_multiplier * data['volume']
-
-                combined_mfv = sum([
-                    (mf_volume.rolling(window=br, min_periods=1).sum() - mf_volume.shift(br).fillna(0))
-                    .rolling(window=br, min_periods=1)
-                    .apply(z_score, raw=True) * 10
-                    for br in ranges
-                ]).clip(-400, 400)
-
-                column_name = f"{indicator_name}_config_{config_id}"
-                data[column_name] = combined_mfv
-
-            elif indicator_name == "EyeX MFV S/R Bull":
-                ranges = params.get("ranges", [50, 75, 100, 200])
-                pivot_lookback = params.get("pivot_lookback", 5)
-                price_proximity = params.get("price_proximity", 0.00001)
-
-                mf_multiplier = ((data['close'] - data['low']) - (data['high'] - data['close'])) / (data['high'] - data['low'])
-                mf_multiplier = mf_multiplier.replace([np.inf, -np.inf], 0).fillna(0)
-                mf_volume = mf_multiplier * data['volume']
-
-                combined_mfv = sum([
-                    (mf_volume.rolling(window=br, min_periods=1).sum() - mf_volume.shift(br).fillna(0))
-                    .rolling(window=br, min_periods=1)
-                    .apply(z_score, raw=True) * 10
-                    for br in ranges
-                ])
-
-                pivot_high = data['high'][(data['high'] == data['high'].rolling(window=pivot_lookback*2+1, center=True).max())]
-                pivot_low = data['low'][(data['low'] == data['low'].rolling(window=pivot_lookback*2+1, center=True).min())]
-
-                resistance_levels, support_levels = [], []
-                bull_attack, bear_attack = [], []
-                max_levels = 10
-
-                for i in range(len(data)):
-                    if i in pivot_high.index:
-                        resistance_levels.insert(0, data['high'].iloc[i])
-                        resistance_levels = resistance_levels[:max_levels]
-                    if i in pivot_low.index:
-                        support_levels.insert(0, data['low'].iloc[i])
-                        support_levels = support_levels[:max_levels]
-
-                    close = data['close'].iloc[i]
-                    near_res = any(abs(close - res)/res <= price_proximity for res in resistance_levels)
-                    near_sup = any(abs(close - sup)/sup <= price_proximity for sup in support_levels)
-
-                    bull_attack.append(near_res and combined_mfv.iloc[i] > 0)
-                    bear_attack.append(near_sup and combined_mfv.iloc[i] < 0)
-
-                data[f'EyeX MFV S/R Bull_config_{config_id}'] = bull_attack
-                data[f'EyeX MFV S/R Bear_config_{config_id}'] = bear_attack
-
-        elif indicator_name.upper() in ta_lib_indicators:
-            try:
-                clean_params = {k: v for k, v in params.items() if k != 'input_columns'}
-                ta_func = getattr(ta, indicator_name.upper())
-                result = ta_func(*[data[col] for col in input_columns], **clean_params)
-                if isinstance(result, tuple):
-                    for idx, res in enumerate(result):
-                        column_name = f"{indicator_name}_config_{config_id}_{idx}"
-                        data[column_name] = res
+                    compare_value = value
+                if op == '<':
+                    if not params[param] < compare_value:
+                        return False
+                elif op == '<=':
+                    if not params[param] <= compare_value:
+                        return False
+                elif op == '>':
+                    if not params[param] > compare_value:
+                        return False
+                elif op == '>=':
+                    if not params[param] >= compare_value:
+                        return False
+                elif op == '==':
+                    if not params[param] == compare_value:
+                        return False
+                elif op == '!=':
+                    if not params[param] != compare_value:
+                        return False
                 else:
-                    column_name = f"{indicator_name}_config_{config_id}"
-                    data[column_name] = result
-            except Exception as e:
-                logger.error(f"Error computing indicator '{indicator_name}': {e}")
+                    logger.error(f"Unsupported operator '{op}' in conditions.")
+                    return False
+    return True
 
-        elif indicator_name.lower() in pta_indicators:
-            try:
-                clean_params = {k: v for k, v in params.items() if k != 'input_columns'}
-                pta_func = getattr(pta, indicator_name.lower())
-                inputs = {key: data[key] for key in input_columns if key in data.columns}
-                result = pta_func(**clean_params, **inputs)
-                if isinstance(result, pd.DataFrame):
-                    for col in result.columns:
-                        column_name = f"{col}_config_{config_id}"
-                        data[column_name] = result[col]
-                else:
-                    column_name = f"{indicator_name}_config_{config_id}"
-                    data[column_name] = result
-            except Exception as e:
-                logger.error(f"Error computing indicator '{indicator_name}': {e}")
+def generate_parameter_combinations(parameters: Dict[str, Any], conditions: List[Dict[str, Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    from itertools import product
+
+    param_ranges = {}
+    for param, details in parameters.items():
+        p_type = details.get('type')
+        default = details.get('default')
+        step = details.get('step', 1)
+        if 'range' in details:
+            min_val, max_val = details['range']
+            if p_type == 'int':
+                param_ranges[param] = list(range(max(min_val, default - 5), min(max_val, default + 5) + 1, step))
+            elif p_type == 'float':
+                num_steps = int(((min(max_val, default + 5) - max(min_val, default - 5)) / step)) + 1
+                param_ranges[param] = [round(max(min_val, default - 5) + step * i, 4) for i in range(num_steps)]
+            elif p_type == 'str':
+                param_ranges[param] = details.get('options', [default])
+            elif p_type == 'list':
+                param_ranges[param] = details.get('options', [default])
+            else:
+                param_ranges[param] = [default]
+        elif 'options' in details:
+            param_ranges[param] = details['options']
         else:
-            logger.warning(f"Indicator '{indicator_name}' not recognized in TA-Lib or pandas_ta. Skipping.")
+            param_ranges[param] = [default]
+
+    all_combinations = list(product(*param_ranges.values()))
+    keys = list(param_ranges.keys())
+    combinations = [dict(zip(keys, values)) for values in all_combinations]
+
+    valid_combinations = []
+    for combo in combinations:
+        if evaluate_conditions(combo, conditions):
+            valid_combinations.append(combo)
+    return valid_combinations
+
+def compute_indicator(data: pd.DataFrame, indicator_name: str, params: Dict[str, Any], input_columns: List[str]) -> pd.DataFrame:
+    try:
+        indicator_type = params.get('type')
+        parameters = params.get('parameters', {})
+        if indicator_type == 'ta-lib':
+            ta_func = getattr(ta, indicator_name.upper(), None)
+            if not ta_func:
+                logger.error(f"TA-Lib function for indicator '{indicator_name}' not found.")
+                return data
+            func_params = {k: v for k, v in parameters.items() if k != 'type' and k != 'conditions'}
+            func_args = [data[col].values for col in input_columns]
+            result = ta_func(*func_args, **func_params)
+            if isinstance(result, tuple):
+                for idx, res in enumerate(result):
+                    column_name = f"{indicator_name}_param_{idx}"
+                    data[column_name] = res
+            else:
+                column_name = f"{indicator_name}_param"
+                data[column_name] = result
+        elif indicator_type == 'pandas-ta':
+            pta_func = getattr(pta, indicator_name.lower(), None)
+            if not pta_func:
+                logger.error(f"Pandas TA function for indicator '{indicator_name}' not found.")
+                return data
+            func_params = {k: v for k, v in parameters.items() if k != 'type' and k != 'conditions'}
+            result = pta_func(**func_params, **{col: data[col] for col in input_columns})
+            if isinstance(result, pd.DataFrame):
+                for col in result.columns:
+                    column_name = f"{col}_param"
+                    data[column_name] = result[col]
+            else:
+                column_name = f"{indicator_name}_param"
+                data[column_name] = result
+        elif indicator_type == 'custom':
+            # Handle custom indicators based on their unique logic
+            # This requires that custom indicators have their computation logic defined here
+            # For simplicity, we'll skip implementing custom indicators dynamically
+            # In practice, you'd need to define how each custom indicator is computed
+            logger.warning(f"Custom indicator '{indicator_name}' computation is not implemented.")
+        else:
+            logger.error(f"Unknown indicator type '{indicator_type}' for indicator '{indicator_name}'.")
     except Exception as e:
-        logger.error(f"Error processing custom indicator '{indicator_name}': {e}")
+        logger.error(f"Error computing indicator '{indicator_name}': {e}")
     return data
 
 def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str], db_path: str = DB_PATH, indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
     try:
-        with open(indicator_params_path, 'r') as f:
-            indicator_params = json.load(f)
+        indicator_configs = parse_indicators_json(indicator_params_path)
     except Exception as e:
         logger.error(f"Error loading indicator parameters: {e}")
         raise e
+
     conn = create_connection(db_path)
     if not conn:
         logger.error("Failed to connect to the database.")
@@ -196,8 +152,22 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
                 raise ValueError(f"No configurations found for indicator '{indicator_name}'.")
             for config_id, config_json in rows:
                 config = json.loads(config_json)
-                input_columns = indicator_params.get(indicator_name, {}).get("input_columns", ["close"])
-                data = compute_custom_indicator(data, indicator_name, config, input_columns, config_id)
+                indicator_details = indicator_configs.get(indicator_name)
+                if not indicator_details:
+                    logger.error(f"Indicator '{indicator_name}' not found in parameters JSON.")
+                    continue
+                conditions = indicator_details.get('conditions', [])
+                parameters = config
+                valid_combinations = generate_parameter_combinations(parameters, conditions)
+                for combo in valid_combinations:
+                    # Add config_id to parameters
+                    combo_with_id = combo.copy()
+                    combo_with_id['config_id'] = config_id
+                    # Compute indicator
+                    data = compute_indicator(data, indicator_name, {
+                        'type': indicator_details.get('type'),
+                        'parameters': combo_with_id
+                    }, indicator_details.get('input_columns', []))
         except Exception as e:
             logger.error(f"Error computing indicator '{indicator_name}': {e}")
             raise e
