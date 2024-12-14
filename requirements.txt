@@ -12,7 +12,7 @@ matplotlib==3.9.3
 numpy==1.24.4
 packaging==24.2
 pandas==2.2.3
-pandas_ta==0.3.21
+pandas_ta==0.3.14b0
 pillow==11.0.0
 pyparsing==3.2.0
 python-dateutil==2.9.0.post0

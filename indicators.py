@@ -12,6 +12,27 @@ from config import DB_PATH
 
 logger = logging.getLogger(__name__)
 
+# Define TA-Lib supported indicators
+ta_lib_indicators = {
+    'ADX', 'DEMA', 'T3', 'SMA', 'EMA', 'TSF', 'RSI', 'MACD', 'STOCH', 'CMO',
+    'CCI', 'DX', 'AROON', 'AROONOSC', 'MACDEXT', 'MACDFIX', 'MINUS_DI', 
+    'MINUS_DM', 'MOM', 'PLUS_DI', 'PLUS_DM', 'PPO', 'ROC', 'ROCP', 'ROCR', 
+    'ROCR100', 'STOCHF', 'STOCHRSI', 'TRIX', 'ULTOSC', 'WILLR', 'ADOSC', 
+    'ATR', 'NATR', 'BETA', 'CORREL', 'LINEARREG', 'LINEARREG_ANGLE', 
+    'LINEARREG_INTERCEPT', 'LINEARREG_SLOPE', 'STDDEV', 'VAR', 'MFI', 
+    'VORTEX', 'AO', 'FI', 'KC', 'RVI', 'TSI'
+}
+
+# Define pandas_ta supported indicators based on your indicator_params.json
+pta_indicators = [
+    'dema', 't3', 'macd', 'stoch', 'cmo', 'cci', 'rsi', 'sma', 'ema', 'tsf',
+    'macdext', 'macdfix', 'ppo', 'roc', 'rocp', 'rocr', 'rocr100', 'stochf',
+    'stochrsi', 'trix', 'ultosc', 'willr', 'adosc', 'atr', 'natr', 'beta',
+    'correl', 'linearreg', 'linearreg_angle', 'linearreg_intercept',
+    'linearreg_slope', 'stddev', 'var', 'mfi', 'vortex', 'ao', 'fi', 'kc',
+    'rvi', 'tsi'
+]
+
 def z_score(x: np.ndarray) -> float:
     mean = np.mean(x)
     std = np.std(x)
@@ -116,12 +137,11 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                 data[f'EyeX MFV S/R Bull_config_{config_id}'] = bull_attack
                 data[f'EyeX MFV S/R Bear_config_{config_id}'] = bear_attack
 
-        elif indicator_name.upper() in pta.indicators():
+        elif indicator_name.upper() in ta_lib_indicators:
             try:
                 clean_params = {k: v for k, v in params.items() if k != 'input_columns'}
-                inputs = [data[col] for col in input_columns]
                 ta_func = getattr(ta, indicator_name.upper())
-                result = ta_func(*inputs, **clean_params)
+                result = ta_func(*[data[col] for col in input_columns], **clean_params)
                 if isinstance(result, tuple):
                     for idx, res in enumerate(result):
                         column_name = f"{indicator_name}_config_{config_id}_{idx}"
@@ -131,7 +151,8 @@ def compute_custom_indicator(data: pd.DataFrame, indicator_name: str, params: di
                     data[column_name] = result
             except Exception as e:
                 logger.error(f"Error computing indicator '{indicator_name}': {e}")
-        elif indicator_name.lower() in [i.lower() for i in pta.indicators()]:
+
+        elif indicator_name.lower() in pta_indicators:
             try:
                 clean_params = {k: v for k, v in params.items() if k != 'input_columns'}
                 pta_func = getattr(pta, indicator_name.lower())
@@ -184,17 +205,4 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
             raise e
     conn.close()
     data.dropna(inplace=True)
-    return data
-
-def compute_all_indicators(data: pd.DataFrame, db_path: str = DB_PATH, indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
-    try:
-        with open(indicator_params_path, 'r') as f:
-            indicators_list = json.load(f)
-        indicators_keys = sorted(list(indicators_list.keys()))
-        for indicator in indicators_keys:
-            params = indicators_list[indicator]
-            input_columns = params.get("input_columns", ["close"])
-            data = compute_custom_indicator(data, indicator, params, input_columns, config_id=-1)
-    except Exception as e:
-        logger.error(f"Error computing all indicators: {e}")
     return data
