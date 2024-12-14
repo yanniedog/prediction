@@ -4,239 +4,38 @@ See the error I receive here:
 
 ====================
 
-2024-12-14 00:52:04,409 - INFO - [launch.py:22(main)]: Logging configured. Log file at: C:\code\prediction\prediction_20241214-005204.log
-2024-12-14 00:52:04,443 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\backup_cleanup.py to C:\code\prediction\backup_cleanup__2024-12-13__193540.bak
-2024-12-14 00:52:04,443 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\backup_utils.py to C:\code\prediction\backup_utils__2024-12-13__193546.bak
-2024-12-14 00:52:04,443 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\binance_historical_data_downloader.py to C:\code\prediction\binance_historical_data_downloader__2024-12-14__004443.bak
-2024-12-14 00:52:04,460 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\config.py to C:\code\prediction\config__2024-12-13__193608.bak
-2024-12-14 00:52:04,463 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\copyscripts.py to C:\code\prediction\copyscripts__2024-12-13__234930.bak
-2024-12-14 00:52:04,463 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\COPYSCRIPTS_SELECTIVE.py to C:\code\prediction\COPYSCRIPTS_SELECTIVE__2024-12-13__234033.bak
-2024-12-14 00:52:04,477 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\correlation_database.py to C:\code\prediction\correlation_database__2024-12-14__004545.bak
-2024-12-14 00:52:04,483 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\correlation_utils.py to C:\code\prediction\correlation_utils__2024-12-14__004645.bak
-2024-12-14 00:52:04,487 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\data_utils.py to C:\code\prediction\data_utils__2024-12-13__193636.bak
-2024-12-14 00:52:04,496 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\generate_heatmaps.py to C:\code\prediction\generate_heatmaps__2024-12-13__193645.bak
-2024-12-14 00:52:04,496 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\indicators.py to C:\code\prediction\indicators__2024-12-14__004715.bak
-2024-12-14 00:52:04,496 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\indicator_config_parser.py to C:\code\prediction\indicator_config_parser__2024-12-13__224719.bak
-2024-12-14 00:52:04,509 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\launch.py to C:\code\prediction\launch__2024-12-13__210149.bak
-2024-12-14 00:52:04,510 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\load_data.py to C:\code\prediction\load_data__2024-12-13__193704.bak
-2024-12-14 00:52:04,510 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\logging_setup.py to C:\code\prediction\logging_setup__2024-12-13__223516.bak
-2024-12-14 00:52:04,526 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\repair-remarks.py to C:\code\prediction\repair-remarks__2024-12-13__210625.bak
-2024-12-14 00:52:04,526 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\restore_backup.py to C:\code\prediction\restore_backup__2024-12-12__185506.bak
-2024-12-14 00:52:04,546 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\REVERT-to-GPT-scripts.py to C:\code\prediction\REVERT-to-GPT-scripts__2024-12-12__185506.bak
-2024-12-14 00:52:04,549 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\sqlite_data_manager.py to C:\code\prediction\sqlite_data_manager__2024-12-14__005008.bak
-2024-12-14 00:52:04,560 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\start.py to C:\code\prediction\start__2024-12-14__005159.bak
-2024-12-14 00:52:04,560 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\table_generation.py to C:\code\prediction\table_generation__2024-12-13__193742.bak
-2024-12-14 00:52:04,560 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\tweak_indicator.py to C:\code\prediction\tweak_indicator__2024-12-14__005053.bak
-2024-12-14 00:52:04,576 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\utils.py to C:\code\prediction\utils__2024-12-13__193814.bak
-2024-12-14 00:52:04,576 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\visualization_utils.py to C:\code\prediction\visualization_utils__2024-12-13__193823.bak
-2024-12-14 00:52:04,576 - DEBUG - [backup_cleanup.py:20(backup_cleanup)]: Copied C:\code\prediction\visualize_data.py to C:\code\prediction\visualize_data__2024-12-13__193830.bak
-2024-12-14 00:52:04,593 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\backup_cleanup__2024-12-13__193540.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,595 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\backup_utils__2024-12-13__193546.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,595 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\binance_historical_data_downloader__2024-12-14__004443.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,595 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\config__2024-12-13__193608.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,595 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\copyscripts__2024-12-13__234930.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,609 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\COPYSCRIPTS_SELECTIVE__2024-12-13__234033.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,610 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\correlation_database__2024-12-14__004545.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,610 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\correlation_utils__2024-12-14__004645.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,610 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\data_utils__2024-12-13__193636.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,610 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\generate_heatmaps__2024-12-13__193645.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,610 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\indicators__2024-12-14__004715.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,626 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\indicator_config_parser__2024-12-13__224719.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,626 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\launch__2024-12-13__210149.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,626 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\load_data__2024-12-13__193704.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,626 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\logging_setup__2024-12-13__223516.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,626 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\repair-remarks__2024-12-13__210625.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,641 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\restore_backup__2024-12-12__185506.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,643 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\REVERT-to-GPT-scripts__2024-12-12__185506.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,643 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\sqlite_data_manager__2024-12-14__005008.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,643 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\start__2024-12-14__005159.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,643 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\table_generation__2024-12-13__193742.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,643 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\tweak_indicator__2024-12-14__005053.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,659 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\utils__2024-12-13__193814.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,659 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\visualization_utils__2024-12-13__193823.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,659 - DEBUG - [backup_cleanup.py:28(backup_cleanup)]: Added C:\code\prediction\visualize_data__2024-12-13__193830.bak to C:\code\prediction\prediction_project_zip_backup_2024-12-14__005204.zip
-2024-12-14 00:52:04,659 - INFO - [backup_cleanup.py:30(backup_cleanup)]: Backup completed.
-2024-12-14 00:52:04,659 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\backup_cleanup__2024-12-13__193540.bak
-2024-12-14 00:52:04,676 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\backup_utils__2024-12-13__193546.bak
-2024-12-14 00:52:04,676 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\binance_historical_data_downloader__2024-12-14__004443.bak
-2024-12-14 00:52:04,676 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\config__2024-12-13__193608.bak
-2024-12-14 00:52:04,676 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\copyscripts__2024-12-13__234930.bak
-2024-12-14 00:52:04,676 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\COPYSCRIPTS_SELECTIVE__2024-12-13__234033.bak
-2024-12-14 00:52:04,676 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\correlation_database__2024-12-14__004545.bak
-2024-12-14 00:52:04,696 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\correlation_utils__2024-12-14__004645.bak
-2024-12-14 00:52:04,698 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\data_utils__2024-12-13__193636.bak
-2024-12-14 00:52:04,698 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\generate_heatmaps__2024-12-13__193645.bak
-2024-12-14 00:52:04,698 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\indicators__2024-12-14__004715.bak
-2024-12-14 00:52:04,712 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\indicator_config_parser__2024-12-13__224719.bak
-2024-12-14 00:52:04,718 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\launch__2024-12-13__210149.bak
-2024-12-14 00:52:04,720 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\load_data__2024-12-13__193704.bak
-2024-12-14 00:52:04,720 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\logging_setup__2024-12-13__223516.bak
-2024-12-14 00:52:04,727 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\repair-remarks__2024-12-13__210625.bak
-2024-12-14 00:52:04,731 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\restore_backup__2024-12-12__185506.bak
-2024-12-14 00:52:04,734 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\REVERT-to-GPT-scripts__2024-12-12__185506.bak
-2024-12-14 00:52:04,734 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\sqlite_data_manager__2024-12-14__005008.bak
-2024-12-14 00:52:04,734 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\start__2024-12-14__005159.bak
-2024-12-14 00:52:04,744 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\table_generation__2024-12-13__193742.bak
-2024-12-14 00:52:04,749 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\tweak_indicator__2024-12-14__005053.bak
-2024-12-14 00:52:04,749 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\utils__2024-12-13__193814.bak
-2024-12-14 00:52:04,749 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\visualization_utils__2024-12-13__193823.bak
-2024-12-14 00:52:04,749 - DEBUG - [backup_cleanup.py:33(backup_cleanup)]: Deleted backup file C:\code\prediction\visualize_data__2024-12-13__193830.bak
-2024-12-14 00:52:04,760 - INFO - [backup_utils.py:12(run_backup_cleanup)]: Backup executed successfully.
-2024-12-14 00:52:05,812 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
-2024-12-14 00:52:06,026 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'symbols' ensured in database.
-2024-12-14 00:52:06,038 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'timeframes' ensured in database.
-2024-12-14 00:52:06,045 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'indicators' ensured in database.
-2024-12-14 00:52:06,061 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'indicator_configs' ensured in database.
-2024-12-14 00:52:06,070 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'klines' ensured in database.
-2024-12-14 00:52:06,078 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'correlations' ensured in database.
-2024-12-14 00:52:06,087 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_open_time
-2024-12-14 00:52:06,095 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_close_time
-2024-12-14 00:52:06,100 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlation_computed
-2024-12-14 00:52:06,112 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlations
-2024-12-14 00:52:06,120 - INFO - [sqlite_data_manager.py:101(create_tables)]: All tables and indexes are set up successfully.
-2024-12-14 00:52:06,127 - INFO - [start.py:117(main)]: Database initialized successfully.
-2024-12-14 00:52:07,939 - INFO - [start.py:37(input_yes_no)]: User Input: Delete contents of output directories? (y/n): -> y
-2024-12-14 00:52:07,948 - INFO - [start.py:53(delete_previous_output)]: Cleared contents of: csv
-2024-12-14 00:52:07,979 - INFO - [start.py:53(delete_previous_output)]: Cleared contents of: combined_charts
-2024-12-14 00:52:07,996 - INFO - [start.py:53(delete_previous_output)]: Cleared contents of: database
-2024-12-14 00:52:08,002 - INFO - [start.py:56(delete_previous_output)]: All selected directory contents have been cleared.
-2024-12-14 00:52:09,679 - INFO - [start.py:37(input_yes_no)]: User Input: Do you want to tweak indicator settings? (y/n): -> y
-2024-12-14 00:52:10,474 - INFO - [start.py:26(input_with_default)]: User Input: Enter symbol (e.g., 'BTCUSDT'): -> BTCUSDT
-2024-12-14 00:52:10,900 - INFO - [start.py:26(input_with_default)]: User Input: Enter timeframe (e.g., '1w'): -> 1w
-2024-12-14 00:52:10,904 - INFO - [start.py:128(main)]: Symbol: BTCUSDT, Timeframe: 1w
-2024-12-14 00:52:10,912 - INFO - [start.py:66(run_tweak_indicator)]: Available indicators:
-2024-12-14 00:52:10,920 - INFO - [start.py:68(run_tweak_indicator)]: 1. obv_price_divergence
-2024-12-14 00:52:10,928 - INFO - [start.py:68(run_tweak_indicator)]: 2. dema
-2024-12-14 00:52:10,938 - INFO - [start.py:68(run_tweak_indicator)]: 3. t3
-2024-12-14 00:52:10,950 - INFO - [start.py:68(run_tweak_indicator)]: 4. sma
-2024-12-14 00:52:10,956 - INFO - [start.py:68(run_tweak_indicator)]: 5. ema
-2024-12-14 00:52:10,960 - INFO - [start.py:68(run_tweak_indicator)]: 6. tsf
-2024-12-14 00:52:10,964 - INFO - [start.py:68(run_tweak_indicator)]: 7. rsi
-2024-12-14 00:52:10,969 - INFO - [start.py:68(run_tweak_indicator)]: 8. macd
-2024-12-14 00:52:10,970 - INFO - [start.py:68(run_tweak_indicator)]: 9. stoch
-2024-12-14 00:52:10,970 - INFO - [start.py:68(run_tweak_indicator)]: 10. cmo
-2024-12-14 00:52:10,979 - INFO - [start.py:68(run_tweak_indicator)]: 11. cci
-2024-12-14 00:52:10,983 - INFO - [start.py:68(run_tweak_indicator)]: 12. adx
-2024-12-14 00:52:10,986 - INFO - [start.py:68(run_tweak_indicator)]: 13. dx
-2024-12-14 00:52:10,991 - INFO - [start.py:68(run_tweak_indicator)]: 14. aroon
-2024-12-14 00:52:10,995 - INFO - [start.py:68(run_tweak_indicator)]: 15. aroonosc
-2024-12-14 00:52:10,996 - INFO - [start.py:68(run_tweak_indicator)]: 16. macdext
-2024-12-14 00:52:11,003 - INFO - [start.py:68(run_tweak_indicator)]: 17. macdfix
-2024-12-14 00:52:11,007 - INFO - [start.py:68(run_tweak_indicator)]: 18. minus_di
-2024-12-14 00:52:11,010 - INFO - [start.py:68(run_tweak_indicator)]: 19. minus_dm
-2024-12-14 00:52:11,017 - INFO - [start.py:68(run_tweak_indicator)]: 20. mom
-2024-12-14 00:52:11,022 - INFO - [start.py:68(run_tweak_indicator)]: 21. plus_di
-2024-12-14 00:52:11,022 - INFO - [start.py:68(run_tweak_indicator)]: 22. plus_dm
-2024-12-14 00:52:11,029 - INFO - [start.py:68(run_tweak_indicator)]: 23. ppo
-2024-12-14 00:52:11,034 - INFO - [start.py:68(run_tweak_indicator)]: 24. roc
-2024-12-14 00:52:11,038 - INFO - [start.py:68(run_tweak_indicator)]: 25. rocp
-2024-12-14 00:52:11,038 - INFO - [start.py:68(run_tweak_indicator)]: 26. rocr
-2024-12-14 00:52:11,045 - INFO - [start.py:68(run_tweak_indicator)]: 27. rocr100
-2024-12-14 00:52:11,049 - INFO - [start.py:68(run_tweak_indicator)]: 28. stochf
-2024-12-14 00:52:11,053 - INFO - [start.py:68(run_tweak_indicator)]: 29. stochrsi
-2024-12-14 00:52:11,053 - INFO - [start.py:68(run_tweak_indicator)]: 30. trix
-2024-12-14 00:52:11,053 - INFO - [start.py:68(run_tweak_indicator)]: 31. ultosc
-2024-12-14 00:52:11,063 - INFO - [start.py:68(run_tweak_indicator)]: 32. willr
-2024-12-14 00:52:11,070 - INFO - [start.py:68(run_tweak_indicator)]: 33. adosc
-2024-12-14 00:52:11,071 - INFO - [start.py:68(run_tweak_indicator)]: 34. atr
-2024-12-14 00:52:11,077 - INFO - [start.py:68(run_tweak_indicator)]: 35. natr
-2024-12-14 00:52:11,083 - INFO - [start.py:68(run_tweak_indicator)]: 36. beta
-2024-12-14 00:52:11,087 - INFO - [start.py:68(run_tweak_indicator)]: 37. correl
-2024-12-14 00:52:11,087 - INFO - [start.py:68(run_tweak_indicator)]: 38. linearreg
-2024-12-14 00:52:11,094 - INFO - [start.py:68(run_tweak_indicator)]: 39. linearreg_angle
-2024-12-14 00:52:11,097 - INFO - [start.py:68(run_tweak_indicator)]: 40. linearreg_intercept
-2024-12-14 00:52:11,100 - INFO - [start.py:68(run_tweak_indicator)]: 41. linearreg_slope
-2024-12-14 00:52:11,104 - INFO - [start.py:68(run_tweak_indicator)]: 42. stddev
-2024-12-14 00:52:11,105 - INFO - [start.py:68(run_tweak_indicator)]: 43. var
-2024-12-14 00:52:11,110 - INFO - [start.py:68(run_tweak_indicator)]: 44. mfi
-2024-12-14 00:52:11,116 - INFO - [start.py:68(run_tweak_indicator)]: 45. vortex
-2024-12-14 00:52:11,120 - INFO - [start.py:68(run_tweak_indicator)]: 46. ao
-2024-12-14 00:52:11,120 - INFO - [start.py:68(run_tweak_indicator)]: 47. fi
-2024-12-14 00:52:11,120 - INFO - [start.py:68(run_tweak_indicator)]: 48. kc
-2024-12-14 00:52:11,132 - INFO - [start.py:68(run_tweak_indicator)]: 49. rvi
-2024-12-14 00:52:11,136 - INFO - [start.py:68(run_tweak_indicator)]: 50. tsi
-2024-12-14 00:52:11,136 - INFO - [start.py:68(run_tweak_indicator)]: 51. EyeX MFV Volume
-2024-12-14 00:52:11,136 - INFO - [start.py:68(run_tweak_indicator)]: 52. EyeX MFV S/R Bull
-2024-12-14 00:52:14,631 - INFO - [start.py:76(run_tweak_indicator)]: Selected indicator: var
-2024-12-14 00:52:14,638 - INFO - [start.py:82(run_tweak_indicator)]: Parameters for 'var': {'timeperiod': 5, 'nbdev': 1, 'input_columns': ['close']}
-2024-12-14 00:52:14,647 - INFO - [start.py:88(run_tweak_indicator)]: Generated 60 configurations for 'var'.
-2024-12-14 00:52:14,659 - INFO - [start.py:90(run_tweak_indicator)]: Example configurations for 'var': [{'timeperiod': 1, 'nbdev': 1, 'input_columns': 'close'}, {'timeperiod': 1, 'nbdev': 2, 'input_columns': 'close'}, {'timeperiod': 1, 'nbdev': 3, 'input_columns': 'close'}, {'timeperiod': 1, 'nbdev': 4, 'input_columns': 'close'}, {'timeperiod': 1, 'nbdev': 5, 'input_columns': 'close'}, {'timeperiod': 1, 'nbdev': 6, 'input_columns': 'close'}, {'timeperiod': 2, 'nbdev': 1, 'input_columns': 'close'}, {'timeperiod': 2, 'nbdev': 2, 'input_columns': 'close'}, {'timeperiod': 2, 'nbdev': 3, 'input_columns': 'close'}, {'timeperiod': 2, 'nbdev': 4, 'input_columns': 'close'}, {'timeperiod': 2, 'nbdev': 5, 'input_columns': 'close'}, {'timeperiod': 2, 'nbdev': 6, 'input_columns': 'close'}, {'timeperiod': 3, 'nbdev': 1, 'input_columns': 'close'}, {'timeperiod': 3, 'nbdev': 2, 'input_columns': 'close'}, {'timeperiod': 3, 'nbdev': 3, 'input_columns': 'close'}]
-2024-12-14 00:52:14,669 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
-2024-12-14 00:52:14,679 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'symbols' ensured in database.
-2024-12-14 00:52:14,696 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'timeframes' ensured in database.
-2024-12-14 00:52:14,712 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'indicators' ensured in database.
-2024-12-14 00:52:14,725 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'indicator_configs' ensured in database.
-2024-12-14 00:52:14,740 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'klines' ensured in database.
-2024-12-14 00:52:14,746 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'correlations' ensured in database.
-2024-12-14 00:52:14,756 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_open_time
-2024-12-14 00:52:14,766 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_close_time
-2024-12-14 00:52:14,774 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlation_computed
-2024-12-14 00:52:14,779 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlations
-2024-12-14 00:52:14,779 - INFO - [sqlite_data_manager.py:101(create_tables)]: All tables and indexes are set up successfully.
-2024-12-14 00:52:14,795 - INFO - [sqlite_data_manager.py:129(insert_indicator_configs)]: Inserted 60 configurations for indicator 'var'.
-2024-12-14 00:52:14,795 - INFO - [start.py:102(run_tweak_indicator)]: Configurations stored in database:
-2024-12-14 00:52:14,808 - INFO - [start.py:104(run_tweak_indicator)]: {'timeperiod': 1, 'nbdev': 1, 'input_columns': 'close'}
-2024-12-14 00:52:14,812 - INFO - [start.py:104(run_tweak_indicator)]: {'timeperiod': 1, 'nbdev': 2, 'input_columns': 'close'}
-2024-12-14 00:52:14,812 - INFO - [start.py:104(run_tweak_indicator)]: {'timeperiod': 1, 'nbdev': 3, 'input_columns': 'close'}
-2024-12-14 00:52:14,821 - INFO - [start.py:104(run_tweak_indicator)]: {'timeperiod': 1, 'nbdev': 4, 'input_columns': 'close'}
-2024-12-14 00:52:14,824 - INFO - [start.py:104(run_tweak_indicator)]: {'timeperiod': 1, 'nbdev': 5, 'input_columns': 'close'}
-2024-12-14 00:52:14,826 - INFO - [start.py:104(run_tweak_indicator)]: {'timeperiod': 1, 'nbdev': 6, 'input_columns': 'close'}
-2024-12-14 00:52:14,829 - INFO - [start.py:104(run_tweak_indicator)]: {'timeperiod': 2, 'nbdev': 1, 'input_columns': 'close'}
-2024-12-14 00:52:14,836 - INFO - [start.py:104(run_tweak_indicator)]: {'timeperiod': 2, 'nbdev': 2, 'input_columns': 'close'}
-2024-12-14 00:52:14,839 - INFO - [start.py:104(run_tweak_indicator)]: {'timeperiod': 2, 'nbdev': 3, 'input_columns': 'close'}
-2024-12-14 00:52:14,842 - INFO - [start.py:104(run_tweak_indicator)]: {'timeperiod': 2, 'nbdev': 4, 'input_columns': 'close'}
-2024-12-14 00:52:14,846 - INFO - [start.py:104(run_tweak_indicator)]: {'timeperiod': 2, 'nbdev': 5, 'input_columns': 'close'}
-2024-12-14 00:52:14,846 - INFO - [start.py:104(run_tweak_indicator)]: {'timeperiod': 2, 'nbdev': 6, 'input_columns': 'close'}
-2024-12-14 00:52:14,855 - INFO - [start.py:104(run_tweak_indicator)]: {'timeperiod': 3, 'nbdev': 1, 'input_columns': 'close'}
-2024-12-14 00:52:14,858 - INFO - [start.py:104(run_tweak_indicator)]: {'timeperiod': 3, 'nbdev': 2, 'input_columns': 'close'}
-2024-12-14 00:52:14,861 - INFO - [start.py:104(run_tweak_indicator)]: {'timeperiod': 3, 'nbdev': 3, 'input_columns': 'close'}
-2024-12-14 00:52:14,867 - INFO - [start.py:106(run_tweak_indicator)]: Configurations for 'var' have been added to the database.
-2024-12-14 00:52:14,871 - INFO - [start.py:135(main)]: Proceeding with main execution.
-2024-12-14 00:52:17,975 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-14 00:52:18,223 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&limit=1&startTime=0 HTTP/11" 200 176
-2024-12-14 00:52:18,238 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-14 00:52:18,460 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/time HTTP/11" 200 28
-2024-12-14 00:52:18,473 - DEBUG - [connectionpool.py:1051(_new_conn)]: Starting new HTTPS connection (1): api.binance.com:443
-2024-12-14 00:52:18,695 - DEBUG - [connectionpool.py:546(_make_request)]: https://api.binance.com:443 "GET /api/v3/klines?symbol=BTCUSDT&interval=1w&startTime=1502668800000&endTime=1734097937979&limit=1000 HTTP/11" 200 26461
-2024-12-14 00:52:18,739 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
-2024-12-14 00:52:18,754 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'symbols' ensured in database.
-2024-12-14 00:52:18,758 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'timeframes' ensured in database.
-2024-12-14 00:52:18,762 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'indicators' ensured in database.
-2024-12-14 00:52:18,769 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'indicator_configs' ensured in database.
-2024-12-14 00:52:18,773 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'klines' ensured in database.
-2024-12-14 00:52:18,776 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'correlations' ensured in database.
-2024-12-14 00:52:18,780 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_open_time
-2024-12-14 00:52:18,786 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_close_time
-2024-12-14 00:52:18,790 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlation_computed
-2024-12-14 00:52:18,792 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlations
-2024-12-14 00:52:18,797 - INFO - [sqlite_data_manager.py:101(create_tables)]: All tables and indexes are set up successfully.
-2024-12-14 00:52:18,803 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
-2024-12-14 00:52:18,836 - INFO - [sqlite_data_manager.py:188(insert_klines)]: Successfully inserted 383 records into 'klines'.
-2024-12-14 00:52:18,841 - INFO - [start.py:140(main)]: Price data download and insertion completed.
-2024-12-14 00:52:18,844 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
-2024-12-14 00:52:18,851 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'symbols' ensured in database.
-2024-12-14 00:52:18,855 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'timeframes' ensured in database.
-2024-12-14 00:52:18,859 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'indicators' ensured in database.
-2024-12-14 00:52:18,863 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'indicator_configs' ensured in database.
-2024-12-14 00:52:18,868 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'klines' ensured in database.
-2024-12-14 00:52:18,872 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'correlations' ensured in database.
-2024-12-14 00:52:18,876 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_open_time
-2024-12-14 00:52:18,882 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_close_time
-2024-12-14 00:52:18,886 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlation_computed
-2024-12-14 00:52:18,889 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlations
-2024-12-14 00:52:18,890 - INFO - [sqlite_data_manager.py:101(create_tables)]: All tables and indexes are set up successfully.
-2024-12-14 00:52:18,901 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
-2024-12-14 00:52:18,912 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
-2024-12-14 00:52:18,936 - INFO - [start.py:155(main)]: Configured indicators computed successfully.
-2024-12-14 00:52:18,936 - INFO - [start.py:156(main)]: Computing correlations.
-2024-12-14 00:52:19,118 - WARNING - [correlation_utils.py:41(load_or_calculate_correlations)]: Invalid indicator 'var_config_1'. Skipping.
-2024-12-14 00:52:20,557 - WARNING - [correlation_utils.py:41(load_or_calculate_correlations)]: Invalid indicator 'var_config_2'. Skipping.
-2024-12-14 00:52:22,079 - WARNING - [correlation_utils.py:41(load_or_calculate_correlations)]: Invalid indicator 'var_config_3'. Skipping.
-2024-12-14 00:52:23,625 - WARNING - [correlation_utils.py:41(load_or_calculate_correlations)]: Invalid indicator 'var_config_4'. Skipping.
-2024-12-14 00:52:25,016 - WARNING - [correlation_utils.py:41(load_or_calculate_correlations)]: Invalid indicator 'var_config_5'. Skipping.
-2024-12-14 00:52:26,615 - WARNING - [correlation_utils.py:41(load_or_calculate_correlations)]: Invalid indicator 'var_config_6'. Skipping.
-2024-12-14 00:52:27,788 - INFO - [start.py:165(main)]: Correlation computations completed for the selected indicator configurations.
-2024-12-14 00:52:27,788 - INFO - [start.py:172(main)]: Execution finished successfully.
+2024-12-14 23:47:13,076 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'correlations' ensured in database.
+2024-12-14 23:47:13,080 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_open_time
+2024-12-14 23:47:13,086 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_close_time
+2024-12-14 23:47:13,092 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlation_computed
+2024-12-14 23:47:13,096 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlations
+2024-12-14 23:47:13,103 - INFO - [sqlite_data_manager.py:101(create_tables)]: All tables and indexes are set up successfully.
+2024-12-14 23:47:13,108 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
+2024-12-14 23:47:13,124 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
+2024-12-14 23:47:13,128 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,135 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,139 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,143 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,147 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,151 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,158 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,162 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,165 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,175 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,180 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,184 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,190 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,193 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,197 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,203 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,207 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,211 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,216 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,223 - ERROR - [indicators.py:152(compute_custom_indicator)]: Error processing custom indicator 'ao': module 'pandas_ta' has no attribute 'indicators'
+2024-12-14 23:47:13,227 - INFO - [start.py:155(main)]: Configured indicators computed successfully.
+2024-12-14 23:47:13,232 - INFO - [start.py:156(main)]: Computing correlations.
+2024-12-14 23:47:13,241 - ERROR - [correlation_utils.py:38(load_or_calculate_correlations)]: Indicator column 'ao_config_19' not found in data.
+2024-12-14 23:47:13,245 - ERROR - [start.py:167(main)]: Error computing configured indicators or correlations: 'ao_config_19'
 
 
 ====================
