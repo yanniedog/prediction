@@ -91,8 +91,8 @@ def compute_indicator(data: pd.DataFrame, indicator_name: str, params: Dict[str,
             if not ta_func:
                 logger.error(f"TA-Lib function for indicator '{indicator_name}' not found.")
                 return data
-            func_params = {k: v for k, v in parameters.items() if k != 'config_id'}
             func_args = [data[col].values for col in input_columns]
+            func_params = parameters
             result = ta_func(*func_args, **func_params)
             if isinstance(result, tuple):
                 for idx, res in enumerate(result):
@@ -106,7 +106,7 @@ def compute_indicator(data: pd.DataFrame, indicator_name: str, params: Dict[str,
             if not pta_func:
                 logger.error(f"Pandas TA function for indicator '{indicator_name}' not found.")
                 return data
-            func_params = {k: v for k, v in parameters.items() if k != 'type' and k != 'conditions'}
+            func_params = {k: v for k, v in parameters.items() if k not in ['type', 'conditions']}
             result = pta_func(**func_params, **{col: data[col] for col in input_columns})
             if isinstance(result, pd.DataFrame):
                 for col in result.columns:
