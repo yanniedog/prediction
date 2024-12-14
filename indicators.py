@@ -13,9 +13,21 @@ from config import DB_PATH
 logger = logging.getLogger(__name__)
 
 def evaluate_conditions(params: Dict[str, Any], conditions: List[Dict[str, Dict[str, Any]]]) -> bool:
+    operator_map = {
+        'greater_than': '>',
+        'greater_than_or_equal': '>=',
+        'less_than': '<',
+        'less_than_or_equal': '<=',
+        'equal': '==',
+        'not_equal': '!='
+    }
     for condition in conditions:
         for param, ops in condition.items():
             for op, value in ops.items():
+                mapped_op = operator_map.get(op)
+                if not mapped_op:
+                    logger.error(f"Unsupported operator '{op}' in conditions.")
+                    return False
                 if isinstance(value, str):
                     if value not in params:
                         logger.error(f"Condition value '{value}' for parameter '{param}' not found in params.")
@@ -23,27 +35,24 @@ def evaluate_conditions(params: Dict[str, Any], conditions: List[Dict[str, Dict[
                     compare_value = params[value]
                 else:
                     compare_value = value
-                if op == '<':
+                if mapped_op == '<':
                     if not params[param] < compare_value:
                         return False
-                elif op == '<=':
+                elif mapped_op == '<=':
                     if not params[param] <= compare_value:
                         return False
-                elif op == '>':
+                elif mapped_op == '>':
                     if not params[param] > compare_value:
                         return False
-                elif op == '>=':
+                elif mapped_op == '>=':
                     if not params[param] >= compare_value:
                         return False
-                elif op == '==':
+                elif mapped_op == '==':
                     if not params[param] == compare_value:
                         return False
-                elif op == '!=':
+                elif mapped_op == '!=':
                     if not params[param] != compare_value:
                         return False
-                else:
-                    logger.error(f"Unsupported operator '{op}' in conditions.")
-                    return False
     return True
 
 def generate_parameter_combinations(parameters: Dict[str, Any], conditions: List[Dict[str, Dict[str, Any]]]) -> List[Dict[str, Any]]:
@@ -97,10 +106,12 @@ def compute_indicator(data: pd.DataFrame, indicator_name: str, params: Dict[str,
             if isinstance(result, tuple):
                 for idx, res in enumerate(result):
                     column_name = f"{indicator_name}_config_{config_id}_{idx}"
-                    data[column_name] = res
+                    if res is not None:
+                        data[column_name] = res
             else:
                 column_name = f"{indicator_name}_config_{config_id}"
-                data[column_name] = result
+                if result is not None:
+                    data[column_name] = result
         elif indicator_type == 'pandas-ta':
             pta_func = getattr(pta, indicator_name.lower(), None)
             if not pta_func:
@@ -135,6 +146,7 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
         logger.error("Failed to connect to the database.")
         raise ConnectionError("Failed to connect to the database.")
     cursor = conn.cursor()
+    new_columns = []
     for indicator_name in indicators_list:
         try:
             cursor.execute("""
@@ -145,7 +157,7 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
             rows = cursor.fetchall()
             if not rows:
                 logger.error(f"No configurations found for indicator '{indicator_name}'.")
-                raise ValueError(f"No configurations found for indicator '{indicator_name}'.")
+                continue
             for config_id, config_json in rows:
                 config = json.loads(config_json)
                 indicator_details = indicator_configs.get(indicator_name)
@@ -153,14 +165,20 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
                     logger.error(f"Indicator '{indicator_name}' not found in parameters JSON.")
                     continue
                 conditions = indicator_details.get('conditions', [])
-                parameters = config.copy()
-                data = compute_indicator(data, indicator_name, {
-                    'type': indicator_details.get('type'),
-                    'parameters': parameters
-                }, indicator_details.get('input_columns', []), config_id)
+                parameters = {'type': indicator_details.get('type'), 'parameters': config}
+                try:
+                    computed_data = compute_indicator(data, indicator_name, parameters, indicator_details.get('input_columns', []), config_id)
+                    cols = [col for col in computed_data.columns if col.startswith(f"{indicator_name}_config_{config_id}")]
+                    if cols:
+                        new_columns.append(computed_data[cols])
+                except Exception as e:
+                    logger.error(f"Error computing indicator '{indicator_name}' config {config_id}: {e}")
         except Exception as e:
-            logger.error(f"Error computing indicator '{indicator_name}': {e}")
-            raise e
+            logger.error(f"Error processing indicator '{indicator_name}': {e}")
     conn.close()
+    if new_columns:
+        new_df = pd.concat(new_columns, axis=1)
+        data = pd.concat([data, new_df], axis=1)
+    data = data.copy()
     data.dropna(inplace=True)
     return data
