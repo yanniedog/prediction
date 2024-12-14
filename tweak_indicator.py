@@ -31,6 +31,7 @@ def generate_configurations(parameter_keys: List[str], default_params: Dict) -> 
     if param_ranges:
         keys, values = zip(*param_ranges.items())
         configurations = [dict(zip(keys, v)) for v in itertools.product(*values)]
+        configurations = [c for c in configurations if c.get('fastperiod', 0) < c.get('slowperiod', float('inf'))]
     else:
         configurations = []
     return configurations

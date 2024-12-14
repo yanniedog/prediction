@@ -4,64 +4,64 @@ See the error I receive here:
 
 ====================
 
-2024-12-15 01:25:04,405 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'correlations' ensured in database.
-2024-12-15 01:25:04,409 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_open_time
-2024-12-15 01:25:04,413 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_close_time
-2024-12-15 01:25:04,417 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlation_computed
-2024-12-15 01:25:04,421 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlations
-2024-12-15 01:25:04,425 - INFO - [sqlite_data_manager.py:101(create_tables)]: All tables and indexes are set up successfully.
-2024-12-15 01:25:04,430 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
-2024-12-15 01:25:04,442 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
-2024-12-15 01:25:04,449 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,453 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,457 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,460 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,464 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,467 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,470 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,473 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,477 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,481 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,485 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,488 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,492 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,496 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,499 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,503 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,506 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,510 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,513 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,516 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,519 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,523 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,528 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,532 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,536 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,539 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,544 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,547 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,551 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,554 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,558 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,562 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,565 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,569 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,574 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,577 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,581 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,584 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,588 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,591 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,596 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,599 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,604 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,607 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
-2024-12-15 01:25:04,997 - INFO - [start.py:155(main)]: Configured indicators computed successfully.
-2024-12-15 01:25:05,000 - INFO - [start.py:156(main)]: Computing correlations.
-2024-12-15 01:25:05,005 - ERROR - [correlation_utils.py:38(load_or_calculate_correlations)]: Indicator column 'adosc_config_23' not found in data.
-2024-12-15 01:25:05,009 - ERROR - [start.py:167(main)]: Error computing configured indicators or correlations: 'adosc_config_23'
-2024-12-15 01:25:05,012 - WARNING - [LAUNCH.py:42(run_script)]: SystemExit encountered in start.py with code: 1
-2024-12-15 01:25:05,016 - WARNING - [LAUNCH.py:75(main)]: start.py exited with code: 1
+2024-12-15 01:34:03,083 - INFO - [sqlite_data_manager.py:86(create_tables)]: Table 'correlations' ensured in database.
+2024-12-15 01:34:03,089 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_open_time
+2024-12-15 01:34:03,092 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_close_time
+2024-12-15 01:34:03,095 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlation_computed
+2024-12-15 01:34:03,098 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlations
+2024-12-15 01:34:03,102 - INFO - [sqlite_data_manager.py:101(create_tables)]: All tables and indexes are set up successfully.
+2024-12-15 01:34:03,106 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
+2024-12-15 01:34:03,119 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
+2024-12-15 01:34:03,124 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,127 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,130 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,134 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,139 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,142 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,147 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,150 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,154 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,157 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,161 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,165 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,169 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,172 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,176 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,179 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,182 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,187 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,191 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,194 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,197 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,200 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,204 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,207 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,210 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,213 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,217 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,221 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,224 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,227 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,230 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,235 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,239 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,243 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,247 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,251 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,255 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,258 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,262 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,266 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,270 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,273 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,277 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,280 - ERROR - [indicators.py:151(compute_custom_indicator)]: Error computing indicator 'adosc': TA_ADOSC function failed with error code 2: Bad Parameter (TA_BAD_PARAM)
+2024-12-15 01:34:03,511 - INFO - [start.py:155(main)]: Configured indicators computed successfully.
+2024-12-15 01:34:03,514 - INFO - [start.py:156(main)]: Computing correlations.
+2024-12-15 01:34:03,518 - ERROR - [correlation_utils.py:38(load_or_calculate_correlations)]: Indicator column 'adosc_config_23' not found in data.
+2024-12-15 01:34:03,523 - ERROR - [start.py:167(main)]: Error computing configured indicators or correlations: 'adosc_config_23'
+2024-12-15 01:34:03,526 - WARNING - [LAUNCH.py:42(run_script)]: SystemExit encountered in start.py with code: 1
+2024-12-15 01:34:03,528 - WARNING - [LAUNCH.py:75(main)]: start.py exited with code: 1
 
 
 ====================
@@ -1724,6 +1724,7 @@ def generate_configurations(parameter_keys: List[str], default_params: Dict) -> 
     if param_ranges:
         keys, values = zip(*param_ranges.items())
         configurations = [dict(zip(keys, v)) for v in itertools.product(*values)]
+        configurations = [c for c in configurations if c.get('fastperiod', 0) < c.get('slowperiod', float('inf'))]
     else:
         configurations = []
     return configurations
