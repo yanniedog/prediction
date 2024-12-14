@@ -12,13 +12,13 @@ def run_repair_remarks():
     if os.path.exists(repair_script):
         try:
             os.system(f"python {repair_script}")
-        except Exception:
+        except Exception as e:
             sys.exit(1)
 
 run_repair_remarks()
 
 def parse_arguments():
-    parser = argparse.ArgumentParser(description="Generate a .SELECTIVE file containing contents of specified scripts.")
+    parser = argparse.ArgumentParser(description="Generate a .GPT file containing contents of specified scripts.")
     parser.add_argument('-e', '--extensions', nargs='+', help='Additional file extensions to include (e.g., -e txt md)')
     parser.add_argument('-f', '--folders', nargs='+', help='Additional subdirectories to search for files (e.g., -f utils helpers)')
     return parser.parse_args()
@@ -29,19 +29,19 @@ def get_current_directory():
 def get_timestamp():
     return datetime.now().strftime("%Y%m%d-%H%M%S")
 
-def backup_existing_selective_files(current_dir, work_dir_name):
+def backup_existing_gpt_files(current_dir, work_dir_name):
     backup_base = r'C:\code\backups'
     backup_dir = os.path.join(backup_base, work_dir_name, 'copyscript-backups')
     os.makedirs(backup_dir, exist_ok=True)
     for item in os.listdir(current_dir):
-        if item.lower().endswith('.selective'):
+        if item.lower().endswith('.gpt'):
             original_path = os.path.join(current_dir, item)
-            bak_filename = os.path.splitext(item)[0] + '.SELECTIVEBAK'
+            bak_filename = os.path.splitext(item)[0] + '.GPTSELECTIVEBAK'
             backup_path = os.path.join(backup_dir, bak_filename)
             try:
                 os.rename(original_path, os.path.join(current_dir, bak_filename))
                 shutil.move(os.path.join(current_dir, bak_filename), backup_path)
-            except Exception:
+            except:
                 continue
 
 def collect_files(base_dirs, extensions, excluded_filenames, exclude_subdirs_map, always_excluded_subdirs):
@@ -57,17 +57,27 @@ def collect_files(base_dirs, extensions, excluded_filenames, exclude_subdirs_map
                     continue
                 if any(file.lower().endswith(ext.lower()) for ext in extensions) or file.lower() == 'requirements.txt':
                     filename_map[file.lower()].append(os.path.join(root, file))
+    filename_map['indicator_params.json'] = [os.path.join(base_dirs[0], 'indicator_params.json')]
     return filename_map
 
 def alert_duplicate_filenames(duplicate_files):
     for filename, paths in duplicate_files.items():
-        pass
+        for path in paths:
+            try:
+                size = os.path.getsize(path)
+                ctime = datetime.fromtimestamp(os.path.getctime(path)).strftime('%Y-%m-%d %H:%M:%S')
+                mtime = datetime.fromtimestamp(os.path.getmtime(path)).strftime('%Y-%m-%d %H:%M:%S')
+                with open(path, 'r', encoding='utf-8', errors='ignore') as f:
+                    num_lines = len(f.readlines())
+            except:
+                continue
 
 def read_file_contents(file_path):
     try:
         with open(file_path, 'rb') as f:
             raw_data = f.read()
-        encoding = chardet.detect(raw_data)['encoding']
+        result = chardet.detect(raw_data)
+        encoding = result['encoding']
         return raw_data.decode(encoding, errors='replace').replace('\r\n', '\n')
     except:
         return "[Error reading file]"
@@ -78,13 +88,31 @@ def extract_relevant_log_section(log_content):
     traceback_indices = [i for i, line in enumerate(lines) if 'Traceback' in line]
     first_error = error_indices[0] if error_indices else None
     first_traceback = traceback_indices[0] if traceback_indices else None
-    start_index = max(first_error - 8, 0) if first_error is not None else max(first_traceback - 8, 0) if first_traceback is not None else 0
+    if first_error is not None and (first_traceback is None or first_error < first_traceback):
+        start_index = max(first_error - 8, 0)
+    elif first_traceback is not None:
+        start_index = max(first_traceback - 8, 0)
+    else:
+        return log_content
     return '\n'.join(lines[start_index:])
 
 def generate_output(collected_files, log_content=None):
-    sections = []
-    for filename, path in collected_files.items():
-        sections.append(f"{filename}:\n{read_file_contents(path[0])}\n====================")
+    header = ("I’m encountering an error in my script, and I’ve included the output along with all related project scripts below. "
+        "Please review and provide a complete fix. Ensure your response includes a fully functional, error-free, and "
+        "deployment-ready script, with no placeholders or omissions. Additionally, any revised code should be as compact as "
+        "possible, without remarks or docstrings, while maintaining full functionality, compatibility, and interoperability. "
+        "If no changes are needed, there’s no need to include the script in your response.\n\n")
+    error_header = ""
+    if log_content:
+        error_header += (f"See the error I receive here:\n\n====================\n\n{log_content}\n\n====================\n\n")
+    error_header += "I've listed all the scripts in this project here:\n\n====================\n\n"
+    sections = [header + error_header]
+    for idx, (filename, path) in enumerate(collected_files, start=1):
+        relative_path = os.path.relpath(path, start=current_dir)
+        location = "located in the 'scripts' subdirectory" if os.path.commonpath([path, scripts_dir]) == scripts_dir else "located in the working directory"
+        file_contents = read_file_contents(path)
+        section = f"{idx}) {os.path.basename(relative_path)} ({location}):\n{file_contents}\n===================="
+        sections.append(section)
     return '\n'.join(sections)
 
 def write_output_file(output_path, content):
@@ -98,19 +126,20 @@ if __name__ == "__main__":
     current_dir = get_current_directory()
     work_dir_name = os.path.basename(os.path.normpath(current_dir))
     scripts_dir = os.path.join(current_dir, "scripts")
-    backup_existing_selective_files(current_dir, work_dir_name)
+    backup_existing_gpt_files(current_dir, work_dir_name)
     args = parse_arguments()
     timestamp = get_timestamp()
     output_filename = f"{work_dir_name}-{timestamp}.SELECTIVE"
     output_path = os.path.join(current_dir, output_filename)
     script_filename = os.path.basename(__file__).lower()
-    excluded_filenames = {script_filename, 'parsetab.py', 'copyscripts.py', 'copyscripts_selective.py', 'repair-remarks.py', 'cspell.json', 'revert-to-gpt-scripts.py'}
+    excluded_filenames = {script_filename, 'parsetab.py', 'backup_cleanup.py', 'backup_utils.py', 'generate_heatmaps.py', 'requirements.txt', 'copyscripts.py', 'copyscripts_selective.py', 'logging_setup.py', 'repair-remarks.py', 'visualization_utils.py', 'visualize_data.py', 'cspell.json', 'revert-to-gpt-scripts.py'}
     extensions = ['.py', '.ps', '.json']
     if args.extensions:
         extensions.extend([ext.lower() if ext.startswith('.') else f".{ext.lower()}" for ext in args.extensions])
     base_dirs = [current_dir, scripts_dir]
+    base_dirs = list(dict.fromkeys(base_dirs))
     if args.folders:
-        base_dirs.extend([os.path.join(current_dir, folder) for folder in args.folders])
+        base_dirs.extend([os.path.join(current_dir, folder) for folder in args.folders if os.path.join(current_dir, folder) not in base_dirs])
     exclude_subdirs_map = {current_dir: ['scripts']}
     always_excluded_subdirs = ['venv', '.venv']
     filename_map = collect_files(base_dirs, extensions, excluded_filenames, exclude_subdirs_map, always_excluded_subdirs)
@@ -123,6 +152,9 @@ if __name__ == "__main__":
     if not unique_files:
         sys.exit(0)
     log_files = [os.path.join(current_dir, f) for f in os.listdir(current_dir) if f.endswith('.log')]
-    log_content = extract_relevant_log_section(read_file_contents(log_files[0])) if log_files else None
-    output_content = generate_output(filename_map, log_content)
+    log_content = None
+    if log_files:
+        full_log_content = read_file_contents(log_files[0])
+        log_content = extract_relevant_log_section(full_log_content)
+    output_content = generate_output(unique_files, log_content)
     write_output_file(output_path, output_content)
