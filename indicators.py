@@ -116,10 +116,6 @@ def compute_indicator(data: pd.DataFrame, indicator_name: str, params: Dict[str,
                 column_name = f"{indicator_name}_param"
                 data[column_name] = result
         elif indicator_type == 'custom':
-            # Handle custom indicators based on their unique logic
-            # This requires that custom indicators have their computation logic defined here
-            # For simplicity, we'll skip implementing custom indicators dynamically
-            # In practice, you'd need to define how each custom indicator is computed
             logger.warning(f"Custom indicator '{indicator_name}' computation is not implemented.")
         else:
             logger.error(f"Unknown indicator type '{indicator_type}' for indicator '{indicator_name}'.")
@@ -160,10 +156,8 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
                 parameters = config
                 valid_combinations = generate_parameter_combinations(parameters, conditions)
                 for combo in valid_combinations:
-                    # Add config_id to parameters
                     combo_with_id = combo.copy()
                     combo_with_id['config_id'] = config_id
-                    # Compute indicator
                     data = compute_indicator(data, indicator_name, {
                         'type': indicator_details.get('type'),
                         'parameters': combo_with_id
