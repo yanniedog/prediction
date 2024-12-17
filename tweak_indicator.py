@@ -22,32 +22,34 @@ def generate_configurations(parameter_keys: List[str], parameter_definitions: Di
             logger.warning(f"Parameter '{param}' does not have a default value. Skipping.")
             continue
         if isinstance(default, int):
-            if default >= 1:
+            if param in ['fast', 'slow', 'fastperiod', 'slowperiod', 'signalperiod', 'timeperiod', 'timeperiod1', 'timeperiod2', 'timeperiod3', 'pivot_lookback']:
+                start = max(2, default - 5)
+            else:
                 start = max(1, default - 5)
-                param_alternatives[param] = [start + i for i in range(11)]
-            elif 0 < default < 1:
-                param_alternatives[param] = [round(default * (0.9 + 0.02 * i), 4) for i in range(11)]
-            else:
-                logger.warning(f"Parameter '{param}' has a default value that does not fit the criteria. Using default only.")
-                param_alternatives[param] = [default]
+            param_alternatives[param] = [start + i for i in range(11)]
         elif isinstance(default, float):
-            if default >= 1:
-                param_alternatives[param] = [round(default - 5.0 + i, 1) for i in range(11)]
+            if param in ['fast', 'slow', 'fastperiod', 'slowperiod', 'signalperiod', 'timeperiod', 'timeperiod1', 'timeperiod2', 'timeperiod3', 'pivot_lookback']:
+                start = max(2.0, default - 5.0)
+                param_alternatives[param] = [round(start + i, 1) for i in range(11)]
             elif 0 < default < 1:
-                param_alternatives[param] = [round(default * (0.9 + 0.02 * i), 4) for i in range(11)]
+                start = max(0.1, default * 0.9)
+                param_alternatives[param] = [round(start + 0.02 * i, 4) for i in range(11)]
             else:
-                logger.warning(f"Parameter '{param}' has a default value that does not fit the criteria. Using default only.")
                 param_alternatives[param] = [default]
         else:
             logger.warning(f"Parameter '{param}' is not a numeric type. Using default only.")
             param_alternatives[param] = [default]
-    
+
     if not param_alternatives:
         return []
-    
+
     keys, values = zip(*param_alternatives.items())
     configurations = [dict(zip(keys, v)) for v in itertools.product(*values)]
-    return configurations
+
+    valid_combinations = []
+    for combo in configurations:
+        valid_combinations.append(combo)
+    return valid_combinations
 
 def fetch_available_indicators() -> List[str]:
     return get_configurable_indicators('indicator_params.json')
@@ -81,7 +83,7 @@ def run_tweak_indicator():
         logger.exception(f"Error fetching configurable indicators: {e}")
         print(f"Error fetching configurable indicators: {e}")
         sys.exit(1)
-    
+
     selected_indicators = []
     print("\nAvailable Indicators for Tweak:")
     for idx, indicator in enumerate(available_indicators, 1):
@@ -91,54 +93,53 @@ def run_tweak_indicator():
         logger.error("Invalid choice. Exiting.")
         print("Invalid choice. Exiting.")
         sys.exit(1)
-    
+
     selected_indicator = available_indicators[int(choice) - 1]
     logger.info(f"Selected indicator: {selected_indicator}")
     print(f"Selected indicator: {selected_indicator}")
-    
+
     try:
         parameters = parse_indicator_parameters(selected_indicator)
         if not parameters:
-            logger.error(f"No parameters found for '{selected_indicator}'. Exiting.")
-            print(f"No parameters found for '{selected_indicator}'. Exiting.")
-            sys.exit(1)
-        param_defs = parameters.get('parameters', {})
-        if not param_defs:
-            logger.error(f"No 'parameters' section for '{selected_indicator}'. Exiting.")
-            print(f"No 'parameters' section for '{selected_indicator}'. Exiting.")
-            sys.exit(1)
-        print(f"Parameters for '{selected_indicator}': {param_defs}")
-        logger.info(f"Parameters for '{selected_indicator}': {param_defs}")
+            logger.error(f"No parameters found for '{selected_indicator}'. Using base indicator.")
+            print(f"No parameters found for '{selected_indicator}'. Using base indicator.")
+            return selected_indicator
+        else:
+            logger.info(f"Parameters for '{selected_indicator}': {parameters}")
+            print(f"Parameters for '{selected_indicator}': {parameters}")
     except Exception as e:
         logger.error(f"Error retrieving parameters for '{selected_indicator}': {e}")
         print(f"Error retrieving parameters for '{selected_indicator}'. Exiting.")
         sys.exit(1)
-    
-    try:
-        configurations = generate_configurations(list(param_defs.keys()), param_defs)
-        if not configurations:
-            logger.error(f"No configurations generated for '{selected_indicator}'. Exiting.")
-            print(f"No configurations generated for '{selected_indicator}'. Exiting.")
-            sys.exit(1)
-        print(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
+
+    if 'parameters' in parameters:
+        configurations = generate_configurations(list(parameters['parameters'].keys()), parameters['parameters'])
+    else:
+        configurations = []
+
+    if not configurations:
+        logger.error(f"No configurations generated for '{selected_indicator}'. Using base indicator.")
+        print(f"No configurations generated for '{selected_indicator}'. Using base indicator.")
+    else:
         logger.info(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
-        example_configs = configurations[:5]
-        print(f"Example configurations for '{selected_indicator}': {example_configs}")
+        print(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
+        example_configs = configurations[:15]
         logger.info(f"Example configurations for '{selected_indicator}': {example_configs}")
-    except Exception as e:
-        logger.error(f"Error generating configurations for '{selected_indicator}': {e}")
-        print(f"Error generating configurations for '{selected_indicator}'. Exiting.")
-        sys.exit(1)
-    
+        print(f"Example configurations for '{selected_indicator}': {example_configs}")
+
     try:
         insert_tweaked_configs(conn, selected_indicator, configurations)
-        print(f"Inserted configurations for '{selected_indicator}' into the database.")
-        logger.info(f"Inserted configurations for '{selected_indicator}' into the database.")
+        if configurations:
+            logger.info("Configurations stored in database:")
+            for config in configurations[:15]:
+                logger.info(config)
+                print(config)
+        print(f"Configurations for '{selected_indicator}' have been added to the database.")
     except Exception as e:
         logger.error(f"Error inserting configurations into database for '{selected_indicator}': {e}")
         print(f"Error inserting configurations into database for '{selected_indicator}'. Exiting.")
         sys.exit(1)
-    
+
     conn.close()
     logger.info(f"Configurations for '{selected_indicator}' have been added to the database.")
     print(f"Configurations for '{selected_indicator}' have been added to the database.")

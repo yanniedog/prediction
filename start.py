@@ -83,7 +83,7 @@ def run_tweak_indicator(symbol: str, timeframe: str):
         logger.info(f"Parameters for '{selected_indicator}': {parameters}")
 
     if 'parameters' in parameters:
-        configurations = generate_configurations(parameters['parameters'].keys(), parameters['parameters'])
+        configurations = generate_configurations(list(parameters['parameters'].keys()), parameters['parameters'])
     else:
         configurations = []
 
@@ -156,6 +156,9 @@ def main():
 
             try:
                 data = compute_configured_indicators(data, indicators_list, db_path=DB_PATH)
+                if data.empty:
+                    logger.error("No valid indicator data after computation. Exiting.")
+                    sys.exit(1)
                 logger.info("Configured indicators computed successfully.")
                 logger.info("Computing correlations.")
                 load_or_calculate_correlations(

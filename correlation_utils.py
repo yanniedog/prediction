@@ -29,7 +29,8 @@ def load_or_calculate_correlations(data: pd.DataFrame, indicators: List[str], ma
         cursor.execute("""
             SELECT ic.id, ic.config FROM indicator_configs ic
             JOIN indicators i ON ic.indicator_id = i.id
-            WHERE i.name = ?;""", (indicator,))
+            WHERE i.name = ?;
+        """, (indicator,))
         configs = cursor.fetchall()
         for config_id, config_json in configs:
             config = json.loads(config_json)
@@ -44,7 +45,8 @@ def load_or_calculate_correlations(data: pd.DataFrame, indicators: List[str], ma
                 SELECT lag FROM correlations 
                 WHERE symbol_id=(SELECT id FROM symbols WHERE symbol=?) 
                 AND timeframe_id=(SELECT id FROM timeframes WHERE timeframe=?) 
-                AND indicator_config_id=?;""", (symbol, timeframe, config_id))
+                AND indicator_config_id=?;
+            """, (symbol, timeframe, config_id))
             existing_lags = {row[0] for row in cursor.fetchall()}
             to_calc = [lag for lag in range(1, max_lag+1) if lag not in existing_lags]
             for lag in to_calc:

@@ -14,12 +14,12 @@ logger = logging.getLogger(__name__)
 
 def evaluate_conditions(params: Dict[str, Any], conditions: List[Dict[str, Dict[str, Any]]]) -> bool:
     operator_map = {
-        'greater_than': '>',
-        'greater_than_or_equal': '>=',
-        'less_than': '<',
-        'less_than_or_equal': '<=',
-        'equal': '==',
-        'not_equal': '!='
+        'gt': '>',
+        'gte': '>=',
+        'lt': '<',
+        'lte': '<=',
+        'eq': '==',
+        'neq': '!='
     }
     for condition in conditions:
         for param, ops in condition.items():
@@ -29,30 +29,34 @@ def evaluate_conditions(params: Dict[str, Any], conditions: List[Dict[str, Dict[
                     logger.error(f"Unsupported operator '{op}' in conditions.")
                     return False
                 if isinstance(value, str):
-                    if value not in params:
+                    compare_value = params.get(value)
+                    if compare_value is None:
                         logger.error(f"Condition value '{value}' for parameter '{param}' not found in params.")
                         return False
-                    compare_value = params[value]
                 else:
                     compare_value = value
-                if mapped_op == '<':
-                    if not params[param] < compare_value:
-                        return False
-                elif mapped_op == '<=':
-                    if not params[param] <= compare_value:
-                        return False
-                elif mapped_op == '>':
-                    if not params[param] > compare_value:
-                        return False
-                elif mapped_op == '>=':
-                    if not params[param] >= compare_value:
-                        return False
-                elif mapped_op == '==':
-                    if not params[param] == compare_value:
-                        return False
-                elif mapped_op == '!=':
-                    if not params[param] != compare_value:
-                        return False
+                try:
+                    if mapped_op == '>':
+                        if not params[param] > compare_value:
+                            return False
+                    elif mapped_op == '>=':
+                        if not params[param] >= compare_value:
+                            return False
+                    elif mapped_op == '<':
+                        if not params[param] < compare_value:
+                            return False
+                    elif mapped_op == '<=':
+                        if not params[param] <= compare_value:
+                            return False
+                    elif mapped_op == '==':
+                        if not params[param] == compare_value:
+                            return False
+                    elif mapped_op == '!=':
+                        if not params[param] != compare_value:
+                            return False
+                except TypeError as te:
+                    logger.error(f"Type error in condition evaluation for parameter '{param}': {te}")
+                    return False
     return True
 
 def generate_parameter_combinations(parameters: Dict[str, Any], conditions: List[Dict[str, Dict[str, Any]]]) -> List[Dict[str, Any]]:
@@ -60,17 +64,20 @@ def generate_parameter_combinations(parameters: Dict[str, Any], conditions: List
 
     param_ranges = {}
     for param, details in parameters.items():
-        p_type = details.get('type')
         default = details.get('default')
-        if isinstance(default, (int, float)):
-            if default >= 1:
-                if isinstance(default, int):
-                    start = max(1, default - 5)
-                    param_ranges[param] = [start + i for i in range(11)]
-                else:
-                    param_ranges[param] = [round(default - 5.0 + i, 1) for i in range(11)]
+        if isinstance(default, int):
+            if param in ['fast', 'slow', 'fastperiod', 'slowperiod', 'signalperiod', 'timeperiod', 'timeperiod1', 'timeperiod2', 'timeperiod3', 'pivot_lookback']:
+                start = max(2, default - 5)
+            else:
+                start = max(1, default - 5)
+            param_ranges[param] = [start + i for i in range(11)]
+        elif isinstance(default, float):
+            if param in ['fast', 'slow', 'fastperiod', 'slowperiod', 'signalperiod', 'timeperiod', 'timeperiod1', 'timeperiod2', 'timeperiod3', 'pivot_lookback']:
+                start = max(2.0, default - 5.0)
+                param_ranges[param] = [round(start + i, 1) for i in range(11)]
             elif 0 < default < 1:
-                param_ranges[param] = [round(default * (0.9 + 0.02 * i), 4) for i in range(11)]
+                start = max(0.1, default * 0.9)
+                param_ranges[param] = [round(start + 0.02 * i, 4) for i in range(11)]
             else:
                 param_ranges[param] = [default]
         else:
@@ -132,7 +139,7 @@ def compute_indicator(data: pd.DataFrame, indicator_name: str, params: Dict[str,
 
 def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str], db_path: str = DB_PATH, indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
     try:
-        indicator_configs = parse_indicators_json(indicator_params_path)
+        indicator_params = parse_indicators_json(indicator_params_path)
     except Exception as e:
         logger.error(f"Error loading indicator parameters: {e}")
         raise e

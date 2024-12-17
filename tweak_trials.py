@@ -16,19 +16,17 @@ from logging_setup import configure_logging
 logger = logging.getLogger(__name__)
 
 def fetch_ao_configurations(conn) -> List[Dict[str, Any]]:
-    """Fetch all configurations for the 'ao' indicator from the database."""
     cursor = conn.cursor()
     cursor.execute("""
-        SELECT ic.config FROM indicator_configs ic
+        SELECT ic.id, ic.config FROM indicator_configs ic
         JOIN indicators i ON ic.indicator_id = i.id
         WHERE i.name = 'ao';
     """)
     rows = cursor.fetchall()
-    configurations = [json.loads(row[0]) for row in rows]
+    configurations = [{'id': row[0], **json.loads(row[1])} for row in rows]
     return configurations
 
 def attempt_compute_indicator(data: pd.DataFrame, params: Dict[str, Any], config_id: int) -> bool:
-    """Attempt to compute the 'ao' indicator with given parameters."""
     try:
         input_columns = ['high', 'low']
         parameters = {'type': 'pandas-ta', 'parameters': params}
@@ -39,7 +37,6 @@ def attempt_compute_indicator(data: pd.DataFrame, params: Dict[str, Any], config
         return False
 
 def analyze_results(valid_params: List[Dict[str, Any]], invalid_params: List[Dict[str, Any]]) -> Tuple[Dict[str, Tuple[float, float]], Dict[str, Tuple[float, float]]]:
-    """Analyze valid and invalid parameters to determine ranges."""
     valid_ranges = {}
     invalid_ranges = {}
     
@@ -62,7 +59,6 @@ def analyze_results(valid_params: List[Dict[str, Any]], invalid_params: List[Dic
     return valid_ranges, invalid_ranges
 
 def report_results(valid_ranges: Dict[str, Tuple[float, float]], invalid_ranges: Dict[str, Tuple[float, float]]):
-    """Report the valid and invalid ranges."""
     print("\n=== Tweak Trials Results ===")
     logger.error("\n=== Tweak Trials Results ===")
     
@@ -116,13 +112,15 @@ def main():
         valid_params = []
         invalid_params = []
         
-        for idx, config in enumerate(configurations, 1):
-            logger.error(f"Attempting configuration {idx}: {config}")
-            success = attempt_compute_indicator(data, config, idx)
+        for config in configurations:
+            config_id = config.pop('id')
+            params = config
+            logger.error(f"Attempting configuration {config_id}: {params}")
+            success = attempt_compute_indicator(data, params, config_id)
             if success:
-                valid_params.append(config)
+                valid_params.append(params)
             else:
-                invalid_params.append(config)
+                invalid_params.append(params)
         
         valid_ranges, invalid_ranges = analyze_results(valid_params, invalid_params)
         

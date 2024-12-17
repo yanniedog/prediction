@@ -19,32 +19,34 @@ def generate_configurations(parameter_keys: List[str], parameter_definitions: Di
             logger.warning(f"Parameter '{param}' does not have a default value. Skipping.")
             continue
         if isinstance(default, int):
-            if default >= 1:
+            if param in ['fast', 'slow', 'fastperiod', 'slowperiod', 'signalperiod', 'timeperiod', 'timeperiod1', 'timeperiod2', 'timeperiod3', 'pivot_lookback']:
+                start = max(2, default - 5)
+            else:
                 start = max(1, default - 5)
-                param_alternatives[param] = [start + i for i in range(11)]
-            elif 0 < default < 1:
-                param_alternatives[param] = [round(default * (0.9 + 0.02 * i), 4) for i in range(11)]
-            else:
-                logger.warning(f"Parameter '{param}' has a default value that does not fit the criteria. Using default only.")
-                param_alternatives[param] = [default]
+            param_alternatives[param] = [start + i for i in range(11)]
         elif isinstance(default, float):
-            if default >= 1:
-                param_alternatives[param] = [round(default - 5.0 + i, 1) for i in range(11)]
+            if param in ['fast', 'slow', 'fastperiod', 'slowperiod', 'signalperiod', 'timeperiod', 'timeperiod1', 'timeperiod2', 'timeperiod3', 'pivot_lookback']:
+                start = max(2.0, default - 5.0)
+                param_alternatives[param] = [round(start + i, 1) for i in range(11)]
             elif 0 < default < 1:
-                param_alternatives[param] = [round(default * (0.9 + 0.02 * i), 4) for i in range(11)]
+                start = max(0.1, default * 0.9)
+                param_alternatives[param] = [round(start + 0.02 * i, 4) for i in range(11)]
             else:
-                logger.warning(f"Parameter '{param}' has a default value that does not fit the criteria. Using default only.")
                 param_alternatives[param] = [default]
         else:
             logger.warning(f"Parameter '{param}' is not a numeric type. Using default only.")
             param_alternatives[param] = [default]
-    
+
     if not param_alternatives:
         return []
-    
+
     keys, values = zip(*param_alternatives.items())
     configurations = [dict(zip(keys, v)) for v in itertools.product(*values)]
-    return configurations
+
+    valid_combinations = []
+    for combo in configurations:
+        valid_combinations.append(combo)
+    return valid_combinations
 
 def select_indicators(available_indicators: List[str]) -> List[str]:
     print("\nAvailable Indicators for Tweak:")
@@ -100,10 +102,10 @@ def tweak_params():
         logger.exception(f"Error fetching configurable indicators: {e}")
         print(f"Error fetching configurable indicators: {e}")
         sys.exit(1)
-    
+
     selected_indicators = select_indicators(available_indicators)
     logger.info(f"Selected indicators for tweaking: {selected_indicators}")
-    
+
     for indicator_name in selected_indicators:
         logger.info(f"Processing Indicator: {indicator_name}")
         print(f"\nProcessing Indicator: {indicator_name}")
@@ -129,8 +131,8 @@ def tweak_params():
         try:
             configurations = generate_configurations(list(param_defs.keys()), param_defs)
             if not configurations:
-                logger.warning(f"No configurations generated for '{indicator_name}'.")
-                print(f"No configurations generated for '{indicator_name}'.")
+                logger.warning(f"No configurations generated for '{indicator_name}'. Skipping.")
+                print(f"No configurations generated for '{indicator_name}'. Skipping.")
                 continue
             print(f"Generated {len(configurations)} configurations for '{indicator_name}'.")
             logger.info(f"Generated {len(configurations)} configurations for '{indicator_name}'.")
