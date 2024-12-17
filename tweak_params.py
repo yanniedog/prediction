@@ -91,7 +91,6 @@ def tweak_params():
                 continue
             print(f"Generated {len(configurations)} configurations for '{indicator_name}'.")
             logger.info(f"Generated {len(configurations)} configurations for '{indicator_name}'.")
-            # Optionally, display first few configurations
             example_configs = configurations[:5]
             print(f"Example configurations for '{indicator_name}': {example_configs}")
             logger.info(f"Example configurations for '{indicator_name}': {example_configs}")

@@ -10,9 +10,24 @@ import json
 from config import DB_PATH
 from indicator_config_parser import get_configurable_indicators, get_indicator_parameters
 from sqlite_data_manager import insert_indicator_configs, create_connection, initialize_database
+from tweak_params import tweak_params
 from logging_setup import configure_logging
 
 logger = logging.getLogger(__name__)
+
+def run_tweak_indicator():
+    """
+    Orchestrates the parameter tweaking process by invoking tweak_params.
+    """
+    tweak_params()
+
+if __name__ == "__main__":
+    configure_logging(log_file_prefix="tweak_indicator")
+    try:
+        run_tweak_indicator()
+    except Exception as e:
+        logger.exception("An unexpected error occurred during indicator tweaking.")
+        sys.exit(1)
 
 def generate_configurations(parameter_keys: List[str], parameter_definitions: Dict) -> List[Dict]:
     param_ranges = {}
