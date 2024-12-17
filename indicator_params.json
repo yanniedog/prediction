@@ -9,7 +9,17 @@
                 "signalperiod": { "default": 9 },
                 "matype": { "default": 0 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "fastperiod": { "gte": 2 }
+                },
+                {
+                    "slowperiod": { "gte": 2 }
+                },
+                {
+                    "fastperiod": { "lt": "slowperiod" }
+                }
+            ]
         },
         "minus_di": {
             "type": "ta-lib",
@@ -17,7 +27,11 @@
             "parameters": {
                 "timeperiod": { "default": 14 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "minus_dm": {
             "type": "ta-lib",
@@ -25,7 +39,11 @@
             "parameters": {
                 "timeperiod": { "default": 14 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "mom": {
             "type": "ta-lib",
@@ -33,7 +51,11 @@
             "parameters": {
                 "timeperiod": { "default": 10 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "plus_di": {
             "type": "ta-lib",
@@ -41,7 +63,11 @@
             "parameters": {
                 "timeperiod": { "default": 14 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "plus_dm": {
             "type": "ta-lib",
@@ -49,7 +75,11 @@
             "parameters": {
                 "timeperiod": { "default": 14 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "ppo": {
             "type": "ta-lib",
@@ -59,7 +89,17 @@
                 "slowperiod": { "default": 26 },
                 "matype": { "default": 0 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "fastperiod": { "gte": 2 }
+                },
+                {
+                    "slowperiod": { "gte": 2 }
+                },
+                {
+                    "fastperiod": { "lt": "slowperiod" }
+                }
+            ]
         },
         "roc": {
             "type": "ta-lib",
@@ -67,7 +107,11 @@
             "parameters": {
                 "timeperiod": { "default": 10 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "rocp": {
             "type": "ta-lib",
@@ -75,7 +119,11 @@
             "parameters": {
                 "timeperiod": { "default": 10 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "rocr": {
             "type": "ta-lib",
@@ -83,7 +131,11 @@
             "parameters": {
                 "timeperiod": { "default": 10 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "rocr100": {
             "type": "ta-lib",
@@ -91,7 +143,11 @@
             "parameters": {
                 "timeperiod": { "default": 10 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "stochf": {
             "type": "ta-lib",
@@ -103,7 +159,17 @@
                 "slowd_period": { "default": 3 },
                 "slowd_matype": { "default": 0 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "fastk_period": { "gte": 2 }
+                },
+                {
+                    "slowk_period": { "gte": 2 }
+                },
+                {
+                    "slowd_period": { "gte": 2 }
+                }
+            ]
         },
         "stochrsi": {
             "type": "ta-lib",
@@ -114,7 +180,17 @@
                 "fastd_period": { "default": 3 },
                 "fastd_matype": { "default": 0 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                },
+                {
+                    "fastk_period": { "gte": 2 }
+                },
+                {
+                    "fastd_period": { "gte": 2 }
+                }
+            ]
         },
         "trix": {
             "type": "ta-lib",
@@ -122,7 +198,11 @@
             "parameters": {
                 "timeperiod": { "default": 30 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "ultosc": {
             "type": "ta-lib",
@@ -132,7 +212,23 @@
                 "timeperiod2": { "default": 14 },
                 "timeperiod3": { "default": 28 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod1": { "gte": 2 }
+                },
+                {
+                    "timeperiod2": { "gte": 2 }
+                },
+                {
+                    "timeperiod3": { "gte": 2 }
+                },
+                {
+                    "timeperiod1": { "lt": "timeperiod2" }
+                },
+                {
+                    "timeperiod2": { "lt": "timeperiod3" }
+                }
+            ]
         },
         "willr": {
             "type": "ta-lib",
@@ -140,7 +236,11 @@
             "parameters": {
                 "timeperiod": { "default": 14 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "adosc": {
             "type": "ta-lib",
@@ -149,7 +249,17 @@
                 "fastperiod": { "default": 3 },
                 "slowperiod": { "default": 10 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "fastperiod": { "gte": 2 }
+                },
+                {
+                    "slowperiod": { "gte": 2 }
+                },
+                {
+                    "fastperiod": { "lt": "slowperiod" }
+                }
+            ]
         },
         "atr": {
             "type": "ta-lib",
@@ -157,7 +267,11 @@
             "parameters": {
                 "timeperiod": { "default": 14 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "natr": {
             "type": "ta-lib",
@@ -165,7 +279,11 @@
             "parameters": {
                 "timeperiod": { "default": 14 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "linearreg": {
             "type": "ta-lib",
@@ -173,7 +291,11 @@
             "parameters": {
                 "timeperiod": { "default": 14 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "stddev": {
             "type": "ta-lib",
@@ -182,7 +304,11 @@
                 "timeperiod": { "default": 5 },
                 "nbdev": { "default": 1 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "var": {
             "type": "ta-lib",
@@ -190,7 +316,11 @@
             "parameters": {
                 "timeperiod": { "default": 5 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "mfi": {
             "type": "ta-lib",
@@ -198,7 +328,11 @@
             "parameters": {
                 "timeperiod": { "default": 14 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "vortex": {
             "type": "pandas-ta",
@@ -206,7 +340,11 @@
             "parameters": {
                 "length": { "default": 14 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "length": { "gte": 2 }
+                }
+            ]
         },
         "ao": {
             "type": "pandas-ta",
@@ -215,7 +353,17 @@
                 "fast": { "default": 5 },
                 "slow": { "default": 34 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "fast": { "gte": 2 }
+                },
+                {
+                    "slow": { "gte": 2 }
+                },
+                {
+                    "fast": { "lt": "slow" }
+                }
+            ]
         },
         "kc": {
             "type": "pandas-ta",
@@ -226,7 +374,17 @@
                 "multup": { "default": 2 },
                 "multdn": { "default": 2 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "length": { "gte": 2 }
+                },
+                {
+                    "multup": { "gte": 0.1 }
+                },
+                {
+                    "multdn": { "gte": 0.1 }
+                }
+            ]
         },
         "rvi": {
             "type": "ta-lib",
@@ -234,7 +392,11 @@
             "parameters": {
                 "timeperiod": { "default": 10 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
         },
         "tsi": {
             "type": "ta-lib",
@@ -243,7 +405,17 @@
                 "long": { "default": 25 },
                 "short": { "default": 13 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "long": { "gte": 2 }
+                },
+                {
+                    "short": { "gte": 2 }
+                },
+                {
+                    "short": { "lt": "long" }
+                }
+            ]
         },
         "EyeX MFV Volume": {
             "type": "custom",
@@ -269,7 +441,14 @@
                     "default": 0.00001
                 }
             },
-            "conditions": []
+            "conditions": [
+                {
+                    "pivot_lookback": { "gte": 1 }
+                },
+                {
+                    "price_proximity": { "gte": 0.000001 }
+                }
+            ]
         }
     }
 }
