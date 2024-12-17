@@ -6,7 +6,7 @@ import talib as ta
 import pandas_ta as pta
 import json
 from typing import List, Dict, Any
-from indicator_config_parser import parse_indicators_json
+from indicator_config_parser import parse_indicators_json, get_indicator_parameters
 from sqlite_data_manager import create_connection, fetch_indicator_configs
 from config import DB_PATH
 
@@ -153,7 +153,7 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
             cursor.execute("""
                 SELECT ic.id, ic.config FROM indicator_configs ic
                 JOIN indicators i ON ic.indicator_id = i.id
-                WHERE i.name = ?
+                WHERE i.name = ?;
             """, (indicator_name,))
             rows = cursor.fetchall()
             if not rows:
@@ -161,7 +161,7 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
                 continue
             for config_id, config_json in rows:
                 config = json.loads(config_json)
-                indicator_details = indicator_configs.get(indicator_name)
+                indicator_details = get_indicator_parameters(indicator_name, indicator_params_path)
                 if not indicator_details:
                     logger.error(f"Indicator '{indicator_name}' not found in parameters JSON.")
                     continue
