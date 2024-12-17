@@ -1,3 +1,4 @@
+# test_indicators.py
 import json
 import logging
 import pandas as pd
@@ -61,12 +62,10 @@ def compute_custom_indicator(indicator_name, params, data):
 
 def compute_ta_lib_indicator(indicator_name, params, data):
     try:
-        # Extract parameters excluding 'required_inputs' and others
         extracted_params = {k: v['default'] for k, v in params.items() if 'default' in v and k not in ['required_inputs', 'input_columns', 'conditions']}
         func = getattr(talib, indicator_name.upper())
         required_inputs = params.get('required_inputs', [])
         
-        # Ensure all required inputs are present
         inputs = []
         for inp in required_inputs:
             if inp in data.columns:
@@ -75,13 +74,10 @@ def compute_ta_lib_indicator(indicator_name, params, data):
                 logging.error(f"Required input '{inp}' for indicator '{indicator_name}' is missing in data.")
                 raise ValueError(f"Missing required input: {inp}")
         
-        # Debugging: Log the inputs and parameters
         logging.debug(f"TA-Lib Indicator '{indicator_name}': Inputs = {required_inputs}, Parameters = {extracted_params}")
         
-        # Call the TA-Lib function with inputs and parameters
         result = func(*inputs, **extracted_params)
         
-        # Handle multiple outputs (e.g., MACD returns macd, signal, hist)
         if isinstance(result, tuple):
             for idx, res in enumerate(result):
                 data[f"{indicator_name.upper()}_{idx}"] = res
@@ -102,12 +98,10 @@ def compute_ta_lib_indicator(indicator_name, params, data):
 
 def compute_pandas_ta_indicator(indicator_name, params, data):
     try:
-        # Extract parameters excluding 'required_inputs' and others
         extracted_params = {k: v['default'] for k, v in params.items() if 'default' in v and k not in ['required_inputs', 'input_columns', 'conditions']}
         func = getattr(ta, indicator_name.lower())
         required_inputs = params.get('required_inputs', [])
         
-        # Ensure all required inputs are present
         inputs = []
         for inp in required_inputs:
             if inp in data.columns:
@@ -116,13 +110,10 @@ def compute_pandas_ta_indicator(indicator_name, params, data):
                 logging.error(f"Required input '{inp}' for indicator '{indicator_name}' is missing in data.")
                 raise ValueError(f"Missing required input: {inp}")
         
-        # Debugging: Log the inputs and parameters
         logging.debug(f"pandas-ta Indicator '{indicator_name}': Inputs = {required_inputs}, Parameters = {extracted_params}")
         
-        # Call the pandas-ta function with inputs and parameters
         result = func(*inputs, **extracted_params)
         
-        # Handle if the result is a DataFrame (multiple outputs)
         if isinstance(result, pd.DataFrame):
             for col in result.columns:
                 data[col] = result[col]
@@ -150,7 +141,6 @@ def compute_indicators(indicators, data):
         required_inputs = config.get('required_inputs', [])
         conditions = config.get('conditions', [])
         
-        # Evaluate conditions if any
         if conditions:
             condition_met = True
             for condition in conditions:
@@ -181,13 +171,11 @@ def compute_indicators(indicators, data):
             if not condition_met:
                 continue
         
-        # Check for missing required inputs
         missing_inputs = [inp for inp in required_inputs if inp not in data.columns]
         if missing_inputs:
             logging.warning(f"Missing required inputs {missing_inputs} for indicator '{indicator_name}'. Skipping.")
             continue
         
-        # Compute the indicator based on its type
         try:
             if indicator_type == 'ta-lib':
                 try:
@@ -232,10 +220,7 @@ def validate_indicators(indicators, data):
                     total = len(data)
                     logging.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
         else:
-            # For ta-lib and pandas-ta indicators
             possible_cols = [indicator_name.upper()]
-            # TA-Lib indicators may return multiple outputs like MACD returns macd, signal, hist
-            # pandas-ta might return multiple columns as well
             for col in data.columns:
                 if col.startswith(indicator_name.upper()):
                     possible_cols.append(col)
