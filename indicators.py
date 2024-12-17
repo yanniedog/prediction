@@ -62,22 +62,17 @@ def generate_parameter_combinations(parameters: Dict[str, Any], conditions: List
     for param, details in parameters.items():
         p_type = details.get('type')
         default = details.get('default')
-        step = details.get('step', 1)
-        if 'range' in details:
-            min_val, max_val = details['range']
-            if p_type == 'int':
-                param_ranges[param] = list(range(max(min_val, default - 5), min(max_val, default + 5) + 1, step))
-            elif p_type == 'float':
-                num_steps = int(((min(max_val, default + 5) - max(min_val, default - 5)) / step)) + 1
-                param_ranges[param] = [round(max(min_val, default - 5) + step * i, 4) for i in range(num_steps)]
-            elif p_type == 'str':
-                param_ranges[param] = details.get('options', [default])
-            elif p_type == 'list':
-                param_ranges[param] = details.get('options', [default])
+        if isinstance(default, (int, float)):
+            if default >= 1:
+                if isinstance(default, int):
+                    start = max(1, default - 5)
+                    param_ranges[param] = [start + i for i in range(11)]
+                else:
+                    param_ranges[param] = [round(default - 5.0 + i, 1) for i in range(11)]
+            elif 0 < default < 1:
+                param_ranges[param] = [round(default * (0.9 + 0.02 * i), 4) for i in range(11)]
             else:
                 param_ranges[param] = [default]
-        elif 'options' in details:
-            param_ranges[param] = details['options']
         else:
             param_ranges[param] = [default]
 
@@ -128,11 +123,11 @@ def compute_indicator(data: pd.DataFrame, indicator_name: str, params: Dict[str,
                 column_name = f"{indicator_name}_config_{config_id}"
                 data[column_name] = result
         elif indicator_type == 'custom':
-            logger.warning(f"Custom indicator '{indicator_name}' computation is not implemented.")
+            logger.error(f"Custom indicator '{indicator_name}' computation is not implemented.")
         else:
             logger.error(f"Unknown indicator type '{indicator_type}' for indicator '{indicator_name}'.")
     except Exception as e:
-        logger.error(f"Error computing indicator '{indicator_name}': {e}")
+        logger.error(f"Error computing indicator '{indicator_name}' with parameters {parameters}: {e}")
     return data
 
 def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str], db_path: str = DB_PATH, indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
