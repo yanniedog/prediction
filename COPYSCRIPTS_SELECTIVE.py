@@ -113,7 +113,7 @@ if __name__ == "__main__":
     output_filename = f"{work_dir_name}-{timestamp}.SELECTIVE"
     output_path = os.path.join(current_dir, output_filename)
     script_filename = os.path.basename(__file__).lower()
-    excluded_filenames = {script_filename, 'parsetab.py', 'backup_cleanup.py', 'backup_utils.py', 'copyscripts.py', 'COPYSCRIPTS_SELECTIVE.py', 'restore_backup.py', 'repair-remarks.py', 'cspell.json', 'REVERT-to-gpt-scripts.py', 'test_indicators.py', 'tweak_indicators.py', 'tweak_params.py', 'tweak_trials.py'}
+    excluded_filenames = {script_filename, 'parsetab.py', 'backup_cleanup.py', 'linear_regression.py', 'advanced_analysis.py', 'binance_historical_data_downloader.py', 'generate_heatmaps.py', 'backup_utils.py', 'copyscripts.py', 'COPYSCRIPTS_SELECTIVE.py', 'restore_backup.py', 'repair-remarks.py', 'cspell.json', 'REVERT-to-gpt-scripts.py', 'test_indicators.py', 'tweak_indicators.py', 'tweak_params.py', 'tweak_trials.py'}
     extensions = ['.py', '.ps', '.json']
     if args.extensions:
         extensions.extend([ext.lower() if ext.startswith('.') else f".{ext.lower()}" for ext in args.extensions])
