@@ -1,95 +1,53 @@
-# LAUNCH.py
+# filename: launch.py
+import os
 import sys
+from pathlib import Path
+from datetime import datetime
 import logging
 import runpy
-from pathlib import Path
-from logging_setup import configure_logging
-from backup_utils import run_backup_cleanup
+
+# Centralized logging setup
+# Remove existing log files
+for f in Path.cwd().glob('*.log'):
+    f.unlink()
+
+timestamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+working_dir_name = Path.cwd().name
+log_filename = f"{working_dir_name}_{timestamp}.log"
 
 logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+for h in logger.handlers[:]:
+    logger.removeHandler(h)
+file_handler = logging.FileHandler(log_filename, mode='w')
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+logger.addHandler(file_handler)
 
-def delete_old_logs(log_dir: Path, log_extension: str = ".log"):
-    """
-    Deletes old log files in the specified directory with the given extension.
+class DoubleWriter:
+    def __init__(self, stdout, stderr, logger):
+        self.stdout = stdout
+        self.stderr = stderr
+        self.logger = logger
+    def write(self, msg):
+        if msg.strip():
+            self.logger.info(msg.strip())
+        self.stdout.write(msg)
+    def flush(self):
+        self.stdout.flush()
+    def isatty(self):
+        return self.stdout.isatty()
 
-    Args:
-        log_dir (Path): Directory containing log files.
-        log_extension (str): Extension of log files to delete.
-    """
-    for log_file in log_dir.glob(f"*{log_extension}"):
-        try:
-            log_file.unlink()
-            logger.info(f"Deleted log file: {log_file}")
-        except Exception as e:
-            logger.error(f"Error deleting log file {log_file}: {e}")
+# Redirect stdout and stderr so all print statements in any imported or executed script
+# will appear on screen and be logged automatically without further changes needed
+sys.stdout = DoubleWriter(sys.__stdout__, sys.__stderr__, logger)
+sys.stderr = DoubleWriter(sys.__stderr__, sys.__stderr__, logger)
 
-def run_script(script_name: str) -> int:
-    """
-    Executes a Python script using runpy.run_path.
-
-    Args:
-        script_name (str): The name of the script to execute.
-
-    Returns:
-        int: Exit code from the script. 0 if successful, 1 otherwise.
-    """
-    try:
-        logger.info(f"Executing {script_name}...")
-        runpy.run_path(script_name, run_name="__main__")
-        logger.info(f"{script_name} executed successfully.")
-        return 0
-    except SystemExit as e:
-        logger.warning(f"SystemExit encountered in {script_name} with code: {e.code}")
-        return e.code
-    except Exception as e:
-        logger.exception(f"Uncaught exception during execution of {script_name}")
-        return 1
-
-def main():
-    """
-    Main function to execute backup cleanup, run primary script, execute additional scripts,
-    and handle error codes appropriately.
-    """
-    current_dir = Path.cwd()
-
-    delete_old_logs(current_dir)
-
-    configure_logging(log_file_prefix=current_dir.name)
-
-    exit_code = 0
-
-    primary_scripts = [
-        ("run_backup_cleanup", lambda: run_backup_cleanup()),
-        ("start.py", lambda: run_script("start.py"))
-    ]
-
-    for script_name, script_func in primary_scripts:
-        try:
-            if script_name == "run_backup_cleanup":
-                logger.info(f"Executing {script_name}...")
-                script_func()
-                logger.info(f"{script_name} executed successfully.")
-            else:
-                script_exit_code = script_func()
-                if script_exit_code != 0:
-                    logger.warning(f"{script_name} exited with code: {script_exit_code}")
-                    if exit_code == 0:
-                        exit_code = script_exit_code
-        except Exception as e:
-            logger.exception(f"Exception occurred while executing {script_name}")
-            if exit_code == 0:
-                exit_code = 1
-
-    additional_scripts = ["copyscripts.py", "COPYSCRIPTS_SELECTIVE.py"]
-    for script in additional_scripts:
-        script_exit_code = run_script(script)
-        if script_exit_code != 0:
-            logger.warning(f"{script} exited with code: {script_exit_code}")
-            if exit_code == 0:
-                exit_code = script_exit_code
-
-    logger.info(f"launch.py exiting with code: {exit_code}")
-    sys.exit(exit_code)
-
-if __name__ == "__main__":
-    main()
+# Now any script executed via runpy or imported modules that print will have their output
+# automatically recorded in both the screen and the logfile, with no need to configure logging in them.
+try:
+    runpy.run_path("start.py", run_name="__main__")
+except SystemExit as e:
+    sys.exit(e.code)
+except:
+    raise

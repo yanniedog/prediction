@@ -1,78 +1,107 @@
-# correlation_database.py
-import logging
+# filename: correlation_database.py
 import sqlite3
-import json
-
-logger = logging.getLogger()
 
 class CorrelationDatabase:
-    def __init__(self, db_path: str):
-        self.conn = sqlite3.connect(db_path)
+    def __init__(self,db_path:str):
+        self.db_path=db_path
+        self.connection=sqlite3.connect(self.db_path)
         self.create_table()
 
-    def create_table(self):
-        self.conn.execute("""
+    def create_table(self)->None:
+        create_table_query="""
         CREATE TABLE IF NOT EXISTS correlations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             symbol_id INTEGER NOT NULL,
             timeframe_id INTEGER NOT NULL,
-            indicator_config_id INTEGER NOT NULL,
+            indicator_id INTEGER NOT NULL,
             lag INTEGER NOT NULL,
             correlation_value REAL NOT NULL,
             FOREIGN KEY (symbol_id) REFERENCES symbols(id),
             FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
-            FOREIGN KEY (indicator_config_id) REFERENCES indicator_configs(id),
-            UNIQUE(symbol_id, timeframe_id, indicator_config_id, lag)
-        );""")
-        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_correlations ON correlations (symbol_id, timeframe_id, indicator_config_id, lag);")
-        self.conn.commit()
+            FOREIGN KEY (indicator_id) REFERENCES indicators(id),
+            UNIQUE(symbol_id, timeframe_id, indicator_id, lag)
+        );
+        """
+        create_index_queries=["CREATE INDEX IF NOT EXISTS idx_correlations_symbol_timeframe_indicator_lag ON correlations (symbol_id, timeframe_id, indicator_id, lag);"]
+        cursor=self.connection.cursor()
+        cursor.execute(create_table_query)
+        for query in create_index_queries:
+            cursor.execute(query)
+        self.connection.commit()
 
-    def insert_correlation(self, symbol, timeframe, indicator_config, lag, value):
-        cursor = self.conn.cursor()
-        symbol_id = self._get_or_create_id('symbols', 'symbol', symbol, cursor)
-        timeframe_id = self._get_or_create_id('timeframes', 'timeframe', timeframe, cursor)
-        indicator_config_id = self._get_indicator_config_id(indicator_config, cursor)
+    def insert_correlation(self,symbol:str,timeframe:str,indicator_name:str,lag:int,correlation_value:float)->None:
+        cursor=self.connection.cursor()
+        cursor.execute("SELECT id FROM symbols WHERE symbol = ?",(symbol,))
+        result=cursor.fetchone()
+        if result:
+            symbol_id=result[0]
+        else:
+            cursor.execute("INSERT INTO symbols (symbol) VALUES (?)",(symbol,))
+            symbol_id=cursor.lastrowid
+        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?",(timeframe,))
+        result=cursor.fetchone()
+        if result:
+            timeframe_id=result[0]
+        else:
+            cursor.execute("INSERT INTO timeframes (timeframe) VALUES (?)",(timeframe,))
+            timeframe_id=cursor.lastrowid
+        cursor.execute("SELECT id FROM indicators WHERE name = ?",(indicator_name,))
+        result=cursor.fetchone()
+        if result:
+            indicator_id=result[0]
+        else:
+            cursor.execute("INSERT INTO indicators (name) VALUES (?)",(indicator_name,))
+            indicator_id=cursor.lastrowid
+        insert_query="""
+        INSERT OR REPLACE INTO correlations (
+            symbol_id, timeframe_id, indicator_id, lag, correlation_value
+        ) VALUES (?, ?, ?, ?, ?);
+        """
         try:
-            cursor.execute("""
-                INSERT OR REPLACE INTO correlations (symbol_id, timeframe_id, indicator_config_id, lag, correlation_value)
-                VALUES (?, ?, ?, ?, ?);""", (symbol_id, timeframe_id, indicator_config_id, lag, value))
-            self.conn.commit()
-        except sqlite3.Error as e:
-            logger.error(f"SQLite insertion error: {e}")
-            raise
+            cursor.execute(insert_query,(symbol_id,timeframe_id,indicator_id,lag,correlation_value))
+            self.connection.commit()
+        except sqlite3.Error:
+            pass
+
+    def get_correlation(self,symbol:str,timeframe:str,indicator_name:str,lag:int):
+        cursor=self.connection.cursor()
+        cursor.execute("SELECT id FROM symbols WHERE symbol = ?",(symbol,))
+        result=cursor.fetchone()
+        if result:
+            symbol_id=result[0]
+        else:
+            return None
+        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?",(timeframe,))
+        result=cursor.fetchone()
+        if result:
+            timeframe_id=result[0]
+        else:
+            return None
+        cursor.execute("SELECT id FROM indicators WHERE name = ?",(indicator_name,))
+        result=cursor.fetchone()
+        if result:
+            indicator_id=result[0]
+        else:
+            return None
+        select_query="""
+        SELECT correlation_value FROM correlations
+        WHERE symbol_id = ? AND timeframe_id = ? AND indicator_id = ? AND lag = ?;
+        """
+        cursor.execute(select_query,(symbol_id,timeframe_id,indicator_id,lag))
+        result=cursor.fetchone()
+        return result[0] if result else None
 
     def get_all_correlations(self):
-        cursor = self.conn.cursor()
-        cursor.execute("""
-            SELECT s.symbol, t.timeframe, i.name, ic.config, c.lag, c.correlation_value
-            FROM correlations c
-            JOIN symbols s ON c.symbol_id = s.id
-            JOIN timeframes t ON c.timeframe_id = t.id
-            JOIN indicator_configs ic ON c.indicator_config_id = ic.id
-            JOIN indicators i ON ic.indicator_id = i.id;""")
+        select_query="""
+        SELECT symbols.symbol, timeframes.timeframe, indicators.name, correlations.lag, correlations.correlation_value
+        FROM correlations
+        JOIN symbols ON correlations.symbol_id = symbols.id
+        JOIN timeframes ON correlations.timeframe_id = timeframes.id
+        JOIN indicators ON correlations.indicator_id = indicators.id;
+        """
+        cursor=self.connection.cursor()
+        cursor.execute(select_query)
         return cursor.fetchall()
 
-    def _get_or_create_id(self, table, column, value, cursor):
-        cursor.execute(f"SELECT id FROM {table} WHERE {column} = ?", (value,))
-        res = cursor.fetchone()
-        if res:
-            return res[0]
-        cursor.execute(f"INSERT INTO {table} ({column}) VALUES (?)", (value,))
-        return cursor.lastrowid
-
-    def _get_indicator_config_id(self, indicator_config, cursor):
-        indicator_name = indicator_config['indicator_name']
-        params = json.dumps(indicator_config['params'], sort_keys=True)
-        cursor.execute("""
-            SELECT ic.id FROM indicator_configs ic
-            JOIN indicators i ON ic.indicator_id = i.id
-            WHERE i.name = ? AND ic.config = ?;""", (indicator_name, params))
-        res = cursor.fetchone()
-        if res:
-            return res[0]
-        else:
-            logger.error(f"Indicator configuration not found for {indicator_name} with params {params}")
-            raise ValueError(f"Indicator configuration not found for {indicator_name} with params {params}")
-
-    def close(self):
-        self.conn.close()
+    def close(self)->None:
+        self.connection.close()
