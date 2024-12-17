@@ -118,7 +118,8 @@ def compute_indicator(data: pd.DataFrame, indicator_name: str, params: Dict[str,
                 logger.error(f"Pandas TA function for indicator '{indicator_name}' not found.")
                 return data
             func_params = {k: v for k, v in parameters.items() if k not in ['type', 'conditions']}
-            result = pta_func(**func_params, **{col: data[col] for col in input_columns})
+            input_data = {col: data[col] for col in input_columns}
+            result = pta_func(**func_params, **input_data)
             if isinstance(result, pd.DataFrame):
                 for col in result.columns:
                     column_name = f"{col}_config_{config_id}"
@@ -167,7 +168,7 @@ def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str]
                 conditions = indicator_details.get('conditions', [])
                 parameters = {'type': indicator_details.get('type'), 'parameters': config}
                 try:
-                    computed_data = compute_indicator(data, indicator_name, parameters, indicator_details.get('input_columns', []), config_id)
+                    computed_data = compute_indicator(data, indicator_name, parameters, indicator_details.get('required_inputs', []), config_id)
                     cols = [col for col in computed_data.columns if col.startswith(f"{indicator_name}_config_{config_id}")]
                     if cols:
                         new_columns.append(computed_data[cols])

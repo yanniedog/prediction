@@ -16,18 +16,7 @@ from logging_setup import configure_logging
 logger = logging.getLogger(__name__)
 
 def run_tweak_indicator():
-    """
-    Orchestrates the parameter tweaking process by invoking tweak_params.
-    """
     tweak_params()
-
-if __name__ == "__main__":
-    configure_logging(log_file_prefix="tweak_indicator")
-    try:
-        run_tweak_indicator()
-    except Exception as e:
-        logger.exception("An unexpected error occurred during indicator tweaking.")
-        sys.exit(1)
 
 def generate_configurations(parameter_keys: List[str], parameter_definitions: Dict) -> List[Dict]:
     param_ranges = {}
@@ -54,7 +43,6 @@ def generate_configurations(parameter_keys: List[str], parameter_definitions: Di
     if param_ranges:
         keys, values = zip(*param_ranges.items())
         configurations = [dict(zip(keys, v)) for v in itertools.product(*values)]
-        configurations = [c for c in configurations if c.get('fastperiod', 0) < c.get('slowperiod', float('inf'))]
     else:
         configurations = []
     return configurations
@@ -157,12 +145,17 @@ def main():
                 continue
             print(f"Generated {len(configurations)} configurations for '{indicator_name}'.")
             logger.info(f"Generated {len(configurations)} configurations for '{indicator_name}'.")
+            example_configs = configurations[:5]
+            print(f"Example configurations for '{indicator_name}': {example_configs}")
+            logger.info(f"Example configurations for '{indicator_name}': {example_configs}")
         except Exception as e:
             logger.error(f"Error generating configurations for '{indicator_name}': {e}")
             print(f"Error generating configurations for '{indicator_name}'. Skipping.")
             continue
         try:
             insert_tweaked_configs(conn, indicator_name, configurations)
+            print(f"Inserted configurations for '{indicator_name}' into the database.")
+            logger.info(f"Inserted configurations for '{indicator_name}' into the database.")
         except Exception as e:
             logger.error(f"Error inserting configurations into database for '{indicator_name}': {e}")
             print(f"Error inserting configurations into database for '{indicator_name}'.")
