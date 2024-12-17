@@ -1,0 +1,3152 @@
+I’m encountering an error in my script, and I’ve included the output along with all related project scripts below. Please review and provide a complete fix. Ensure your response includes a fully functional, error-free, and deployment-ready script, with no placeholders or omissions. Additionally, any revised code should be as compact as possible, without remarks or docstrings, while maintaining full functionality, compatibility, and interoperability. If no changes are needed, there’s no need to include the script in your response.
+
+See the error I receive here:
+
+====================
+
+2024-12-17 15:04:19,783 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_close_time
+2024-12-17 15:04:19,787 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlation_computed
+2024-12-17 15:04:19,791 - INFO - [sqlite_data_manager.py:98(create_tables)]: Index created or already exists: idx_correlations
+2024-12-17 15:04:19,796 - INFO - [sqlite_data_manager.py:101(create_tables)]: All tables and indexes are set up successfully.
+2024-12-17 15:04:19,798 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
+2024-12-17 15:04:19,813 - INFO - [sqlite_data_manager.py:16(create_connection)]: Connected to SQLite database at C:\code\prediction\database\klines.db. SQLite version: 3.35.5
+2024-12-17 15:04:20,032 - INFO - [start.py:162(main)]: Configured indicators computed successfully.
+2024-12-17 15:04:20,038 - INFO - [start.py:163(main)]: Computing correlations.
+2024-12-17 15:04:20,047 - ERROR - [start.py:174(main)]: Error computing configured indicators or correlations: The truth value of a Series is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+2024-12-17 15:04:20,051 - WARNING - [LAUNCH.py:42(run_script)]: SystemExit encountered in start.py with code: 1
+2024-12-17 15:04:20,053 - WARNING - [LAUNCH.py:75(main)]: start.py exited with code: 1
+2024-12-17 15:04:20,619 - INFO - [LAUNCH.py:91(main)]: launch.py exiting with code: 1
+
+
+====================
+
+I've listed all the scripts in this project here:
+
+====================
+
+
+1) backup_cleanup.py:
+# backup_cleanup.py
+import shutil, zipfile, os
+from pathlib import Path
+from datetime import datetime
+import logging
+
+logger = logging.getLogger()
+
+def backup_cleanup():
+    logger = logging.getLogger(__name__)
+    cwd = Path.cwd()
+    archive_dir = Path(r"C:\code\(archive) prediction\automated_zip_backups")
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    py_files = list(cwd.glob("*.py"))
+    bak_files = []
+    for py in py_files:
+        bak = cwd / f"{py.stem}__{datetime.fromtimestamp(py.stat().st_mtime).strftime('%Y-%m-%d__%H%M%S')}.bak"
+        if not bak.exists():
+            shutil.copy2(py, bak)
+            logger.debug(f"Copied {py} to {bak}")
+        bak_files.append(bak)
+    if bak_files:
+        zip_name = f"prediction_project_zip_backup_{datetime.now().strftime('%Y-%m-%d__%H%M%S')}.zip"
+        zip_path = cwd / zip_name
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for bak in bak_files:
+                zipf.write(bak, arcname=bak.name)
+                logger.debug(f"Added {bak} to {zip_path}")
+        shutil.move(zip_path, archive_dir / zip_name)
+        logger.info("Backup completed.")
+        for bak in bak_files:
+            bak.unlink()
+            logger.debug(f"Deleted backup file {bak}")
+    else:
+        logger.info("No backup files to process.")
+
+if __name__ == "__main__":
+    backup_cleanup()
+
+====================
+2) backup_utils.py:
+# backup_utils.py
+import sys
+import logging
+from backup_cleanup import backup_cleanup
+
+logger = logging.getLogger()
+
+def run_backup_cleanup():
+    logger = logging.getLogger(__name__)
+    try:
+        backup_cleanup()
+        logger.info("Backup executed successfully.")
+    except Exception as e:
+        logger.error(f"Backup cleanup failed: {e}")
+        sys.exit(1)
+
+====================
+3) binance_historical_data_downloader.py:
+# binance_historical_data_downloader.py
+import logging
+import os
+import sys
+import requests
+import pandas as pd
+import time
+import datetime
+from config import DB_PATH
+from sqlite_data_manager import save_to_sqlite, create_connection, create_tables
+import json
+
+logger = logging.getLogger()
+
+BASE_URL = 'https://api.binance.com'
+
+def get_historical_klines(symbol, interval, start_time, end_time):
+    limit = 1000
+    klines = []
+    while True:
+        url = f"{BASE_URL}/api/v3/klines"
+        params = {
+            'symbol': symbol,
+            'interval': interval,
+            'startTime': start_time,
+            'endTime': end_time,
+            'limit': limit
+        }
+        response = requests.get(url, params=params)
+        if response.status_code != 200:
+            print(f"Error fetching klines: {response.text}")
+            break
+        data = response.json()
+        if not data:
+            print("No more klines data to fetch.")
+            break
+        klines.extend(data)
+        start_time = data[-1][0] + 1
+        if len(data) < limit:
+            break
+        time.sleep(0.5)
+    return klines
+
+def download_binance_data(symbol=None, interval=None, db_path=DB_PATH):
+    print("Starting Binance data download process.")
+    if not symbol:
+        base_currency = input("Enter the base currency (Default: USDT): ").strip().upper()
+        if not base_currency:
+            base_currency = 'USDT'
+        quote_currency = input("Enter the quote currency (Default: BTC): ").strip().upper()
+        if not quote_currency:
+            quote_currency = 'BTC'
+        symbol = f"{quote_currency}{base_currency}"
+    symbol = symbol.upper()
+
+    if not interval:
+        intervals = ['1m','3m','5m','15m','30m','1h','2h','4h','6h','8h','12h','1d','3d','1w','1M']
+        print("Available intervals:")
+        for idx, interval_option in enumerate(intervals, start=1):
+            print(f"{idx}. {interval_option}")
+        interval_choice = input("Select an interval by number (Default: 12 for '1d'): ").strip()
+        if not interval_choice.isdigit() or int(interval_choice) < 1 or int(interval_choice) > len(intervals):
+            interval = '1d'
+        else:
+            interval = intervals[int(interval_choice)-1]
+
+    start_date_str = input("Enter the start date (YYYYMMDD) or leave blank for earliest available: ").strip()
+    end_date_str = input("Enter the end date (YYYYMMDD) or leave blank for latest available: ").strip()
+    start_time = date_to_milliseconds(start_date_str) if start_date_str else get_earliest_valid_timestamp(symbol, interval)
+    end_time = date_to_milliseconds(end_date_str) if end_date_str else get_current_timestamp()
+    if start_time is None:
+        print("Invalid start date format.")
+        sys.exit(1)
+    if end_time is None:
+        print("Invalid end date format.")
+        sys.exit(1)
+    print(f"Fetching data for symbol: {symbol}, Interval: {interval}, Start Time: {start_time}, End Time: {end_time}")
+    klines = get_historical_klines(symbol, interval, start_time, end_time)
+    print(f"Fetched {len(klines)} klines from Binance API.")
+    if not klines:
+        print("No data fetched from Binance API.")
+        sys.exit(1)
+    df = process_klines(klines)
+    if df.empty:
+        print("Processed data is empty.")
+        sys.exit(1)
+    print("Klines data successfully processed into DataFrame.")
+    timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+    os.makedirs('csv', exist_ok=True)
+    csv_filename = f"csv/{symbol}_{interval}_{timestamp}.csv"
+    df.to_csv(csv_filename, index=False)
+    print(f"Data successfully saved to CSV file: {csv_filename}")
+    save_dataframe_to_sqlite(df, DB_PATH, symbol, interval)
+    print(f"Inserted {len(df)} records into the SQLite database at {DB_PATH}.")
+    print("Binance data download and storage complete.")
+
+def date_to_milliseconds(date_str):
+    if not date_str:
+        return None
+    try:
+        date_obj = datetime.datetime.strptime(date_str, '%Y%m%d')
+        return int(date_obj.timestamp() * 1000)
+    except ValueError:
+        print(f"Invalid date format: {date_str}. Expected 'YYYYMMDD'.")
+        return None
+
+def get_earliest_valid_timestamp(symbol, interval):
+    print(f"Fetching earliest timestamp for symbol: {symbol}, interval: {interval}")
+    url = f"{BASE_URL}/api/v3/klines"
+    params = {'symbol': symbol, 'interval': interval, 'limit': 1, 'startTime': 0}
+    response = requests.get(url, params=params)
+    if response.status_code != 200:
+        print(f"Error fetching earliest timestamp: {response.text}")
+        sys.exit(1)
+    data = response.json()
+    if not data:
+        print("No data returned when fetching earliest timestamp.")
+        sys.exit(1)
+    earliest_timestamp = data[0][0]
+    return earliest_timestamp
+
+def get_current_timestamp():
+    print("Fetching latest timestamp from Binance server.")
+    url = f"{BASE_URL}/api/v3/time"
+    response = requests.get(url)
+    if response.status_code != 200:
+        print(f"Error fetching server time: {response.text}")
+        sys.exit(1)
+    data = response.json()
+    current_timestamp = data['serverTime']
+    return current_timestamp
+
+def process_klines(klines):
+    cols = ['open_time','open','high','low','close','volume','close_time','quote_asset_volume','number_of_trades','taker_buy_base_asset_volume','taker_buy_quote_asset_volume','ignore']
+    df = pd.DataFrame(klines, columns=cols).drop('ignore', axis=1)
+    df['open_time'] = pd.to_numeric(df['open_time'], errors='coerce')
+    df['close_time'] = pd.to_numeric(df['close_time'], errors='coerce')
+    df.dropna(subset=['open_time','close_time'], inplace=True)
+    try:
+        df['open_time'] = pd.to_datetime(df['open_time'], unit='ms', errors='raise').dt.tz_localize(None)
+        df['close_time'] = pd.to_datetime(df['close_time'], unit='ms', errors='raise').dt.tz_localize(None)
+    except ValueError as ve:
+        print(f"Error converting timestamps to datetime: {ve}")
+        sys.exit(1)
+    num_cols = ['open','high','low','close','volume','quote_asset_volume','taker_buy_base_asset_volume','taker_buy_quote_asset_volume']
+    df[num_cols] = df[num_cols].apply(pd.to_numeric, errors='coerce')
+    try:
+        df['number_of_trades'] = df['number_of_trades'].astype(int)
+    except ValueError as ve:
+        print(f"Error converting 'number_of_trades' to integer: {ve}")
+        df['number_of_trades'] = df['number_of_trades'].fillna(0).astype(int)
+    return df
+
+def save_dataframe_to_sqlite(df, db_path, symbol, timeframe):
+    conn = create_connection(db_path)
+    if conn:
+        create_tables(conn)
+        conn.close()
+    else:
+        print(f"Cannot connect to the database at {db_path}.")
+        sys.exit(1)
+    save_to_sqlite(df, db_path, symbol, timeframe)
+
+if __name__ == "__main__":
+    download_binance_data()
+
+====================
+4) config.py:
+# config.py
+import logging
+import os
+from pathlib import Path
+
+logger = logging.getLogger()
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+DB_PATH = SCRIPT_DIR / 'database' / 'klines.db'
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+====================
+5) copyscripts_selective.py:
+# COPYSCRIPTS_SELECTIVE.py
+import os
+import sys
+import argparse
+from datetime import datetime
+import shutil
+from collections import defaultdict
+import chardet
+
+def run_repair_remarks():
+    repair_script = os.path.join(os.getcwd(), "repair-remarks.py")
+    if os.path.exists(repair_script):
+        try:
+            os.system(f"python {repair_script}")
+        except Exception:
+            sys.exit(1)
+
+run_repair_remarks()
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Generate a .SELECTIVE file containing contents of specified scripts.")
+    parser.add_argument('-e', '--extensions', nargs='+', help='Additional file extensions to include (e.g., -e txt md)')
+    parser.add_argument('-f', '--folders', nargs='+', help='Additional subdirectories to search for files (e.g., -f utils helpers)')
+    return parser.parse_args()
+
+def get_current_directory():
+    return os.getcwd()
+
+def get_timestamp():
+    return datetime.now().strftime("%Y%m%d-%H%M%S")
+
+def backup_existing_selective_files(current_dir, work_dir_name):
+    backup_base = r'C:\code\backups'
+    backup_dir = os.path.join(backup_base, work_dir_name, 'copyscript-backups')
+    os.makedirs(backup_dir, exist_ok=True)
+    for item in os.listdir(current_dir):
+        if item.lower().endswith('.selective'):
+            original_path = os.path.join(current_dir, item)
+            bak_filename = os.path.splitext(item)[0] + '.SELECTIVEBAK'
+            backup_path = os.path.join(backup_dir, bak_filename)
+            try:
+                os.rename(original_path, os.path.join(current_dir, bak_filename))
+                shutil.move(os.path.join(current_dir, bak_filename), backup_path)
+            except Exception:
+                continue
+
+def collect_files(base_dirs, extensions, excluded_filenames, exclude_subdirs_map, always_excluded_subdirs):
+    filename_map = defaultdict(list)
+    for base_dir in base_dirs:
+        if not os.path.exists(base_dir):
+            continue
+        exclude_subdirs = exclude_subdirs_map.get(base_dir, []) + always_excluded_subdirs
+        for root, dirs, files in os.walk(base_dir):
+            dirs[:] = [d for d in dirs if d not in exclude_subdirs and not d.startswith('.')]
+            for file in files:
+                if file.startswith('.') or file.lower() in excluded_filenames:
+                    continue
+                if any(file.lower().endswith(ext.lower()) for ext in extensions) or file.lower() == 'requirements.txt':
+                    filename_map[file.lower()].append(os.path.join(root, file))
+    return filename_map
+
+def alert_duplicate_filenames(duplicate_files):
+    for filename, paths in duplicate_files.items():
+        pass
+
+def read_file_contents(file_path):
+    try:
+        with open(file_path, 'rb') as f:
+            raw_data = f.read()
+        encoding = chardet.detect(raw_data)['encoding']
+        return raw_data.decode(encoding, errors='replace').replace('\r\n', '\n')
+    except:
+        return "[Error reading file]"
+
+def extract_relevant_log_section(log_content):
+    lines = log_content.split('\n')
+    error_indices = [i for i, line in enumerate(lines) if 'ERROR' in line]
+    traceback_indices = [i for i, line in enumerate(lines) if 'Traceback' in line]
+    first_error = error_indices[0] if error_indices else None
+    first_traceback = traceback_indices[0] if traceback_indices else None
+    start_index = max(first_error - 8, 0) if first_error is not None else max(first_traceback - 8, 0) if first_traceback is not None else 0
+    return '\n'.join(lines[start_index:])
+
+def generate_output(collected_files, log_content=None):
+    header = ("I’m encountering an error in my script, and I’ve included the output along with all related project scripts below. "
+              "Please review and provide a complete fix. Ensure your response includes a fully functional, error-free, and "
+              "deployment-ready script, with no placeholders or omissions. Additionally, any revised code should be as compact as "
+              "possible, without remarks or docstrings, while maintaining full functionality, compatibility, and interoperability. "
+              "If no changes are needed, there’s no need to include the script in your response.\n\n")
+    error_header = ""
+    if log_content:
+        error_header += (f"See the error I receive here:\n\n====================\n\n{log_content}\n\n====================\n\n")
+    error_header += "I've listed all the scripts in this project here:\n\n====================\n\n"
+    sections = [header + error_header]
+    for filename, path in collected_files.items():
+        sections.append(f"{filename}:\n{read_file_contents(path[0])}\n====================")
+    return '\n'.join(sections)
+
+def write_output_file(output_path, content):
+    try:
+        with open(output_path, 'w', encoding='utf-8', newline='\n') as f:
+            f.write(content)
+    except:
+        pass
+
+if __name__ == "__main__":
+    current_dir = get_current_directory()
+    work_dir_name = os.path.basename(os.path.normpath(current_dir))
+    scripts_dir = os.path.join(current_dir, "scripts")
+    backup_existing_selective_files(current_dir, work_dir_name)
+    args = parse_arguments()
+    timestamp = get_timestamp()
+    output_filename = f"{work_dir_name}-{timestamp}.SELECTIVE"
+    output_path = os.path.join(current_dir, output_filename)
+    script_filename = os.path.basename(__file__).lower()
+    excluded_filenames = {script_filename, 'cspell.json', 'parsetab.py', 'test_indicators.py', 'binance_historical_data_downloader.py', 'generate_heatmaps.py', 'requirements.txt', 'restore_backup.py', 'REVERT-to-GPT-scripts.py', 'logging_setup.py', 'backup_cleanup.py', 'visualization_utils.py', 'visualize_data.py', 'backup_utils.py', 'copyscripts.py', 'COPYSCRIPTS_SELECTIVE.py', 'repair-remarks.py', 'cspell.json', 'revert-to-gpt-scripts.py'}
+    extensions = ['.py', '.ps', '.json']
+    if args.extensions:
+        extensions.extend([ext.lower() if ext.startswith('.') else f".{ext.lower()}" for ext in args.extensions])
+    base_dirs = [current_dir, scripts_dir]
+    if args.folders:
+        base_dirs.extend([os.path.join(current_dir, folder) for folder in args.folders])
+    exclude_subdirs_map = {current_dir: ['scripts']}
+    always_excluded_subdirs = ['venv', '.venv']
+    filename_map = collect_files(base_dirs, extensions, excluded_filenames, exclude_subdirs_map, always_excluded_subdirs)
+    duplicate_filenames = {fname: paths for fname, paths in filename_map.items() if len(paths) > 1}
+    if duplicate_filenames:
+        alert_duplicate_filenames(duplicate_filenames)
+        for fname in duplicate_filenames.keys():
+            del filename_map[fname]
+    unique_files = [(fname, paths[0]) for fname, paths in filename_map.items()]
+    if not unique_files:
+        sys.exit(0)
+    log_files = [os.path.join(current_dir, f) for f in os.listdir(current_dir) if f.endswith('.log')]
+    log_content = extract_relevant_log_section(read_file_contents(log_files[0])) if log_files else None
+    output_content = generate_output(filename_map, log_content)
+    write_output_file(output_path, output_content)
+
+====================
+6) correlation_database.py:
+# correlation_database.py
+import logging
+import sqlite3
+import json
+
+logger = logging.getLogger()
+
+class CorrelationDatabase:
+    def __init__(self, db_path: str):
+        self.conn = sqlite3.connect(db_path)
+        self.create_table()
+
+    def create_table(self):
+        self.conn.execute("""
+        CREATE TABLE IF NOT EXISTS correlations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol_id INTEGER NOT NULL,
+            timeframe_id INTEGER NOT NULL,
+            indicator_config_id INTEGER NOT NULL,
+            lag INTEGER NOT NULL,
+            correlation_value REAL NOT NULL,
+            FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+            FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
+            FOREIGN KEY (indicator_config_id) REFERENCES indicator_configs(id),
+            UNIQUE(symbol_id, timeframe_id, indicator_config_id, lag)
+        );""")
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_correlations ON correlations (symbol_id, timeframe_id, indicator_config_id, lag);")
+        self.conn.commit()
+
+    def insert_correlation(self, symbol, timeframe, indicator_config, lag, value):
+        cursor = self.conn.cursor()
+        symbol_id = self._get_or_create_id('symbols', 'symbol', symbol, cursor)
+        timeframe_id = self._get_or_create_id('timeframes', 'timeframe', timeframe, cursor)
+        indicator_config_id = self._get_indicator_config_id(indicator_config, cursor)
+        try:
+            cursor.execute("""
+                INSERT OR REPLACE INTO correlations (symbol_id, timeframe_id, indicator_config_id, lag, correlation_value)
+                VALUES (?, ?, ?, ?, ?);""", (symbol_id, timeframe_id, indicator_config_id, lag, value))
+            self.conn.commit()
+        except sqlite3.Error as e:
+            logger.error(f"SQLite insertion error: {e}")
+            raise
+
+    def get_all_correlations(self):
+        cursor = self.conn.cursor()
+        cursor.execute("""
+            SELECT s.symbol, t.timeframe, i.name, ic.config, c.lag, c.correlation_value
+            FROM correlations c
+            JOIN symbols s ON c.symbol_id = s.id
+            JOIN timeframes t ON c.timeframe_id = t.id
+            JOIN indicator_configs ic ON c.indicator_config_id = ic.id
+            JOIN indicators i ON ic.indicator_id = i.id;""")
+        return cursor.fetchall()
+
+    def _get_or_create_id(self, table, column, value, cursor):
+        cursor.execute(f"SELECT id FROM {table} WHERE {column} = ?", (value,))
+        res = cursor.fetchone()
+        if res:
+            return res[0]
+        cursor.execute(f"INSERT INTO {table} ({column}) VALUES (?)", (value,))
+        return cursor.lastrowid
+
+    def _get_indicator_config_id(self, indicator_config, cursor):
+        indicator_name = indicator_config['indicator_name']
+        params = json.dumps(indicator_config['params'], sort_keys=True)
+        cursor.execute("""
+            SELECT ic.id FROM indicator_configs ic
+            JOIN indicators i ON ic.indicator_id = i.id
+            WHERE i.name = ? AND ic.config = ?;""", (indicator_name, params))
+        res = cursor.fetchone()
+        if res:
+            return res[0]
+        else:
+            logger.error(f"Indicator configuration not found for {indicator_name} with params {params}")
+            raise ValueError(f"Indicator configuration not found for {indicator_name} with params {params}")
+
+    def close(self):
+        self.conn.close()
+
+====================
+7) correlation_utils.py:
+# correlation_utils.py
+import logging
+import pandas as pd
+import numpy as np
+import json
+from typing import List
+from config import DB_PATH
+from correlation_database import CorrelationDatabase
+
+logger = logging.getLogger()
+
+def calculate_correlation(data: pd.DataFrame, indicator: str, lag: int, reverse: bool) -> float:
+    if indicator.lower() == 'close': return np.nan
+    try:
+        shifted = data[indicator].shift(lag if reverse else -lag)
+        valid = pd.concat([shifted, data['close']], axis=1).dropna()
+        return valid[indicator].corr(valid['close']) if not valid.empty else np.nan
+    except:
+        return np.nan
+
+def is_valid_indicator(series: pd.Series) -> bool:
+    return not series.isna().all() and series.nunique() > 1
+
+def load_or_calculate_correlations(data: pd.DataFrame, indicators: List[str], max_lag: int, reverse: bool, symbol: str, timeframe: str):
+    print(f"Calculating correlations for {symbol} {timeframe}")
+    db = CorrelationDatabase(DB_PATH)
+    cursor = db.conn.cursor()
+    for indicator in indicators:
+        cursor.execute("""
+            SELECT ic.id, ic.config FROM indicator_configs ic
+            JOIN indicators i ON ic.indicator_id = i.id
+            WHERE i.name = ?;
+        """, (indicator,))
+        configs = cursor.fetchall()
+        for config_id, config_json in configs:
+            config = json.loads(config_json)
+            config_name = f"{indicator}_config_{config_id}"
+            if config_name not in data.columns:
+                logger.error(f"Indicator column '{config_name}' not found in data.")
+                continue
+            if not is_valid_indicator(data[config_name]):
+                logger.warning(f"Invalid indicator '{config_name}'. Skipping.")
+                continue
+            cursor.execute("""
+                SELECT lag FROM correlations 
+                WHERE symbol_id=(SELECT id FROM symbols WHERE symbol=?) 
+                AND timeframe_id=(SELECT id FROM timeframes WHERE timeframe=?) 
+                AND indicator_config_id=?;
+            """, (symbol, timeframe, config_id))
+            existing_lags = {row[0] for row in cursor.fetchall()}
+            to_calc = [lag for lag in range(1, max_lag+1) if lag not in existing_lags]
+            for lag in to_calc:
+                corr = calculate_correlation(data, config_name, lag, reverse)
+                try:
+                    db.insert_correlation(symbol, timeframe, {'indicator_name': indicator, 'params': config}, lag, corr)
+                except Exception as e:
+                    logger.error(f"Error inserting correlation for {config_name} lag {lag}: {e}")
+    db.close()
+    print("All correlations processed.")
+
+====================
+8) data_utils.py:
+# data_utils.py
+import logging
+import os, sys, pandas as pd, numpy as np
+from sklearn.preprocessing import StandardScaler
+from typing import Tuple, List
+from datetime import datetime
+from joblib import Parallel, delayed
+from load_data import load_data
+from indicators import compute_all_indicators
+
+logger = logging.getLogger()
+
+def clear_screen():
+    os.system('cls' if os.name=='nt' else 'clear')
+
+def prepare_data(data: pd.DataFrame) -> Tuple[pd.DataFrame, List[str]]:
+    features = data.columns.difference(['date', 'open', 'high', 'low', 'close', 'volume'])
+    X = data[features].select_dtypes(include=[np.number])
+    scaler = StandardScaler()
+    X_scaled = pd.DataFrame(scaler.fit_transform(X), columns=X.columns, index=data.index)
+    return X_scaled, X.columns.tolist()
+
+def determine_time_interval(data: pd.DataFrame) -> str:
+    date_col = 'Date' if 'Date' in data else 'open_time' if 'open_time' in data else None
+    if not date_col:
+        raise ValueError("No 'Date' or 'open_time' column.")
+    data[date_col] = pd.to_datetime(data[date_col], errors='coerce').dropna()
+    if not data[date_col].is_monotonic_increasing:
+        raise ValueError(f"'{date_col}' not increasing.")
+    diff = data[date_col].diff().dt.total_seconds().mode()[0]
+    if diff < 60:
+        return 'second'
+    elif diff < 3600:
+        return 'minute'
+    elif diff < 86400:
+        return 'hour'
+    elif diff < 604800:
+        return 'day'
+    else:
+        return 'week'
+
+def get_original_indicators(feature_names: List[str], data: pd.DataFrame) -> List[str]:
+    return [
+        col for col in feature_names
+        if col.lower() not in ['open', 'high', 'low', 'close', 'volume']
+        and data[col].notna().any()
+        and data[col].var() > 1e-6
+    ]
+
+def handle_missing_indicators(original_inds: List[str], data: pd.DataFrame, expected: List[str]) -> List[str]:
+    missing = [ind for ind in expected if ind not in data.columns]
+    return [col for col in original_inds if col not in missing]
+
+====================
+9) generate_heatmaps.py:
+# generate_heatmaps.py
+import logging
+import os, matplotlib.pyplot as plt, seaborn as sns, pandas as pd, numpy as np
+from joblib import Parallel, delayed
+from typing import Callable, Dict, List
+
+logger = logging.getLogger()
+
+def generate_heatmaps(data: pd.DataFrame, timestamp: str, time_interval: str, flag: bool, cache: Dict[str, List[float]], calc_corr: Callable[[pd.DataFrame, str, int, bool], float], base_csv: str) -> None:
+    if not flag: return
+    os.makedirs('heatmaps', exist_ok=True)
+    if os.listdir('heatmaps') and input("Delete existing heatmaps? (y/n): ").strip().lower() == 'y':
+        for f in os.listdir('heatmaps'): os.remove(os.path.join('heatmaps', f))
+    indicators = [col for col in data.columns if pd.api.types.is_numeric_dtype(data[col]) and col != 'Close' and data[col].notna().any() and data[col].var() >1e-6]
+    max_lag = len(data) -51
+    if max_lag <1: print("Insufficient data for correlations."); return
+    correlations = {col: cache.get(col, Parallel(n_jobs=-1)(delayed(calc_corr)(data, col, lag, False) for lag in range(1, max_lag+1))) for col in indicators}
+    cache.update(correlations)
+    corr_df = pd.DataFrame(correlations, index=range(1, max_lag+1)).dropna(axis=1).dropna(axis=0)
+    std_corr = corr_df.apply(lambda row: 0 if row.max()-row.min()==0 else (row-row.min())/(row.max()-row.min())*2-1, axis=1)
+    filtered = [col for col in std_corr.columns if std_corr[col].max() >0.25]
+    std_corr = std_corr[filtered]
+    sorted_inds = sorted(filtered, key=lambda c: next((i for i, x in enumerate(std_corr[c],1) if x==1.0), max_lag+1))
+    sns.heatmap(std_corr[sorted_inds].T, cmap='coolwarm', cbar=True, xticklabels=True, yticklabels=True)
+    plt.title('Standardized Correlation of Indicators with Close Price at Various Lags\n(Sorted by Earliest 1.0 Correlation)', fontsize=14)
+    plt.xlabel(f'Time Lag ({time_interval})', fontsize=12)
+    plt.ylabel('Indicators', fontsize=12)
+    plt.xticks(ticks=np.arange(max_lag)+0.5, labels=range(1,max_lag+1), rotation=90, fontsize=6)
+    plt.yticks(rotation=0, fontsize=6)
+    plt.tight_layout()
+    plt.savefig(os.path.join('heatmaps', f"{timestamp}_{base_csv}_heatmap1.png"), bbox_inches='tight')
+    plt.close()
+    sorted_inds = sorted(filtered, key=lambda c: std_corr[c].iloc[0], reverse=True)
+    sns.heatmap(std_corr[sorted_inds].T, cmap='coolwarm', cbar=True, xticklabels=True, yticklabels=True)
+    plt.title('Standardized Correlation Sorted by Highest Correlation at Lag 1', fontsize=14)
+    plt.xlabel(f'Time Lag ({time_interval})', fontsize=12)
+    plt.ylabel('Indicators', fontsize=12)
+    plt.xticks(ticks=np.arange(max_lag)+0.5, labels=range(1,max_lag+1), rotation=90, fontsize=6)
+    plt.yticks(rotation=0, fontsize=6)
+    plt.tight_layout()
+    plt.savefig(os.path.join('heatmaps', f"{timestamp}_{base_csv}_heatmap2.png"), bbox_inches='tight')
+    plt.close()
+    sns.heatmap(corr_df[filtered].T, cmap='coolwarm', cbar=True, xticklabels=True, yticklabels=True)
+    plt.title('Raw Correlation Sorted by Highest Correlation at Lag 1', fontsize=14)
+    plt.xlabel(f'Time Lag ({time_interval})', fontsize=12)
+    plt.ylabel('Indicators', fontsize=12)
+    plt.xticks(ticks=np.arange(max_lag)+0.5, labels=range(1,max_lag+1), rotation=90, fontsize=6)
+    plt.yticks(rotation=0, fontsize=6)
+    plt.tight_layout()
+    plt.savefig(os.path.join('heatmaps', f"{timestamp}_{base_csv}_heatmap3.png"), bbox_inches='tight')
+    plt.close()
+    print("Heatmaps generated.")
+
+====================
+10) indicators.py:
+# indicators.py
+import logging
+import pandas as pd
+import numpy as np
+import talib as ta
+import pandas_ta as pta
+import json
+from typing import List, Dict, Any
+from indicator_config_parser import parse_indicators_json, get_indicator_parameters
+from sqlite_data_manager import create_connection, fetch_indicator_configs
+from config import DB_PATH
+
+logger = logging.getLogger(__name__)
+
+def evaluate_conditions(params: Dict[str, Any], conditions: List[Dict[str, Dict[str, Any]]]) -> bool:
+    operator_map = {
+        'gt': '>',
+        'gte': '>=',
+        'lt': '<',
+        'lte': '<=',
+        'eq': '==',
+        'neq': '!='
+    }
+    for condition in conditions:
+        for param, ops in condition.items():
+            for op, value in ops.items():
+                mapped_op = operator_map.get(op)
+                if not mapped_op:
+                    logger.error(f"Unsupported operator '{op}' in conditions.")
+                    return False
+                if isinstance(value, str):
+                    compare_value = params.get(value)
+                    if compare_value is None:
+                        logger.error(f"Condition value '{value}' for parameter '{param}' not found in params.")
+                        return False
+                else:
+                    compare_value = value
+                try:
+                    if mapped_op == '>':
+                        if not params[param] > compare_value:
+                            return False
+                    elif mapped_op == '>=':
+                        if not params[param] >= compare_value:
+                            return False
+                    elif mapped_op == '<':
+                        if not params[param] < compare_value:
+                            return False
+                    elif mapped_op == '<=':
+                        if not params[param] <= compare_value:
+                            return False
+                    elif mapped_op == '==':
+                        if not params[param] == compare_value:
+                            return False
+                    elif mapped_op == '!=':
+                        if not params[param] != compare_value:
+                            return False
+                except TypeError as te:
+                    logger.error(f"Type error in condition evaluation for parameter '{param}': {te}")
+                    return False
+    return True
+
+def generate_parameter_combinations(parameters: Dict[str, Any], conditions: List[Dict[str, Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    from itertools import product
+
+    param_ranges = {}
+    for param, details in parameters.items():
+        default = details.get('default')
+        if isinstance(default, int):
+            if param in ['fast', 'slow', 'fastperiod', 'slowperiod', 'signalperiod', 'timeperiod', 'timeperiod1', 'timeperiod2', 'timeperiod3', 'pivot_lookback']:
+                start = max(2, default - 5)
+            else:
+                start = max(1, default - 5)
+            param_ranges[param] = [start + i for i in range(11)]
+        elif isinstance(default, float):
+            if param in ['fast', 'slow', 'fastperiod', 'slowperiod', 'signalperiod', 'timeperiod', 'timeperiod1', 'timeperiod2', 'timeperiod3', 'pivot_lookback']:
+                start = max(2.0, default - 5.0)
+                param_ranges[param] = [round(start + i, 1) for i in range(11)]
+            elif 0 < default < 1:
+                start = max(0.1, default * 0.9)
+                param_ranges[param] = [round(start + 0.02 * i, 4) for i in range(11)]
+            else:
+                param_ranges[param] = [default]
+        else:
+            param_ranges[param] = [default]
+
+    all_combinations = list(product(*param_ranges.values()))
+    keys = list(param_ranges.keys())
+    combinations = [dict(zip(keys, values)) for values in all_combinations]
+
+    valid_combinations = []
+    for combo in combinations:
+        if evaluate_conditions(combo, conditions):
+            valid_combinations.append(combo)
+    return valid_combinations
+
+def compute_indicator(data: pd.DataFrame, indicator_name: str, params: Dict[str, Any], input_columns: List[str], config_id: int) -> pd.DataFrame:
+    try:
+        indicator_type = params.get('type')
+        parameters = params.get('parameters', {})
+        if indicator_type == 'ta-lib':
+            ta_func = getattr(ta, indicator_name.upper(), None)
+            if not ta_func:
+                logger.error(f"TA-Lib function for indicator '{indicator_name}' not found.")
+                return data
+            func_args = [data[col].values for col in input_columns]
+            func_params = parameters
+            result = ta_func(*func_args, **func_params)
+            if isinstance(result, tuple):
+                for idx, res in enumerate(result):
+                    column_name = f"{indicator_name}_config_{config_id}_{idx}"
+                    if res is not None:
+                        data[column_name] = res
+            else:
+                column_name = f"{indicator_name}_config_{config_id}"
+                if result is not None:
+                    data[column_name] = result
+        elif indicator_type == 'pandas-ta':
+            pta_func = getattr(pta, indicator_name.lower(), None)
+            if not pta_func:
+                logger.error(f"Pandas TA function for indicator '{indicator_name}' not found.")
+                return data
+            func_params = {k: v for k, v in parameters.items() if k not in ['type', 'conditions']}
+            input_data = {col: data[col] for col in input_columns}
+            result = pta_func(**func_params, **input_data)
+            if isinstance(result, pd.DataFrame):
+                for col in result.columns:
+                    column_name = f"{col}_config_{config_id}"
+                    data[column_name] = result[col]
+            else:
+                column_name = f"{indicator_name}_config_{config_id}"
+                data[column_name] = result
+        elif indicator_type == 'custom':
+            logger.error(f"Custom indicator '{indicator_name}' computation is not implemented.")
+        else:
+            logger.error(f"Unknown indicator type '{indicator_type}' for indicator '{indicator_name}'.")
+    except Exception as e:
+        logger.error(f"Error computing indicator '{indicator_name}' with parameters {parameters}: {e}")
+    return data
+
+def compute_configured_indicators(data: pd.DataFrame, indicators_list: List[str], db_path: str = DB_PATH, indicator_params_path: str = 'indicator_params.json') -> pd.DataFrame:
+    try:
+        indicator_params = parse_indicators_json(indicator_params_path)
+    except Exception as e:
+        logger.error(f"Error loading indicator parameters: {e}")
+        raise e
+
+    conn = create_connection(db_path)
+    if not conn:
+        logger.error("Failed to connect to the database.")
+        raise ConnectionError("Failed to connect to the database.")
+    cursor = conn.cursor()
+    new_columns = []
+    for indicator_name in indicators_list:
+        try:
+            cursor.execute("""
+                SELECT ic.id, ic.config FROM indicator_configs ic
+                JOIN indicators i ON ic.indicator_id = i.id
+                WHERE i.name = ?;
+            """, (indicator_name,))
+            rows = cursor.fetchall()
+            if not rows:
+                logger.error(f"No configurations found for indicator '{indicator_name}'.")
+                continue
+            for config_id, config_json in rows:
+                config = json.loads(config_json)
+                indicator_details = get_indicator_parameters(indicator_name, indicator_params_path)
+                if not indicator_details:
+                    logger.error(f"Indicator '{indicator_name}' not found in parameters JSON.")
+                    continue
+                conditions = indicator_details.get('conditions', [])
+                parameters = {'type': indicator_details.get('type'), 'parameters': config}
+                try:
+                    computed_data = compute_indicator(data, indicator_name, parameters, indicator_details.get('required_inputs', []), config_id)
+                    cols = [col for col in computed_data.columns if col.startswith(f"{indicator_name}_config_{config_id}")]
+                    if cols:
+                        new_columns.append(computed_data[cols])
+                except Exception as e:
+                    logger.error(f"Error computing indicator '{indicator_name}' config {config_id}: {e}")
+        except Exception as e:
+            logger.error(f"Error processing indicator '{indicator_name}': {e}")
+    conn.close()
+    if new_columns:
+        new_df = pd.concat(new_columns, axis=1)
+        data = pd.concat([data, new_df], axis=1)
+    data = data.copy()
+    data.dropna(inplace=True)
+    return data
+
+====================
+11) indicator_config_parser.py:
+# indicator_config_parser.py
+import json
+from typing import Dict, List, Optional
+
+def parse_indicators_json(indicator_params_path: str = 'indicator_params.json') -> Dict[str, Dict]:
+    with open(indicator_params_path, 'r') as f:
+        indicator_params = json.load(f)
+    return indicator_params
+
+def get_configurable_indicators(indicator_params_path: str = 'indicator_params.json') -> List[str]:
+    indicator_params = parse_indicators_json(indicator_params_path)
+    return sorted(indicator_params.get("indicators", {}).keys())
+
+def get_indicator_parameters(indicator_name: str, indicator_params_path: str = 'indicator_params.json') -> Optional[Dict]:
+    indicator_params = parse_indicators_json(indicator_params_path)
+    return indicator_params.get("indicators", {}).get(indicator_name)
+
+====================
+12) indicator_params.json:
+{
+    "indicators": {
+        "macd": {
+            "type": "ta-lib",
+            "required_inputs": ["close"],
+            "parameters": {
+                "fastperiod": { "default": 12 },
+                "slowperiod": { "default": 26 },
+                "signalperiod": { "default": 9 },
+                "matype": { "default": 0 }
+            },
+            "conditions": [
+                {
+                    "fastperiod": { "gte": 2 }
+                },
+                {
+                    "slowperiod": { "gte": 2 }
+                },
+                {
+                    "fastperiod": { "lt": "slowperiod" }
+                }
+            ]
+        },
+        "minus_di": {
+            "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
+            "parameters": {
+                "timeperiod": { "default": 14 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "minus_dm": {
+            "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
+            "parameters": {
+                "timeperiod": { "default": 14 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "mom": {
+            "type": "ta-lib",
+            "required_inputs": ["close"],
+            "parameters": {
+                "timeperiod": { "default": 10 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "plus_di": {
+            "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
+            "parameters": {
+                "timeperiod": { "default": 14 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "plus_dm": {
+            "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
+            "parameters": {
+                "timeperiod": { "default": 14 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "ppo": {
+            "type": "ta-lib",
+            "required_inputs": ["close"],
+            "parameters": {
+                "fastperiod": { "default": 12 },
+                "slowperiod": { "default": 26 },
+                "matype": { "default": 0 }
+            },
+            "conditions": [
+                {
+                    "fastperiod": { "gte": 2 }
+                },
+                {
+                    "slowperiod": { "gte": 2 }
+                },
+                {
+                    "fastperiod": { "lt": "slowperiod" }
+                }
+            ]
+        },
+        "roc": {
+            "type": "ta-lib",
+            "required_inputs": ["close"],
+            "parameters": {
+                "timeperiod": { "default": 10 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "rocp": {
+            "type": "ta-lib",
+            "required_inputs": ["close"],
+            "parameters": {
+                "timeperiod": { "default": 10 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "rocr": {
+            "type": "ta-lib",
+            "required_inputs": ["close"],
+            "parameters": {
+                "timeperiod": { "default": 10 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "rocr100": {
+            "type": "ta-lib",
+            "required_inputs": ["close"],
+            "parameters": {
+                "timeperiod": { "default": 10 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "stochf": {
+            "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
+            "parameters": {
+                "fastk_period": { "default": 5 },
+                "slowk_period": { "default": 3 },
+                "slowk_matype": { "default": 0 },
+                "slowd_period": { "default": 3 },
+                "slowd_matype": { "default": 0 }
+            },
+            "conditions": [
+                {
+                    "fastk_period": { "gte": 2 }
+                },
+                {
+                    "slowk_period": { "gte": 2 }
+                },
+                {
+                    "slowd_period": { "gte": 2 }
+                }
+            ]
+        },
+        "stochrsi": {
+            "type": "ta-lib",
+            "required_inputs": ["close"],
+            "parameters": {
+                "timeperiod": { "default": 14 },
+                "fastk_period": { "default": 5 },
+                "fastd_period": { "default": 3 },
+                "fastd_matype": { "default": 0 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                },
+                {
+                    "fastk_period": { "gte": 2 }
+                },
+                {
+                    "fastd_period": { "gte": 2 }
+                }
+            ]
+        },
+        "trix": {
+            "type": "ta-lib",
+            "required_inputs": ["close"],
+            "parameters": {
+                "timeperiod": { "default": 30 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "ultosc": {
+            "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
+            "parameters": {
+                "timeperiod1": { "default": 7 },
+                "timeperiod2": { "default": 14 },
+                "timeperiod3": { "default": 28 }
+            },
+            "conditions": [
+                {
+                    "timeperiod1": { "gte": 2 }
+                },
+                {
+                    "timeperiod2": { "gte": 2 }
+                },
+                {
+                    "timeperiod3": { "gte": 2 }
+                },
+                {
+                    "timeperiod1": { "lt": "timeperiod2" }
+                },
+                {
+                    "timeperiod2": { "lt": "timeperiod3" }
+                }
+            ]
+        },
+        "willr": {
+            "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
+            "parameters": {
+                "timeperiod": { "default": 14 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "adosc": {
+            "type": "ta-lib",
+            "required_inputs": ["high", "low", "close", "volume"],
+            "parameters": {
+                "fastperiod": { "default": 3 },
+                "slowperiod": { "default": 10 }
+            },
+            "conditions": [
+                {
+                    "fastperiod": { "gte": 2 }
+                },
+                {
+                    "slowperiod": { "gte": 2 }
+                },
+                {
+                    "fastperiod": { "lt": "slowperiod" }
+                }
+            ]
+        },
+        "atr": {
+            "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
+            "parameters": {
+                "timeperiod": { "default": 14 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "natr": {
+            "type": "ta-lib",
+            "required_inputs": ["high", "low", "close"],
+            "parameters": {
+                "timeperiod": { "default": 14 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "linearreg": {
+            "type": "ta-lib",
+            "required_inputs": ["close"],
+            "parameters": {
+                "timeperiod": { "default": 14 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "stddev": {
+            "type": "ta-lib",
+            "required_inputs": ["close"],
+            "parameters": {
+                "timeperiod": { "default": 5 },
+                "nbdev": { "default": 1 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "var": {
+            "type": "ta-lib",
+            "required_inputs": ["close"],
+            "parameters": {
+                "timeperiod": { "default": 5 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "mfi": {
+            "type": "ta-lib",
+            "required_inputs": ["high", "low", "close", "volume"],
+            "parameters": {
+                "timeperiod": { "default": 14 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "vortex": {
+            "type": "pandas-ta",
+            "required_inputs": ["high", "low", "close"],
+            "parameters": {
+                "length": { "default": 14 }
+            },
+            "conditions": [
+                {
+                    "length": { "gte": 2 }
+                }
+            ]
+        },
+        "ao": {
+            "type": "pandas-ta",
+            "required_inputs": ["high", "low"],
+            "parameters": {
+                "fast": { "default": 5 },
+                "slow": { "default": 34 }
+            },
+            "conditions": [
+                {
+                    "fast": { "gte": 2 }
+                },
+                {
+                    "slow": { "gte": 2 }
+                },
+                {
+                    "fast": { "lt": "slow" }
+                }
+            ]
+        },
+        "kc": {
+            "type": "pandas-ta",
+            "required_inputs": ["high", "low", "close"],
+            "parameters": {
+                "length": { "default": 20 },
+                "mamode": { "default": "ema" },
+                "multup": { "default": 2 },
+                "multdn": { "default": 2 }
+            },
+            "conditions": [
+                {
+                    "length": { "gte": 2 }
+                },
+                {
+                    "multup": { "gte": 0.1 }
+                },
+                {
+                    "multdn": { "gte": 0.1 }
+                }
+            ]
+        },
+        "rvi": {
+            "type": "ta-lib",
+            "required_inputs": ["close"],
+            "parameters": {
+                "timeperiod": { "default": 10 }
+            },
+            "conditions": [
+                {
+                    "timeperiod": { "gte": 2 }
+                }
+            ]
+        },
+        "tsi": {
+            "type": "ta-lib",
+            "required_inputs": ["close"],
+            "parameters": {
+                "long": { "default": 25 },
+                "short": { "default": 13 }
+            },
+            "conditions": [
+                {
+                    "long": { "gte": 2 }
+                },
+                {
+                    "short": { "gte": 2 }
+                },
+                {
+                    "short": { "lt": "long" }
+                }
+            ]
+        },
+        "EyeX MFV Volume": {
+            "type": "custom",
+            "required_inputs": [],
+            "parameters": {
+                "ranges": {
+                    "default": [50, 75, 100, 200]
+                }
+            },
+            "conditions": []
+        },
+        "EyeX MFV S/R Bull": {
+            "type": "custom",
+            "required_inputs": [],
+            "parameters": {
+                "ranges": {
+                    "default": [50, 75, 100, 200]
+                },
+                "pivot_lookback": {
+                    "default": 5
+                },
+                "price_proximity": {
+                    "default": 0.00001
+                }
+            },
+            "conditions": [
+                {
+                    "pivot_lookback": { "gte": 1 }
+                },
+                {
+                    "price_proximity": { "gte": 0.000001 }
+                }
+            ]
+        }
+    }
+}
+
+====================
+13) launch.py:
+# LAUNCH.py
+import sys
+import logging
+import runpy
+from pathlib import Path
+from logging_setup import configure_logging
+from backup_utils import run_backup_cleanup
+
+logger = logging.getLogger()
+
+def delete_old_logs(log_dir: Path, log_extension: str = ".log"):
+    """
+    Deletes old log files in the specified directory with the given extension.
+
+    Args:
+        log_dir (Path): Directory containing log files.
+        log_extension (str): Extension of log files to delete.
+    """
+    for log_file in log_dir.glob(f"*{log_extension}"):
+        try:
+            log_file.unlink()
+            logger.info(f"Deleted log file: {log_file}")
+        except Exception as e:
+            logger.error(f"Error deleting log file {log_file}: {e}")
+
+def run_script(script_name: str) -> int:
+    """
+    Executes a Python script using runpy.run_path.
+
+    Args:
+        script_name (str): The name of the script to execute.
+
+    Returns:
+        int: Exit code from the script. 0 if successful, 1 otherwise.
+    """
+    try:
+        logger.info(f"Executing {script_name}...")
+        runpy.run_path(script_name, run_name="__main__")
+        logger.info(f"{script_name} executed successfully.")
+        return 0
+    except SystemExit as e:
+        logger.warning(f"SystemExit encountered in {script_name} with code: {e.code}")
+        return e.code
+    except Exception as e:
+        logger.exception(f"Uncaught exception during execution of {script_name}")
+        return 1
+
+def main():
+    """
+    Main function to execute backup cleanup, run primary script, execute additional scripts,
+    and handle error codes appropriately.
+    """
+    current_dir = Path.cwd()
+
+    delete_old_logs(current_dir)
+
+    configure_logging(log_file_prefix=current_dir.name)
+
+    exit_code = 0
+
+    primary_scripts = [
+        ("run_backup_cleanup", lambda: run_backup_cleanup()),
+        ("start.py", lambda: run_script("start.py"))
+    ]
+
+    for script_name, script_func in primary_scripts:
+        try:
+            if script_name == "run_backup_cleanup":
+                logger.info(f"Executing {script_name}...")
+                script_func()
+                logger.info(f"{script_name} executed successfully.")
+            else:
+                script_exit_code = script_func()
+                if script_exit_code != 0:
+                    logger.warning(f"{script_name} exited with code: {script_exit_code}")
+                    if exit_code == 0:
+                        exit_code = script_exit_code
+        except Exception as e:
+            logger.exception(f"Exception occurred while executing {script_name}")
+            if exit_code == 0:
+                exit_code = 1
+
+    additional_scripts = ["copyscripts.py", "COPYSCRIPTS_SELECTIVE.py"]
+    for script in additional_scripts:
+        script_exit_code = run_script(script)
+        if script_exit_code != 0:
+            logger.warning(f"{script} exited with code: {script_exit_code}")
+            if exit_code == 0:
+                exit_code = script_exit_code
+
+    logger.info(f"launch.py exiting with code: {exit_code}")
+    sys.exit(exit_code)
+
+if __name__ == "__main__":
+    main()
+
+====================
+14) load_data.py:
+# load_data.py
+import logging
+import os
+import pandas as pd
+from sqlite_data_manager import create_connection, initialize_database
+from config import DB_PATH
+
+logger = logging.getLogger()
+
+def load_data(symbol, timeframe):
+    initialize_database(DB_PATH)
+    conn = create_connection(DB_PATH)
+    query = """SELECT klines.* FROM klines
+               JOIN symbols ON klines.symbol_id = symbols.id
+               JOIN timeframes ON klines.timeframe_id = timeframes.id
+               WHERE symbols.symbol = ? AND timeframes.timeframe = ?
+               ORDER BY open_time ASC"""
+    try:
+        df = pd.read_sql_query(query, conn, params=(symbol, timeframe), parse_dates=['open_time', 'close_time'])
+        conn.close()
+        if df.empty:
+            print("No data found for the specified symbol and timeframe.")
+        is_rev = False
+        db_fn = str(DB_PATH)
+        return df, is_rev, db_fn
+    except Exception as e:
+        print(f"Error querying database: {e}")
+        conn.close()
+        return pd.DataFrame(), False, str(DB_PATH)
+
+if __name__ == "__main__":
+    symbol = input("Enter symbol (e.g., 'BTCUSDT'): ").strip().upper()
+    timeframe = input("Enter timeframe (e.g., '1d'): ").strip()
+    df, is_rev, db_fn = load_data(symbol, timeframe)
+    if not df.empty:
+        print("Data loaded successfully.")
+        print(df.head())
+    else:
+        print("No data available.")
+
+====================
+15) logging_setup.py:
+# logging_setup.py
+import logging
+import sys
+from pathlib import Path
+from datetime import datetime
+import inspect
+
+class TaskAwareFormatter(logging.Formatter):
+    def format(self, record):
+        for frame in inspect.stack():
+            module = inspect.getmodule(frame[0])
+            if module and not module.__name__.startswith('logging'):
+                record.filename = Path(module.__file__).name
+                record.funcName = frame.function
+                record.lineno = frame.lineno
+                break
+        return super().format(record)
+
+class StreamToLogger:
+    def __init__(self, stream):
+        self.stream = stream
+
+    def write(self, msg):
+        if msg.strip():
+            self.stream.write(msg + "\n")
+            self.stream.flush()
+
+    def flush(self):
+        self.stream.flush()
+
+class ExcludeFilter(logging.Filter):
+    def __init__(self, exclude_substrings):
+        super().__init__()
+        self.exclude_substrings = exclude_substrings
+
+    def filter(self, record):
+        message = record.getMessage()
+        module = record.module
+        pathname = record.pathname
+        return not any(
+            substring in (message or '') or substring in (module or '') or substring in (pathname or '')
+            for substring in self.exclude_substrings
+        )
+
+_configured = False
+
+def configure_logging(log_file_prefix='predictions'):
+    global _configured
+    if _configured:
+        return
+
+    logger = logging.getLogger()
+    if logger.hasHandlers():
+        logger.handlers.clear()
+
+    logger.setLevel(logging.DEBUG)
+    log_path = Path.cwd() / f"{log_file_prefix}_{datetime.now().strftime('%Y%m%d-%H%M%S')}.log"
+
+    try:
+        exclude_filter = ExcludeFilter([
+            'copyscripts', 'COPYSCRIPTS_SELECTIVE',
+            'eucjpprober', 'mbcharsetprober', 'charsetgroupprober'
+        ])
+
+        file_handler = logging.FileHandler(log_path, 'w')
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(
+            TaskAwareFormatter('%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d(%(funcName)s)]: %(message)s')
+        )
+        file_handler.addFilter(exclude_filter)
+
+        stream_handler = logging.StreamHandler()
+        stream_handler.setLevel(logging.INFO)
+        stream_handler.setFormatter(logging.Formatter('%(message)s'))
+        stream_handler.addFilter(exclude_filter)
+
+        logger.addHandler(file_handler)
+        logger.addHandler(stream_handler)
+
+        sys.stdout = StreamToLogger(sys.stdout)
+        sys.stderr = StreamToLogger(sys.stderr)
+
+        def exception_handler(exc_type, exc_value, exc_traceback):
+            if not issubclass(exc_type, KeyboardInterrupt):
+                logger.error("Uncaught exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+        sys.excepthook = exception_handler
+        logger.info(f"Logging configured. Log file at: {log_path.resolve()}")
+        _configured = True
+        return log_path
+
+    except Exception as e:
+        print(f"Logging setup failed: {e}")
+        sys.exit(1)
+
+====================
+16) restore_backup.py:
+# restore_backup.py
+import os
+from pathlib import Path
+
+def rename_files(directory):
+    dir_path = Path(directory)
+    if not dir_path.is_dir():
+        print(f"Error: '{directory}' does not exist.")
+        return
+    for bak in dir_path.glob("*.bak"):
+        parts = bak.stem.split('__')
+        if parts:
+            new_name = f"{parts[0]}.py"
+            new_path = dir_path / new_name
+            try:
+                bak.rename(new_path)
+                print(f'Renamed: "{bak.name}" --> "{new_name}"')
+            except FileExistsError:
+                print(f'Error: "{new_name}" exists. Skipping "{bak.name}".')
+            except Exception as e:
+                print(f'Error renaming "{bak.name}": {e}')
+        else:
+            print(f'Warning: "{bak.name}" pattern mismatch. Skipping.')
+
+if __name__=="__main__":
+    rename_files(r"C:\code\prediction")
+
+====================
+17) sqlite_data_manager.py:
+# sqlite_data_manager.py
+import json
+import logging
+import sqlite3
+from pathlib import Path
+import pandas as pd
+import re
+from config import DB_PATH
+
+logger = logging.getLogger()
+
+def create_connection(db_path=DB_PATH):
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        logger.info(f"Connected to SQLite database at {db_path}. SQLite version: {cursor.execute('SELECT sqlite_version();').fetchone()[0]}")
+        return conn
+    except sqlite3.Error as e:
+        logger.error(f"SQLite connection error: {e}")
+        return None
+
+def create_tables(conn):
+    try:
+        cursor = conn.cursor()
+        tables = {
+            'symbols': """
+                CREATE TABLE IF NOT EXISTS symbols (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT UNIQUE
+                );""",
+            'timeframes': """
+                CREATE TABLE IF NOT EXISTS timeframes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timeframe TEXT UNIQUE
+                );""",
+            'indicators': """
+                CREATE TABLE IF NOT EXISTS indicators (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT UNIQUE
+                );""",
+            'indicator_configs': """
+                CREATE TABLE IF NOT EXISTS indicator_configs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    indicator_id INTEGER,
+                    config TEXT NOT NULL,
+                    FOREIGN KEY (indicator_id) REFERENCES indicators(id),
+                    UNIQUE(indicator_id, config)
+                );""",
+            'klines': """
+                CREATE TABLE IF NOT EXISTS klines (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol_id INTEGER,
+                    timeframe_id INTEGER,
+                    open_time TEXT,
+                    open REAL,
+                    high REAL,
+                    low REAL,
+                    close REAL,
+                    volume REAL,
+                    close_time TEXT,
+                    quote_asset_volume REAL,
+                    number_of_trades INTEGER,
+                    taker_buy_base_asset_volume REAL,
+                    taker_buy_quote_asset_volume REAL,
+                    correlation_computed BOOLEAN DEFAULT FALSE,
+                    FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+                    FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
+                );""",
+            'correlations': """
+                CREATE TABLE IF NOT EXISTS correlations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol_id INTEGER,
+                    timeframe_id INTEGER,
+                    indicator_config_id INTEGER,
+                    lag INTEGER,
+                    correlation_value REAL,
+                    FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+                    FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
+                    FOREIGN KEY (indicator_config_id) REFERENCES indicator_configs(id),
+                    UNIQUE(symbol_id, timeframe_id, indicator_config_id, lag)
+                );"""
+        }
+
+        for table_name, ddl in tables.items():
+            cursor.execute(ddl)
+            logger.info(f"Table '{table_name}' ensured in database.")
+
+        indexes = [
+            "CREATE INDEX IF NOT EXISTS idx_open_time ON klines (open_time);",
+            "CREATE INDEX IF NOT EXISTS idx_close_time ON klines (close_time);",
+            "CREATE INDEX IF NOT EXISTS idx_correlation_computed ON klines (correlation_computed);",
+            "CREATE INDEX IF NOT EXISTS idx_correlations ON correlations (symbol_id, timeframe_id, indicator_config_id, lag);"
+        ]
+
+        for idx_query in indexes:
+            cursor.execute(idx_query)
+            index_name = re.findall(r'CREATE INDEX IF NOT EXISTS (\w+) ', idx_query)[0]
+            logger.info(f"Index created or already exists: {index_name}")
+
+        conn.commit()
+        logger.info("All tables and indexes are set up successfully.")
+    except sqlite3.Error as e:
+        logger.error(f"SQLite table creation error: {e}")
+        raise e
+
+def initialize_database(db_path=DB_PATH):
+    conn = create_connection(db_path)
+    if conn:
+        create_tables(conn)
+        conn.close()
+    else:
+        logger.error("Failed to initialize the database.")
+
+def insert_indicator_configs(conn, indicator_name, configs):
+    try:
+        create_tables(conn)
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR IGNORE INTO indicators (name) VALUES (?)", (indicator_name,))
+        conn.commit()
+        cursor.execute("SELECT id FROM indicators WHERE name = ?", (indicator_name,))
+        result = cursor.fetchone()
+        if not result:
+            raise ValueError(f"Indicator '{indicator_name}' could not be inserted.")
+        indicator_id = result[0]
+        for config in configs:
+            config_json = json.dumps(config, sort_keys=True)
+            cursor.execute("INSERT OR IGNORE INTO indicator_configs (indicator_id, config) VALUES (?, ?)", (indicator_id, config_json))
+        conn.commit()
+        logger.info(f"Inserted {len(configs)} configurations for indicator '{indicator_name}'.")
+    except sqlite3.Error as e:
+        logger.error(f"SQLite insertion error: {e}")
+        raise e
+    except ValueError as ve:
+        logger.error(ve)
+        raise ve
+
+def fetch_indicator_configs(conn, indicator_name):
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT config FROM indicator_configs 
+        JOIN indicators ON indicator_configs.indicator_id = indicators.id 
+        WHERE indicators.name = ?
+    """, (indicator_name,))
+    rows = cursor.fetchall()
+    return [json.loads(row[0]) for row in rows]
+
+def insert_klines(conn, df, symbol, timeframe):
+    try:
+        required_columns = [
+            'open_time', 'open', 'high', 'low', 'close', 'volume', 'close_time',
+            'quote_asset_volume', 'number_of_trades', 'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume'
+        ]
+        if not all(col in df.columns for col in required_columns):
+            raise ValueError(f"DataFrame missing required columns: {set(required_columns) - set(df.columns)}")
+
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol,))
+        cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
+        symbol_id = cursor.fetchone()[0]
+
+        cursor.execute("INSERT OR IGNORE INTO timeframes (timeframe) VALUES (?)", (timeframe,))
+        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
+        timeframe_id = cursor.fetchone()[0]
+
+        df['open_time'] = pd.to_datetime(df['open_time']).dt.strftime('%Y-%m-%d %H:%M:%S')
+        df['close_time'] = pd.to_datetime(df['close_time']).dt.strftime('%Y-%m-%d %H:%M:%S')
+
+        insert_query = """
+            INSERT INTO klines (
+                symbol_id, timeframe_id, open_time, open, high, low, close, volume, close_time,
+                quote_asset_volume, number_of_trades, taker_buy_base_asset_volume, taker_buy_quote_asset_volume
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """
+
+        data = [
+            (
+                symbol_id, timeframe_id,
+                row['open_time'], row['open'], row['high'], row['low'], row['close'], row['volume'], row['close_time'],
+                row['quote_asset_volume'], row['number_of_trades'],
+                row['taker_buy_base_asset_volume'], row['taker_buy_quote_asset_volume']
+            )
+            for _, row in df.iterrows()
+        ]
+
+        cursor.executemany(insert_query, data)
+        conn.commit()
+        logger.info(f"Successfully inserted {len(data)} records into 'klines'.")
+    except (sqlite3.Error, ValueError) as e:
+        logger.error(f"SQLite insertion error: {e}")
+        raise e
+
+def save_to_sqlite(df, db_path, symbol, timeframe):
+    conn = create_connection(db_path)
+    if conn:
+        try:
+            insert_klines(conn, df, symbol, timeframe)
+        except Exception as e:
+            logger.error(f"Error saving klines to SQLite: {e}")
+            raise e
+        finally:
+            conn.close()
+    else:
+        logger.error("Cannot connect to the database.")
+        raise ConnectionError("Cannot connect to the database.")
+
+====================
+18) start.py:
+# start.py
+import logging
+import os
+import shutil
+import sys
+from pathlib import Path
+from datetime import datetime
+from config import DB_PATH
+from sqlite_data_manager import initialize_database, create_connection, insert_indicator_configs
+from correlation_utils import load_or_calculate_correlations
+from indicators import compute_configured_indicators
+from load_data import load_data
+from binance_historical_data_downloader import download_binance_data
+from logging_setup import configure_logging
+from tweak_indicator import (
+    fetch_available_indicators,
+    generate_configurations,
+    parse_indicator_parameters
+)
+
+logger = logging.getLogger()
+
+def input_with_default(prompt: str, default: str) -> str:
+    val = input(prompt).strip()
+    final_val = val if val else default
+    logger.info(f"User Input: {prompt.strip()} -> {final_val}")
+    return final_val
+
+def input_yes_no(prompt: str, default: str = 'y') -> str:
+    val = input(prompt).strip().lower()
+    if val.startswith('y'):
+        final_val = 'y'
+    elif val.startswith('n'):
+        final_val = 'n'
+    else:
+        final_val = default
+    logger.info(f"User Input: {prompt.strip()} -> {final_val}")
+    return final_val
+
+def delete_previous_output():
+    target_dirs = ['csv', 'heatmaps', 'combined_charts', 'reports', 'database']
+    delete_outputs = input_yes_no("Delete contents of output directories? (y/n): ")
+    if delete_outputs == 'y':
+        for folder in target_dirs:
+            folder_path = Path(folder)
+            if folder_path.exists() and folder_path.is_dir():
+                try:
+                    for item in folder_path.iterdir():
+                        if item.is_file():
+                            item.unlink()
+                        elif item.is_dir():
+                            shutil.rmtree(item)
+                    logger.info(f"Cleared contents of: {folder}")
+                except Exception as e:
+                    logger.error(f"Error clearing contents of {folder}: {e}")
+        logger.info("All selected directory contents have been cleared.")
+    else:
+        logger.info("Directory contents not cleared.")
+
+def run_tweak_indicator(symbol: str, timeframe: str):
+    available_indicators = fetch_available_indicators()
+    if not available_indicators:
+        logger.error("No indicators available. Check `indicators.py` or `compute_all_indicators`.")
+        sys.exit(1)
+
+    logger.info("Available indicators:")
+    for idx, indicator in enumerate(available_indicators, 1):
+        logger.info(f"{idx}. {indicator}")
+
+    choice = input("Select an indicator by number: ").strip()
+    if not choice.isdigit() or int(choice) < 1 or int(choice) > len(available_indicators):
+        logger.error("Invalid choice. Exiting.")
+        sys.exit(1)
+
+    selected_indicator = available_indicators[int(choice) - 1]
+    logger.info(f"Selected indicator: {selected_indicator}")
+
+    parameters = parse_indicator_parameters(selected_indicator)
+    if parameters is None:
+        logger.error(f"No parameters found for '{selected_indicator}'. Using base indicator.")
+        return selected_indicator
+    else:
+        logger.info(f"Parameters for '{selected_indicator}': {parameters}")
+
+    if 'parameters' in parameters:
+        configurations = generate_configurations(list(parameters['parameters'].keys()), parameters['parameters'])
+    else:
+        configurations = []
+
+    if not configurations:
+        logger.error(f"No configurations generated for '{selected_indicator}'. Using base indicator.")
+    else:
+        logger.info(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
+        example_configs = configurations[:15]
+        logger.info(f"Example configurations for '{selected_indicator}': {example_configs}")
+
+    conn = create_connection(DB_PATH)
+    if not conn:
+        logger.error("Failed to connect to the database.")
+        sys.exit(1)
+    try:
+        insert_indicator_configs(conn, selected_indicator, configurations)
+    except Exception as e:
+        logger.error(f"Error inserting configurations into database for '{selected_indicator}': {e}")
+        sys.exit(1)
+    if configurations:
+        logger.info("Configurations stored in database:")
+        for config in configurations[:15]:
+            logger.info(config)
+    conn.close()
+    logger.info(f"Configurations for '{selected_indicator}' have been added to the database.")
+
+    return selected_indicator
+
+def main():
+    log_dir = Path('logs')
+    log_dir.mkdir(exist_ok=True)
+    configure_logging(log_file_prefix="execution")
+
+    try:
+        initialize_database(DB_PATH)
+        logger.info("Database initialized successfully.")
+
+        delete_previous_output()
+
+        selected_indicator = None
+        symbol = None
+        timeframe = None
+
+        if input_yes_no("Do you want to tweak indicator settings? (y/n): ") == 'y':
+            symbol = input_with_default("Enter symbol (e.g., 'BTCUSDT'): ", "BTCUSDT")
+            timeframe = input_with_default("Enter timeframe (e.g., '1w'): ", "1w")
+            logger.info(f"Symbol: {symbol}, Timeframe: {timeframe}")
+
+            selected_indicator = run_tweak_indicator(symbol, timeframe)
+
+        else:
+            logger.info("Skipping indicator tweaking.")
+
+        logger.info("Proceeding with main execution.")
+
+        if symbol and timeframe:
+            download_binance_data(symbol, timeframe, DB_PATH)
+            logger.info("Price data download and insertion completed.")
+        else:
+            logger.error("Symbol and timeframe not provided. Skipping data download.")
+            sys.exit(1)
+
+        if selected_indicator:
+            indicators_list = [selected_indicator]
+
+            data, is_rev, db_fn = load_data(symbol, timeframe)
+            if data.empty:
+                logger.error("No data available for the selected symbol and timeframe.")
+                sys.exit(1)
+
+            try:
+                data = compute_configured_indicators(data, indicators_list, db_path=DB_PATH)
+                if data.empty:
+                    logger.error("No valid indicator data after computation. Exiting.")
+                    sys.exit(1)
+                logger.info("Configured indicators computed successfully.")
+                logger.info("Computing correlations.")
+                load_or_calculate_correlations(
+                    data=data,
+                    indicators=indicators_list,
+                    max_lag=30,
+                    reverse=False,
+                    symbol=symbol,
+                    timeframe=timeframe
+                )
+                logger.info("Correlation computations completed for the selected indicator configurations.")
+            except Exception as e:
+                logger.error(f"Error computing configured indicators or correlations: {e}")
+                sys.exit(1)
+        else:
+            logger.info("No indicators selected for correlation computations.")
+
+        logger.info("Execution finished successfully.")
+
+    except Exception as e:
+        logger.exception("An unexpected exception occurred during execution.")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+
+====================
+19) table_generation.py:
+# table_generation.py
+import os, pandas as pd, numpy as np, logging
+
+logger = logging.getLogger()
+
+def generate_statistical_summary(correlations: dict, max_lag: int) -> pd.DataFrame:
+    summary = {ind: {'mean': np.mean(vals), 'std': np.std(vals), 'min': np.min(vals), 'max': np.max(vals)} 
+               for ind, vals in correlations.items() if vals and any(pd.notna(v) for v in vals)}
+    return pd.DataFrame(summary).T
+
+def generate_best_indicator_table(correlations: dict, max_lag: int) -> pd.DataFrame:
+    summary_df = generate_statistical_summary(correlations, max_lag)
+    return summary_df.sort_values(by='mean', ascending=False).head(10) if not summary_df.empty else pd.DataFrame()
+
+def generate_correlation_csv(correlations: dict, max_lag: int, base_filename: str, csv_dir: str) -> None:
+    df = pd.DataFrame(correlations, index=range(1, max_lag+1))
+    os.makedirs(csv_dir, exist_ok=True)
+    df.to_csv(os.path.join(csv_dir, f"{base_filename}_correlations.csv"), index_label='Lag')
+
+====================
+20) test_indicators.py:
+# test_indicators.py
+import json
+import logging
+import pandas as pd
+import numpy as np
+import talib
+import pandas_ta as ta
+import os
+from logging_setup import configure_logging
+
+def load_indicator_params(json_path):
+    try:
+        with open(json_path, 'r') as f:
+            params = json.load(f)
+        indicators = params.get('indicators', {})
+        logging.info(f"Indicator Parameters Loaded: {list(indicators.keys())}")
+        return indicators
+    except Exception as e:
+        logging.error(f"Failed to load indicator parameters from {json_path}: {e}")
+        raise
+
+def generate_simulated_data(num_rows=200):
+    np.random.seed(0)
+    data = pd.DataFrame({
+        'open': np.random.uniform(100, 200, num_rows),
+        'high': np.random.uniform(100, 300, num_rows),
+        'low': np.random.uniform(50, 100, num_rows),
+        'close': np.random.uniform(100, 200, num_rows),
+        'volume': np.random.uniform(1000, 5000, num_rows)
+    })
+    logging.info("Generating simulated market data.")
+    logging.debug(f"Simulated Data Summary:\n{data.describe()}")
+    return data
+
+def compute_custom_indicator(indicator_name, params, data):
+    try:
+        if indicator_name == 'EyeX MFV Volume':
+            ranges = params.get('ranges', {}).get('default', [])
+            ranges = sorted(ranges)
+            for r in ranges:
+                column_name = f"MFV_Volume_{r}"
+                data[column_name] = data['volume'].rolling(window=r).mean()
+            logging.info(f"Indicator '{indicator_name}' computed successfully.")
+        
+        elif indicator_name == 'EyeX MFV S/R Bull':
+            ranges = params.get('ranges', {}).get('default', [])
+            pivot_lookback = params.get('pivot_lookback', {}).get('default', 5)
+            price_proximity = params.get('price_proximity', {}).get('default', 0.00001)
+            for r in ranges:
+                data[f"MFV_SRB_{r}"] = data['volume'].rolling(window=r).mean()
+            data['Pivot_High'] = data['high'].rolling(window=pivot_lookback, center=True).max()
+            data['Pivot_Low'] = data['low'].rolling(window=pivot_lookback, center=True).min()
+            data['Support'] = np.where(abs(data['close'] - data['Pivot_Low']) <= price_proximity, data['Pivot_Low'], np.nan)
+            data['Resistance'] = np.where(abs(data['close'] - data['Pivot_High']) <= price_proximity, data['Pivot_High'], np.nan)
+            logging.info(f"Indicator '{indicator_name}' computed successfully.")
+        
+        else:
+            logging.warning(f"Custom indicator '{indicator_name}' is not implemented.")
+    except Exception as e:
+        logging.error(f"Error computing Custom Indicator '{indicator_name}': {e}")
+        raise
+
+def compute_ta_lib_indicator(indicator_name, params, data):
+    try:
+        extracted_params = {k: v['default'] for k, v in params.items() if 'default' in v and k not in ['required_inputs', 'input_columns', 'conditions']}
+        func = getattr(talib, indicator_name.upper())
+        required_inputs = params.get('required_inputs', [])
+        
+        inputs = []
+        for inp in required_inputs:
+            if inp in data.columns:
+                inputs.append(data[inp].values)
+            else:
+                logging.error(f"Required input '{inp}' for indicator '{indicator_name}' is missing in data.")
+                raise ValueError(f"Missing required input: {inp}")
+        
+        logging.debug(f"TA-Lib Indicator '{indicator_name}': Inputs = {required_inputs}, Parameters = {extracted_params}")
+        
+        result = func(*inputs, **extracted_params)
+        
+        if isinstance(result, tuple):
+            for idx, res in enumerate(result):
+                data[f"{indicator_name.upper()}_{idx}"] = res
+                logging.debug(f"Added column '{indicator_name.upper()}_{idx}' with {res.size} elements.")
+        else:
+            data[f"{indicator_name.upper()}"] = result
+            logging.debug(f"Added column '{indicator_name.upper()}' with {result.size} elements.")
+        logging.info(f"Indicator '{indicator_name}' computed successfully using TA-Lib.")
+    except AttributeError:
+        logging.error(f"TA-Lib does not have a function named '{indicator_name.upper()}'.")
+        raise
+    except TypeError as te:
+        logging.error(f"Error computing TA-Lib indicator '{indicator_name}': {te}")
+        raise
+    except Exception as e:
+        logging.error(f"Error computing TA-Lib indicator '{indicator_name}': {e}")
+        raise
+
+def compute_pandas_ta_indicator(indicator_name, params, data):
+    try:
+        extracted_params = {k: v['default'] for k, v in params.items() if 'default' in v and k not in ['required_inputs', 'input_columns', 'conditions']}
+        func = getattr(ta, indicator_name.lower())
+        required_inputs = params.get('required_inputs', [])
+        
+        inputs = []
+        for inp in required_inputs:
+            if inp in data.columns:
+                inputs.append(data[inp])
+            else:
+                logging.error(f"Required input '{inp}' for indicator '{indicator_name}' is missing in data.")
+                raise ValueError(f"Missing required input: {inp}")
+        
+        logging.debug(f"pandas-ta Indicator '{indicator_name}': Inputs = {required_inputs}, Parameters = {extracted_params}")
+        
+        result = func(*inputs, **extracted_params)
+        
+        if isinstance(result, pd.DataFrame):
+            for col in result.columns:
+                data[col] = result[col]
+                logging.debug(f"Added column '{col}' with {result[col].notna().sum()} non-NaN values.")
+        else:
+            param_values = '_'.join(map(str, extracted_params.values()))
+            data[f"{indicator_name.upper()}_{param_values}"] = result
+            logging.debug(f"Added column '{indicator_name.upper()}_{param_values}' with {result.notna().sum()} non-NaN values.")
+        logging.info(f"Indicator '{indicator_name}' computed successfully using pandas-ta.")
+    except AttributeError:
+        logging.error(f"pandas-ta does not have a function named '{indicator_name.lower()}'.")
+        raise
+    except TypeError as te:
+        logging.error(f"Error computing pandas-ta indicator '{indicator_name}': {te}")
+        raise
+    except Exception as e:
+        logging.error(f"Error computing pandas-ta indicator '{indicator_name}': {e}")
+        raise
+
+def compute_indicators(indicators, data):
+    for indicator_name, config in indicators.items():
+        logging.info(f"Processing Indicator: {indicator_name}")
+        indicator_type = config.get('type', '').lower()
+        params = config.get('parameters', {})
+        required_inputs = config.get('required_inputs', [])
+        conditions = config.get('conditions', [])
+        
+        if conditions:
+            condition_met = True
+            for condition in conditions:
+                for param, rule in condition.items():
+                    for rule_type, rule_value in rule.items():
+                        param_value = params[param]['default']
+                        if isinstance(rule_value, str) and rule_value in params:
+                            compare_to = params[rule_value]['default']
+                        else:
+                            try:
+                                compare_to = float(rule_value)
+                            except ValueError:
+                                logging.error(f"Invalid comparison value '{rule_value}' in conditions for indicator '{indicator_name}'.")
+                                condition_met = False
+                                break
+                        if rule_type == 'greater_than' and not (param_value > compare_to):
+                            condition_met = False
+                            break
+                        elif rule_type == 'less_than' and not (param_value < compare_to):
+                            condition_met = False
+                            break
+                        elif rule_type == 'less_than_or_equal' and not (param_value <= compare_to):
+                            condition_met = False
+                            break
+                if not condition_met:
+                    logging.info(f"Conditions not met for indicator '{indicator_name}'. Skipping computation.")
+                    break
+            if not condition_met:
+                continue
+        
+        missing_inputs = [inp for inp in required_inputs if inp not in data.columns]
+        if missing_inputs:
+            logging.warning(f"Missing required inputs {missing_inputs} for indicator '{indicator_name}'. Skipping.")
+            continue
+        
+        try:
+            if indicator_type == 'ta-lib':
+                try:
+                    compute_ta_lib_indicator(indicator_name, params, data)
+                except Exception as e:
+                    logging.warning(f"TA-Lib computation failed for indicator '{indicator_name}': {e}. Attempting pandas-ta.")
+                    try:
+                        compute_pandas_ta_indicator(indicator_name, params, data)
+                    except Exception as e_pandas:
+                        logging.error(f"Pandas-ta computation also failed for indicator '{indicator_name}': {e_pandas}.")
+            elif indicator_type == 'pandas-ta':
+                compute_pandas_ta_indicator(indicator_name, params, data)
+            elif indicator_type == 'custom':
+                compute_custom_indicator(indicator_name, params, data)
+            else:
+                logging.warning(f"Unknown indicator type '{indicator_type}' for indicator '{indicator_name}'. Skipping.")
+        except Exception as e:
+            logging.warning(f"Indicator '{indicator_name}' failed to compute: {e}")
+
+def validate_indicators(indicators, data):
+    for indicator_name, config in indicators.items():
+        logging.info(f"Validating Indicator: {indicator_name}")
+        if config['type'] == 'custom':
+            if indicator_name == 'EyeX MFV Volume':
+                col_prefix = 'MFV_Volume'
+                mfv_cols = [col for col in data.columns if col.startswith(col_prefix)]
+                if not mfv_cols:
+                    logging.error(f"No columns found for indicator '{indicator_name}'.")
+                    continue
+                for col in mfv_cols:
+                    non_nan = data[col].notna().sum()
+                    total = len(data)
+                    logging.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
+            elif indicator_name == 'EyeX MFV S/R Bull':
+                required_cols = [col for col in data.columns if col.startswith('MFV_SRB')] + ['Pivot_High', 'Pivot_Low', 'Support', 'Resistance']
+                missing_cols = [col for col in required_cols if col not in data.columns]
+                if missing_cols:
+                    logging.error(f"No columns found for indicator '{indicator_name}'. Missing: {missing_cols}")
+                    continue
+                for col in required_cols:
+                    non_nan = data[col].notna().sum()
+                    total = len(data)
+                    logging.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
+        else:
+            possible_cols = [indicator_name.upper()]
+            for col in data.columns:
+                if col.startswith(indicator_name.upper()):
+                    possible_cols.append(col)
+            found = False
+            for col in possible_cols:
+                if col in data.columns:
+                    non_nan = data[col].notna().sum()
+                    total = len(data)
+                    logging.debug(f"Indicator '{col}' has {non_nan} non-NaN values out of {total}.")
+                    found = True
+            if not found:
+                logging.error(f"No columns found for indicator '{indicator_name}'.")
+                continue
+        logging.info("Completed validation of computed indicators.")
+
+def main():
+    try:
+        configure_logging(log_file_prefix='predictions')
+        json_path = 'indicator_params.json'
+        if not os.path.exists(json_path):
+            logging.error(f"Indicator parameters file '{json_path}' does not exist.")
+            return
+        indicators = load_indicator_params(json_path)
+        data = generate_simulated_data(num_rows=200)
+        logging.info("Starting computation of indicators.")
+        compute_indicators(indicators, data)
+        logging.info("Starting validation of computed indicators.")
+        validate_indicators(indicators, data)
+        logging.info("Indicator testing completed.")
+    except Exception as e:
+        logging.error(f"An error occurred in the main execution: {e}")
+
+if __name__ == "__main__":
+    main()
+
+====================
+21) tweak_indicator.py:
+# tweak_indicator.py
+import sys
+import itertools
+import logging
+from pathlib import Path
+from typing import Dict, List, Optional
+import numpy as np
+import json
+from config import DB_PATH
+from indicator_config_parser import get_configurable_indicators, get_indicator_parameters
+from sqlite_data_manager import insert_indicator_configs, create_connection, initialize_database
+from logging_setup import configure_logging
+
+logger = logging.getLogger(__name__)
+
+def generate_configurations(parameter_keys: List[str], parameter_definitions: Dict) -> List[Dict]:
+    param_alternatives = {}
+    for param in parameter_keys:
+        param_def = parameter_definitions[param]
+        default = param_def.get('default')
+        if default is None:
+            logger.warning(f"Parameter '{param}' does not have a default value. Skipping.")
+            continue
+        if isinstance(default, int):
+            if param in ['fast', 'slow', 'fastperiod', 'slowperiod', 'signalperiod', 'timeperiod', 'timeperiod1', 'timeperiod2', 'timeperiod3', 'pivot_lookback']:
+                start = max(2, default - 5)
+            else:
+                start = max(1, default - 5)
+            param_alternatives[param] = [start + i for i in range(11)]
+        elif isinstance(default, float):
+            if param in ['fast', 'slow', 'fastperiod', 'slowperiod', 'signalperiod', 'timeperiod', 'timeperiod1', 'timeperiod2', 'timeperiod3', 'pivot_lookback']:
+                start = max(2.0, default - 5.0)
+                param_alternatives[param] = [round(start + i, 1) for i in range(11)]
+            elif 0 < default < 1:
+                start = max(0.1, default * 0.9)
+                param_alternatives[param] = [round(start + 0.02 * i, 4) for i in range(11)]
+            else:
+                param_alternatives[param] = [default]
+        else:
+            logger.warning(f"Parameter '{param}' is not a numeric type. Using default only.")
+            param_alternatives[param] = [default]
+
+    if not param_alternatives:
+        return []
+
+    keys, values = zip(*param_alternatives.items())
+    configurations = [dict(zip(keys, v)) for v in itertools.product(*values)]
+
+    valid_combinations = []
+    for combo in configurations:
+        valid_combinations.append(combo)
+    return valid_combinations
+
+def fetch_available_indicators() -> List[str]:
+    return get_configurable_indicators('indicator_params.json')
+
+def parse_indicator_parameters(indicator_name: str) -> Optional[Dict]:
+    return get_indicator_parameters(indicator_name, 'indicator_params.json')
+
+def insert_tweaked_configs(conn, indicator_name: str, configurations: List[Dict]):
+    try:
+        insert_indicator_configs(conn, indicator_name, configurations)
+    except Exception as e:
+        logger.error(f"Error inserting configurations for '{indicator_name}': {e}")
+        raise e
+
+def run_tweak_indicator():
+    """
+    Generates parameter configurations for configurable indicators and inserts them into the database.
+    """
+    initialize_database(DB_PATH)
+    conn = create_connection(DB_PATH)
+    if not conn:
+        logger.error("Failed to connect to the database.")
+        sys.exit(1)
+    try:
+        available_indicators = fetch_available_indicators()
+        if not available_indicators:
+            logger.error("No configurable indicators found in indicator_params.json.")
+            print("No configurable indicators found. Exiting.")
+            sys.exit(1)
+    except Exception as e:
+        logger.exception(f"Error fetching configurable indicators: {e}")
+        print(f"Error fetching configurable indicators: {e}")
+        sys.exit(1)
+
+    selected_indicators = []
+    print("\nAvailable Indicators for Tweak:")
+    for idx, indicator in enumerate(available_indicators, 1):
+        print(f"{idx}. {indicator}")
+    choice = input(f"Select an indicator by number (1-{len(available_indicators)}): ").strip()
+    if not choice.isdigit() or int(choice) < 1 or int(choice) > len(available_indicators):
+        logger.error("Invalid choice. Exiting.")
+        print("Invalid choice. Exiting.")
+        sys.exit(1)
+
+    selected_indicator = available_indicators[int(choice) - 1]
+    logger.info(f"Selected indicator: {selected_indicator}")
+    print(f"Selected indicator: {selected_indicator}")
+
+    try:
+        parameters = parse_indicator_parameters(selected_indicator)
+        if not parameters:
+            logger.error(f"No parameters found for '{selected_indicator}'. Using base indicator.")
+            print(f"No parameters found for '{selected_indicator}'. Using base indicator.")
+            return selected_indicator
+        else:
+            logger.info(f"Parameters for '{selected_indicator}': {parameters}")
+            print(f"Parameters for '{selected_indicator}': {parameters}")
+    except Exception as e:
+        logger.error(f"Error retrieving parameters for '{selected_indicator}': {e}")
+        print(f"Error retrieving parameters for '{selected_indicator}'. Exiting.")
+        sys.exit(1)
+
+    if 'parameters' in parameters:
+        configurations = generate_configurations(list(parameters['parameters'].keys()), parameters['parameters'])
+    else:
+        configurations = []
+
+    if not configurations:
+        logger.error(f"No configurations generated for '{selected_indicator}'. Using base indicator.")
+        print(f"No configurations generated for '{selected_indicator}'. Using base indicator.")
+    else:
+        logger.info(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
+        print(f"Generated {len(configurations)} configurations for '{selected_indicator}'.")
+        example_configs = configurations[:15]
+        logger.info(f"Example configurations for '{selected_indicator}': {example_configs}")
+        print(f"Example configurations for '{selected_indicator}': {example_configs}")
+
+    try:
+        insert_tweaked_configs(conn, selected_indicator, configurations)
+        if configurations:
+            logger.info("Configurations stored in database:")
+            for config in configurations[:15]:
+                logger.info(config)
+                print(config)
+        print(f"Configurations for '{selected_indicator}' have been added to the database.")
+    except Exception as e:
+        logger.error(f"Error inserting configurations into database for '{selected_indicator}': {e}")
+        print(f"Error inserting configurations into database for '{selected_indicator}'. Exiting.")
+        sys.exit(1)
+
+    conn.close()
+    logger.info(f"Configurations for '{selected_indicator}' have been added to the database.")
+    print(f"Configurations for '{selected_indicator}' have been added to the database.")
+
+if __name__ == "__main__":
+    configure_logging(log_file_prefix="tweak_indicator")
+    run_tweak_indicator()
+
+====================
+22) tweak_params.py:
+# tweak_params.py
+import sys
+import itertools
+import logging
+from typing import Dict, List
+from config import DB_PATH
+from indicator_config_parser import get_configurable_indicators, get_indicator_parameters
+from sqlite_data_manager import insert_indicator_configs, create_connection, initialize_database
+from logging_setup import configure_logging
+
+logger = logging.getLogger(__name__)
+
+def generate_configurations(parameter_keys: List[str], parameter_definitions: Dict) -> List[Dict]:
+    param_alternatives = {}
+    for param in parameter_keys:
+        param_def = parameter_definitions[param]
+        default = param_def.get('default')
+        if default is None:
+            logger.warning(f"Parameter '{param}' does not have a default value. Skipping.")
+            continue
+        if isinstance(default, int):
+            if param in ['fast', 'slow', 'fastperiod', 'slowperiod', 'signalperiod', 'timeperiod', 'timeperiod1', 'timeperiod2', 'timeperiod3', 'pivot_lookback']:
+                start = max(2, default - 5)
+            else:
+                start = max(1, default - 5)
+            param_alternatives[param] = [start + i for i in range(11)]
+        elif isinstance(default, float):
+            if param in ['fast', 'slow', 'fastperiod', 'slowperiod', 'signalperiod', 'timeperiod', 'timeperiod1', 'timeperiod2', 'timeperiod3', 'pivot_lookback']:
+                start = max(2.0, default - 5.0)
+                param_alternatives[param] = [round(start + i, 1) for i in range(11)]
+            elif 0 < default < 1:
+                start = max(0.1, default * 0.9)
+                param_alternatives[param] = [round(start + 0.02 * i, 4) for i in range(11)]
+            else:
+                param_alternatives[param] = [default]
+        else:
+            logger.warning(f"Parameter '{param}' is not a numeric type. Using default only.")
+            param_alternatives[param] = [default]
+
+    if not param_alternatives:
+        return []
+
+    keys, values = zip(*param_alternatives.items())
+    configurations = [dict(zip(keys, v)) for v in itertools.product(*values)]
+
+    valid_combinations = []
+    for combo in configurations:
+        valid_combinations.append(combo)
+    return valid_combinations
+
+def select_indicators(available_indicators: List[str]) -> List[str]:
+    print("\nAvailable Indicators for Tweak:")
+    for idx, indicator in enumerate(available_indicators, 1):
+        print(f"{idx}. {indicator}")
+    print(f"{len(available_indicators)+1}. All Indicators")
+    selected_indicators = []
+    while True:
+        choice = input(f"Select an indicator by number (1-{len(available_indicators)+1}) or type 'done' to finish selection: ").strip().lower()
+        if choice == 'done':
+            break
+        if choice.isdigit():
+            choice_num = int(choice)
+            if 1 <= choice_num <= len(available_indicators):
+                selected_indicators.append(available_indicators[choice_num - 1])
+                print(f"Selected: {available_indicators[choice_num - 1]}")
+            elif choice_num == len(available_indicators) + 1:
+                selected_indicators = available_indicators.copy()
+                print("All indicators selected.")
+                break
+            else:
+                print("Invalid selection. Please try again.")
+        else:
+            print("Invalid input. Please enter a number corresponding to the indicator or 'done'.")
+    if not selected_indicators:
+        print("No indicators selected. Exiting.")
+        sys.exit(0)
+    return selected_indicators
+
+def insert_tweaked_configs(conn, indicator_name: str, configurations: List[Dict]):
+    try:
+        insert_indicator_configs(conn, indicator_name, configurations)
+    except Exception as e:
+        logger.error(f"Error inserting configurations for '{indicator_name}': {e}")
+        raise e
+
+def tweak_params():
+    """
+    Generates parameter configurations for configurable indicators and inserts them into the database.
+    """
+    initialize_database(DB_PATH)
+    conn = create_connection(DB_PATH)
+    if not conn:
+        logger.error("Failed to connect to the database.")
+        sys.exit(1)
+    try:
+        available_indicators = get_configurable_indicators('indicator_params.json')
+        if not available_indicators:
+            logger.error("No configurable indicators found in indicator_params.json.")
+            print("No configurable indicators found. Exiting.")
+            sys.exit(1)
+    except Exception as e:
+        logger.exception(f"Error fetching configurable indicators: {e}")
+        print(f"Error fetching configurable indicators: {e}")
+        sys.exit(1)
+
+    selected_indicators = select_indicators(available_indicators)
+    logger.info(f"Selected indicators for tweaking: {selected_indicators}")
+
+    for indicator_name in selected_indicators:
+        logger.info(f"Processing Indicator: {indicator_name}")
+        print(f"\nProcessing Indicator: {indicator_name}")
+        try:
+            parameters = get_indicator_parameters(indicator_name, 'indicator_params.json')
+            if not parameters:
+                logger.warning(f"No parameters found for '{indicator_name}'. Skipping configuration generation.")
+                print(f"No parameters found for '{indicator_name}'. Skipping.")
+                continue
+            param_defs = parameters.get('parameters', {})
+            if not param_defs:
+                logger.warning(f"No 'parameters' section for '{indicator_name}'. Skipping.")
+                print(f"No 'parameters' section for '{indicator_name}'. Skipping.")
+                continue
+            print(f"Parameters for '{indicator_name}':")
+            for param, value in param_defs.items():
+                print(f"  - {param}: {value}")
+            logger.info(f"Parameters for '{indicator_name}': {param_defs}")
+        except Exception as e:
+            logger.error(f"Error retrieving parameters for '{indicator_name}': {e}")
+            print(f"Error retrieving parameters for '{indicator_name}'. Skipping.")
+            continue
+        try:
+            configurations = generate_configurations(list(param_defs.keys()), param_defs)
+            if not configurations:
+                logger.warning(f"No configurations generated for '{indicator_name}'. Skipping.")
+                print(f"No configurations generated for '{indicator_name}'. Skipping.")
+                continue
+            print(f"Generated {len(configurations)} configurations for '{indicator_name}'.")
+            logger.info(f"Generated {len(configurations)} configurations for '{indicator_name}'.")
+            example_configs = configurations[:5]
+            print(f"Example configurations for '{indicator_name}': {example_configs}")
+            logger.info(f"Example configurations for '{indicator_name}': {example_configs}")
+        except Exception as e:
+            logger.error(f"Error generating configurations for '{indicator_name}': {e}")
+            print(f"Error generating configurations for '{indicator_name}'. Skipping.")
+            continue
+        try:
+            insert_tweaked_configs(conn, indicator_name, configurations)
+            print(f"Inserted configurations for '{indicator_name}' into the database.")
+            logger.info(f"Inserted configurations for '{indicator_name}' into the database.")
+        except Exception as e:
+            logger.error(f"Error inserting configurations into database for '{indicator_name}': {e}")
+            print(f"Error inserting configurations into database for '{indicator_name}'.")
+            continue
+    conn.close()
+    logger.info("All selected indicators have been processed successfully.")
+    print("\nAll selected indicators have been processed successfully.")
+
+if __name__ == "__main__":
+    configure_logging(log_file_prefix="tweak_params")
+    tweak_params()
+
+====================
+23) tweak_trials.py:
+# tweak_trials.py
+import logging
+import sys
+import json
+from pathlib import Path
+from typing import List, Dict, Any, Tuple
+
+import pandas as pd
+from sqlite_data_manager import create_connection, fetch_indicator_configs, initialize_database
+from indicator_config_parser import parse_indicators_json, get_indicator_parameters
+from indicators import compute_indicator
+from load_data import load_data
+from config import DB_PATH
+from logging_setup import configure_logging
+
+logger = logging.getLogger(__name__)
+
+def fetch_ao_configurations(conn) -> List[Dict[str, Any]]:
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT ic.id, ic.config FROM indicator_configs ic
+        JOIN indicators i ON ic.indicator_id = i.id
+        WHERE i.name = 'ao';
+    """)
+    rows = cursor.fetchall()
+    configurations = [{'id': row[0], **json.loads(row[1])} for row in rows]
+    return configurations
+
+def attempt_compute_indicator(data: pd.DataFrame, params: Dict[str, Any], config_id: int) -> bool:
+    try:
+        input_columns = ['high', 'low']
+        parameters = {'type': 'pandas-ta', 'parameters': params}
+        compute_indicator(data, 'ao', parameters, input_columns, config_id)
+        return True
+    except Exception as e:
+        logger.error(f"Error computing indicator 'ao' with parameters {params}: {e}")
+        return False
+
+def analyze_results(valid_params: List[Dict[str, Any]], invalid_params: List[Dict[str, Any]]) -> Tuple[Dict[str, Tuple[float, float]], Dict[str, Tuple[float, float]]]:
+    valid_ranges = {}
+    invalid_ranges = {}
+    
+    if valid_params:
+        for param in valid_params:
+            for key, value in param.items():
+                valid_ranges.setdefault(key, []).append(value)
+        valid_ranges = {k: (min(v), max(v)) for k, v in valid_ranges.items()}
+    else:
+        valid_ranges = {k: (None, None) for k in ['fast', 'slow']}
+    
+    if invalid_params:
+        for param in invalid_params:
+            for key, value in param.items():
+                invalid_ranges.setdefault(key, []).append(value)
+        invalid_ranges = {k: (min(v), max(v)) for k, v in invalid_ranges.items()}
+    else:
+        invalid_ranges = {k: (None, None) for k in ['fast', 'slow']}
+    
+    return valid_ranges, invalid_ranges
+
+def report_results(valid_ranges: Dict[str, Tuple[float, float]], invalid_ranges: Dict[str, Tuple[float, float]]):
+    print("\n=== Tweak Trials Results ===")
+    logger.error("\n=== Tweak Trials Results ===")
+    
+    print("\nValid Ranges:")
+    logger.error("\nValid Ranges:")
+    for param, (min_val, max_val) in valid_ranges.items():
+        if min_val is not None and max_val is not None:
+            print(f"  {param}: {min_val} to {max_val}")
+            logger.error(f"Valid Range - {param}: {min_val} to {max_val}")
+        else:
+            print(f"  {param}: No valid configurations found.")
+            logger.error(f"Valid Range - {param}: No valid configurations found.")
+    
+    print("\nInvalid Ranges:")
+    logger.error("\nInvalid Ranges:")
+    for param, (min_val, max_val) in invalid_ranges.items():
+        if min_val is not None and max_val is not None:
+            print(f"  {param}: {min_val} to {max_val}")
+            logger.error(f"Invalid Range - {param}: {min_val} to {max_val}")
+        else:
+            print(f"  {param}: No invalid configurations found.")
+            logger.error(f"Invalid Range - {param}: No invalid configurations found.")
+
+def main():
+    configure_logging(log_file_prefix="tweak_trials")
+    
+    initialize_database(DB_PATH)
+    
+    conn = create_connection(DB_PATH)
+    if not conn:
+        logger.error("Failed to connect to the database.")
+        print("Failed to connect to the database. Check logs for details.")
+        sys.exit(1)
+    
+    try:
+        symbol = input("Enter symbol (e.g., 'BTCUSDT'): ").strip().upper()
+        timeframe = input("Enter timeframe (e.g., '1d'): ").strip()
+        
+        data, is_rev, db_fn = load_data(symbol, timeframe)
+        if data.empty:
+            logger.error(f"No data found for symbol '{symbol}' and timeframe '{timeframe}'.")
+            print(f"No data found for symbol '{symbol}' and timeframe '{timeframe}'. Exiting.")
+            sys.exit(1)
+        
+        configurations = fetch_ao_configurations(conn)
+        if not configurations:
+            logger.error("No configurations found for indicator 'ao'. Exiting.")
+            print("No configurations found for indicator 'ao'. Exiting.")
+            sys.exit(1)
+        
+        valid_params = []
+        invalid_params = []
+        
+        for config in configurations:
+            config_id = config.pop('id')
+            params = config
+            logger.error(f"Attempting configuration {config_id}: {params}")
+            success = attempt_compute_indicator(data, params, config_id)
+            if success:
+                valid_params.append(params)
+            else:
+                invalid_params.append(params)
+        
+        valid_ranges, invalid_ranges = analyze_results(valid_params, invalid_params)
+        
+        report_results(valid_ranges, invalid_ranges)
+    
+    except Exception as e:
+        logger.error(f"An unexpected error occurred: {e}")
+        print(f"An unexpected error occurred: {e}. Check logs for details.")
+    finally:
+        conn.close()
+
+if __name__ == "__main__":
+    main()
+
+====================
+24) utils.py:
+# utils.py
+import logging
+import os, sys, json, shutil, subprocess, re
+from pathlib import Path
+from datetime import datetime, timedelta
+from typing import List, Optional
+import numpy as np, pandas as pd, matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt, seaborn as sns
+from joblib import Parallel, delayed
+from scipy.stats import t
+from sklearn.preprocessing import StandardScaler
+import dateutil.parser
+from load_data import load_data
+from indicators import compute_all_indicators
+from data_utils import clear_screen, prepare_data, determine_time_interval, get_original_indicators, handle_missing_indicators
+from correlation_utils import load_or_calculate_correlations, calculate_correlation, calculate_and_save_indicator_correlations
+from visualization_utils import generate_combined_correlation_chart, visualize_data, generate_heatmaps
+from backup_utils import run_backup_cleanup
+from table_generation import generate_best_indicator_table, generate_statistical_summary, generate_correlation_csv
+from binance_historical_data_downloader import download_binance_data, fetch_klines, process_klines, save_to_sqlite
+import warnings
+warnings.filterwarnings('ignore')
+
+logger = logging.getLogger()
+
+def run_backup_cleanup():
+    pass
+
+def list_database_files(database_dir: str) -> List[str]:
+    return [f for f in os.listdir(database_dir) if f.endswith('.db')]
+
+def select_existing_database(database_dir: str) -> Optional[str]:
+    db_files = list_database_files(database_dir)
+    if not db_files:
+        print("No existing databases found.")
+        return None
+    print("\nExisting Databases:")
+    for idx, db in enumerate(db_files,1): print(f"{idx}. {db}")
+    while True:
+        selected = input(f"Select DB (1-{len(db_files)}) or 'x' to exit: ").strip()
+        if selected.lower() == 'x': return None
+        if selected.isdigit() and 1 <= int(selected) <= len(db_files):
+            selected_db = db_files[int(selected)-1]
+            print(f"Selected DB: {selected_db}")
+            return os.path.join(database_dir, selected_db)
+        print("Invalid selection.")
+
+def preview_database(db_path: str) -> None:
+    try:
+        data, is_rev, _ = load_data(db_path)
+        if data.empty:
+            print("Selected DB is empty.")
+        else:
+            print(f"\nLatest data in '{os.path.basename(db_path)}':\n{data.tail()}")
+    except:
+        print(f"Failed to preview DB '{db_path}'.")
+
+def update_database(db_path: str) -> None:
+    try:
+        base = os.path.basename(db_path).split('.')[0]
+        symbol, interval = base.split('_')
+    except ValueError:
+        print("DB filename must be 'symbol_interval.db'.")
+        return
+    print(f"Updating DB for {symbol} {interval}...")
+    start = input("Start date (YYYY-MM-DD) or Enter for latest: ").strip()
+    end = input("End date (YYYY-MM-DD) or Enter for today: ").strip()
+    try:
+        data, is_rev, _ = load_data(db_path)
+        if data.empty:
+            print("DB empty. Downloading full dataset.")
+            download_binance_data(symbol, interval, db_path)
+            return
+    except:
+        print(f"Failed to load data from '{db_path}'.")
+        return
+    start_dt = datetime.strptime(start, '%Y-%m-%d') if start else data['Date'].max() + timedelta(seconds=1)
+    end_dt = datetime.strptime(end, '%Y-%m-%d') if end else datetime.now()
+    start_ts, end_ts = int(start_dt.timestamp()*1000), int(end_dt.timestamp()*1000)
+    if start_ts >= end_ts:
+        print("Start must be before end.")
+        return
+    try:
+        klines = fetch_klines(symbol, interval, start_ts, end_ts)
+        if not klines:
+            print("No new data.")
+            return
+        df = process_klines(klines)
+        save_to_sqlite(df, db_path)
+        print(f"Updated '{os.path.basename(db_path)}' with {len(df)} records.")
+    except:
+        print(f"Failed to update DB '{db_path}'.")
+
+====================
+25) visualization_utils.py:
+# visualization_utils.py
+
+import logging
+import os
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import numpy as np
+from joblib import Parallel, delayed
+from typing import Any, Callable, Dict, List
+from scipy.stats import t
+
+logger = logging.getLogger()
+
+def generate_combined_correlation_chart(
+    correlations: Dict[str, List[float]],
+    max_lag: int,
+    time_interval: str,
+    timestamp: str,
+    base_csv: str,
+    output_dir: str = 'combined_charts'
+) -> None:
+    os.makedirs(output_dir, exist_ok=True)
+    max_pos = [
+        max(
+            [
+                correlations[col][lag - 1]
+                for col in correlations
+                if lag - 1 < len(correlations[col]) and correlations[col][lag - 1] > 0
+            ],
+            default=0
+        )
+        for lag in range(1, max_lag + 1)
+    ]
+    max_neg = [
+        min(
+            [
+                correlations[col][lag - 1]
+                for col in correlations
+                if lag - 1 < len(correlations[col]) and correlations[col][lag - 1] < 0
+            ],
+            default=0
+        )
+        for lag in range(1, max_lag + 1)
+    ]
+    max_abs = [max(p, abs(n)) for p, n in zip(max_pos, max_neg)]
+    plt.figure(figsize=(15, 10))
+    plt.plot(range(1, max_lag + 1), max_pos, color='green', label='Max Positive Correlation')
+    plt.plot(range(1, max_lag + 1), max_neg, color='red', label='Max Negative Correlation')
+    plt.plot(range(1, max_lag + 1), max_abs, color='blue', label='Max Absolute Correlation')
+    plt.axhline(0, color='black', linewidth=0.5)
+    plt.axvline(0, color='black', linewidth=0.5)
+    plt.title('Max Positive, Negative, & Absolute Correlations per Lag', fontsize=14)
+    plt.xlabel(f'Time Lag ({time_interval})', fontsize=12)
+    plt.ylabel('Correlation', fontsize=12)
+    plt.xticks(fontsize=10)
+    plt.yticks(fontsize=10)
+    plt.ylim(-1.0, 1.0)
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=10)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, f"{timestamp}_{base_csv}_max_correlation.png"), bbox_inches='tight')
+    plt.close()
+
+def visualize_data(
+    data: pd.DataFrame,
+    features: pd.DataFrame,
+    feature_cols: List[str],
+    timestamp: str,
+    reverse: bool,
+    time_interval: str,
+    gen_charts: bool,
+    correlations: Dict[str, Any],
+    calc_corr: Callable[..., float],
+    base_csv: str
+) -> None:
+    if not gen_charts:
+        return
+    charts_dir = 'indicator_charts'
+    os.makedirs(charts_dir, exist_ok=True)
+    max_lag = len(data) - 51
+    if max_lag <= 0:
+        return
+    correlations = {
+        col: correlations[col]
+        for col in feature_cols
+        if col != 'Close' and data[col].notna().any() and data[col].var() > 1e-6
+    }
+    for col, corr in correlations.items():
+        plt.figure(figsize=(10, 4))
+        plt.axhline(0, color='black', linewidth=0.5)
+        plt.axvline(0, color='black', linewidth=0.5)
+        plt.fill_between(range(1, max_lag + 1), corr, where=np.array(corr) > 0, color='blue', alpha=0.3)
+        plt.fill_between(range(1, max_lag + 1), corr, where=np.array(corr) < 0, color='red', alpha=0.3)
+        if len(corr) > 1:
+            se = np.std(corr, ddof=1) / np.sqrt(len(corr))
+            mo = t.ppf(0.975, len(corr) - 1) * se
+            plt.fill_between(
+                range(1, max_lag + 1),
+                np.array(corr) - mo,
+                np.array(corr) + mo,
+                color='gray',
+                alpha=0.4,
+                label='95% CI'
+            )
+        plt.title(f'Correlation of {col} with Close', fontsize=10)
+        plt.xlabel(f'Time Lag ({time_interval})', fontsize=8)
+        plt.ylabel('Correlation', fontsize=8)
+        plt.xticks(fontsize=6)
+        plt.yticks(fontsize=6)
+        plt.ylim(-1.0, 1.0)
+        plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+        plt.tight_layout()
+        plt.savefig(os.path.join(charts_dir, f"{timestamp}_{base_csv}_{col}_correlation.png"), bbox_inches='tight')
+        plt.close()
+    sorted_indicators = sorted(
+        correlations,
+        key=lambda c: correlations[c][-1] if correlations[c] else 0,
+        reverse=True
+    )
+    plt.figure(figsize=(15, 10))
+    for col, color in zip(sorted_indicators, plt.cm.rainbow(np.linspace(0, 1, len(sorted_indicators)))):
+        plt.plot(range(1, max_lag + 1), correlations[col], color=color, label=col)
+    plt.axhline(0, color='black', linewidth=0.5)
+    plt.axvline(0, color='black', linewidth=0.5)
+    plt.title('All Indicators Correlation with Close', fontsize=14)
+    plt.xlabel(f'Time Lag ({time_interval})', fontsize=12)
+    plt.ylabel('Correlation', fontsize=12)
+    plt.xticks(fontsize=10)
+    plt.yticks(fontsize=10)
+    plt.ylim(-1.0, 1.0)
+    plt.grid(True, which='both', linestyle='--', linewidth=0.5)
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5), fontsize=10)
+    plt.tight_layout()
+    plt.savefig(os.path.join('combined_charts', f"{timestamp}_{base_csv}_combined_correlation.png"), bbox_inches='tight')
+    plt.close()
+    print("Combined correlation chart saved.")
+
+def generate_heatmaps(
+    data: pd.DataFrame,
+    timestamp: str,
+    time_interval: str,
+    flag: bool,
+    cache: Dict[str, List[float]],
+    calc_corr: Callable[[pd.DataFrame, str, int, bool], float],
+    base_csv: str
+) -> None:
+    if not flag:
+        return
+    os.makedirs('heatmaps', exist_ok=True)
+    if os.listdir('heatmaps') and input("Delete existing heatmaps? (y/n): ").strip().lower() == 'y':
+        for f in os.listdir('heatmaps'):
+            file_path = os.path.join('heatmaps', f)
+            if os.path.isfile(file_path):
+                os.remove(file_path)
+    indicators = [
+        col for col in data.columns
+        if pd.api.types.is_numeric_dtype(data[col]) and col != 'Close' and data[col].notna().any() and data[col].var() > 1e-6
+    ]
+    max_lag = len(data) - 51
+    if max_lag < 1:
+        print("Insufficient data for correlations.")
+        return
+    correlations = {
+        col: cache.get(col, Parallel(n_jobs=-1)(
+            delayed(calc_corr)(data, col, lag, False) for lag in range(1, max_lag + 1)
+        ))
+        for col in indicators
+    }
+    cache.update(correlations)
+    corr_df = pd.DataFrame(correlations, index=range(1, max_lag + 1)).dropna(axis=1).dropna(axis=0)
+    std_corr = corr_df.apply(
+        lambda row: 0 if row.max() - row.min() == 0 else (row - row.min()) / (row.max() - row.min()) * 2 - 1,
+        axis=1
+    )
+    filtered = [col for col in std_corr.columns if std_corr[col].max() > 0.25]
+    std_corr = std_corr[filtered]
+    sorted_indicators = sorted(
+        filtered,
+        key=lambda c: next(
+            (i for i, x in enumerate(std_corr[c], 1) if x == 1.0),
+            max_lag + 1
+        )
+    )
+    sns.heatmap(std_corr[sorted_indicators].T, cmap='coolwarm', cbar=True, xticklabels=True, yticklabels=True)
+    plt.title(
+        'Standardized Correlation of Indicators with Close Price at Various Lags\n(Sorted by Earliest 1.0 Correlation)',
+        fontsize=14
+    )
+    plt.xlabel(f'Time Lag ({time_interval})', fontsize=12)
+    plt.ylabel('Indicators', fontsize=12)
+    plt.xticks(ticks=np.arange(max_lag) + 0.5, labels=range(1, max_lag + 1), rotation=90, fontsize=6)
+    plt.yticks(rotation=0, fontsize=6)
+    plt.tight_layout()
+    plt.savefig(os.path.join('heatmaps', f"{timestamp}_{base_csv}_heatmap1.png"), bbox_inches='tight')
+    plt.close()
+
+    sorted_indicators = sorted(filtered, key=lambda c: std_corr[c].iloc[0], reverse=True)
+    sns.heatmap(std_corr[sorted_indicators].T, cmap='coolwarm', cbar=True, xticklabels=True, yticklabels=True)
+    plt.title('Standardized Correlation Sorted by Highest Correlation at Lag 1', fontsize=14)
+    plt.xlabel(f'Time Lag ({time_interval})', fontsize=12)
+    plt.ylabel('Indicators', fontsize=12)
+    plt.xticks(ticks=np.arange(max_lag) + 0.5, labels=range(1, max_lag + 1), rotation=90, fontsize=6)
+    plt.yticks(rotation=0, fontsize=6)
+    plt.tight_layout()
+    plt.savefig(os.path.join('heatmaps', f"{timestamp}_{base_csv}_heatmap2.png"), bbox_inches='tight')
+    plt.close()
+
+    sns.heatmap(corr_df[filtered].T, cmap='coolwarm', cbar=True, xticklabels=True, yticklabels=True)
+    plt.title('Raw Correlation Sorted by Highest Correlation at Lag 1', fontsize=14)
+    plt.xlabel(f'Time Lag ({time_interval})', fontsize=12)
+    plt.ylabel('Indicators', fontsize=12)
+    plt.xticks(ticks=np.arange(max_lag) + 0.5, labels=range(1, max_lag + 1), rotation=90, fontsize=6)
+    plt.yticks(rotation=0, fontsize=6)
+    plt.tight_layout()
+    plt.savefig(os.path.join('heatmaps', f"{timestamp}_{base_csv}_heatmap3.png"), bbox_inches='tight')
+    plt.close()
+    print("Heatmaps generated.")
+
+====================
+26) visualize_data.py:
+# visualize_data.py
+import logging
+import os
+import matplotlib.pyplot as plt
+import seaborn as sns
+import numpy as np
+from scipy.stats import t
+from joblib import Parallel,delayed
+
+logger = logging.getLogger()
+
+def visualize_data(data,features,feature_columns,timestamp,is_reverse_chronological,time_interval,generate_charts,cache,calculate_correlation,base_csv_filename):
+    if not generate_charts:
+        return
+    charts_dir='indicator_charts'
+    if not os.path.exists(charts_dir):
+        os.makedirs(charts_dir)
+    else:
+        existing_files=os.listdir(charts_dir)
+        if existing_files:
+            delete_choice=input(f"Do you want to delete them? (y/n): ").lower()
+            if delete_choice=='y':
+                for file in existing_files:
+                    file_path=os.path.join(charts_dir,file)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+    max_lag=len(data)-51
+    correlations={}
+    original_indicators=[col for col in feature_columns if not any(future in col for future in['future_1d','future_5d','future_10d','future_20d'])and col!='Close']
+    original_indicators=[col for col in original_indicators if data[col].notna().any()and data[col].var()>1e-6]
+    print(f"Original indicators in visualize_data.py: {original_indicators}")
+    for col in original_indicators:
+        if col not in cache:
+            corr_list=Parallel(n_jobs=-1)(delayed(calculate_correlation)(data,col,lag,is_reverse_chronological)for lag in range(1,max_lag+1))
+            cache[col]=corr_list
+        else:
+            corr_list=cache[col]
+        correlations[col]=corr_list
+        plt.figure(figsize=(10,4))
+        plt.axhline(0,color='black',linewidth=0.5)
+        plt.axvline(0,color='black',linewidth=0.5)
+        plt.fill_between(range(1,max_lag+1),corr_list,where=np.array(corr_list)>0,color='blue',alpha=0.3)
+        plt.fill_between(range(1,max_lag+1),corr_list,where=np.array(corr_list)<0,color='red',alpha=0.3)
+        n=len(corr_list)
+        if n>1:
+            std_err=np.std(corr_list,ddof=1)/np.sqrt(n)
+            margin_of_error=t.ppf(0.975,n-1)*std_err
+            lower_bound=np.array(corr_list)-margin_of_error
+            upper_bound=np.array(corr_list)+margin_of_error
+            plt.fill_between(range(1,max_lag+1),lower_bound,upper_bound,color='gray',alpha=0.4,label='95% CI')
+        plt.title(f'Average Correlation of {col} with Close Price',fontsize=10)
+        plt.xlabel(f'Time Lag ({time_interval})',fontsize=8)
+        plt.ylabel('Average Correlation',fontsize=8)
+        plt.xticks(fontsize=6)
+        plt.yticks(fontsize=6)
+        plt.ylim(-1.0,1.0)
+        plt.grid(True,which='both',linestyle='--',linewidth=0.5)
+        plt.tight_layout()
+        filename=f"{timestamp}_{base_csv_filename}_{col}_correlation.png"
+        filepath=os.path.join(charts_dir,filename)
+        plt.savefig(filepath,bbox_inches='tight')
+        plt.close()
+    combined_charts_dir='combined_charts'
+    if not os.path.exists(combined_charts_dir):
+        os.makedirs(combined_charts_dir)
+    sorted_indicators=sorted(original_indicators,key=lambda col:correlations[col][-1] if len(correlations[col])>0 else 0,reverse=True)
+    plt.figure(figsize=(15,10))
+    colors=plt.cm.rainbow(np.linspace(0,1,len(sorted_indicators)))
+    for col,color in zip(sorted_indicators,colors):
+        plt.plot(range(1,max_lag+1),correlations[col],color=color,label=col)
+    plt.axhline(0,color='black',linewidth=0.5)
+    plt.axvline(0,color='black',linewidth=0.5)
+    plt.title('Average Correlation of All Indicators with Close Price',fontsize=14)
+    plt.xlabel(f'Time Lag ({time_interval})',fontsize=12)
+    plt.ylabel('Average Correlation',fontsize=12)
+    plt.xticks(fontsize=10)
+    plt.yticks(fontsize=10)
+    plt.ylim(-1.0,1.0)
+    plt.grid(True,which='both',linestyle='--',linewidth=0.5)
+    plt.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=10)
+    plt.tight_layout()
+    combined_filename=f"{timestamp}_{base_csv_filename}_combined_correlation.png"
+    combined_filepath=os.path.join(combined_charts_dir,combined_filename)
+    plt.savefig(combined_filepath,bbox_inches='tight')
+    plt.close()
+    max_positive_correlations=[]
+    max_negative_correlations=[]
+    for lag in range(1,max_lag+1):
+        lag_correlations=[correlations[col][lag-1]for col in original_indicators]
+        max_positive_correlations.append(max(lag_correlations,key=lambda x:x if x>0 else -np.inf))
+        max_negative_correlations.append(min(lag_correlations,key=lambda x:x if x<0 else np.inf))
+    plt.figure(figsize=(15,10))
+    plt.plot(range(1,max_lag+1),max_positive_correlations,color='green',label='Max Positive Correlation')
+    plt.plot(range(1,max_lag+1),max_negative_correlations,color='red',label='Max Negative Correlation')
+    plt.axhline(0,color='black',linewidth=0.5)
+    plt.axvline(0,color='black',linewidth=0.5)
+    plt.title('Maximum Positive and Negative Correlations at Each Lag Point',fontsize=14)
+    plt.xlabel(f'Time Lag ({time_interval})',fontsize=12)
+    plt.ylabel('Correlation',fontsize=12)
+    plt.xticks(fontsize=10)
+    plt.yticks(fontsize=10)
+    plt.ylim(-1.0,1.0)
+    plt.grid(True,which='both',linestyle='--',linewidth=0.5)
+    plt.legend(loc='center left',bbox_to_anchor=(1,0.5),fontsize=10)
+    plt.tight_layout()
+    combined_filename=f"{timestamp}_{base_csv_filename}_max_correlation.png"
+    combined_filepath=os.path.join(combined_charts_dir,combined_filename)
+    plt.savefig(combined_filepath,bbox_inches='tight')
+    plt.close()
+====================
