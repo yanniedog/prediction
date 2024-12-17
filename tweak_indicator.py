@@ -3,18 +3,17 @@ import sys
 import itertools
 import logging
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Optional
 import numpy as np
 import json
 from config import DB_PATH
 from indicator_config_parser import get_configurable_indicators, get_indicator_parameters
 from sqlite_data_manager import insert_indicator_configs, create_connection, initialize_database
-from indicators import evaluate_conditions
 from logging_setup import configure_logging
 
 logger = logging.getLogger(__name__)
 
-def generate_configurations(parameter_keys: List[str], parameter_definitions: Dict, conditions: List[Dict[str, Dict[str, Any]]]) -> List[Dict]:
+def generate_configurations(parameter_keys: List[str], parameter_definitions: Dict) -> List[Dict]:
     param_alternatives = {}
     for param in parameter_keys:
         param_def = parameter_definitions[param]
@@ -45,8 +44,11 @@ def generate_configurations(parameter_keys: List[str], parameter_definitions: Di
         return []
 
     keys, values = zip(*param_alternatives.items())
-    all_combinations = [dict(zip(keys, v)) for v in itertools.product(*values)]
-    valid_combinations = [combo for combo in all_combinations if evaluate_conditions(combo, conditions)]
+    configurations = [dict(zip(keys, v)) for v in itertools.product(*values)]
+
+    valid_combinations = []
+    for combo in configurations:
+        valid_combinations.append(combo)
     return valid_combinations
 
 def fetch_available_indicators() -> List[str]:
@@ -63,6 +65,9 @@ def insert_tweaked_configs(conn, indicator_name: str, configurations: List[Dict]
         raise e
 
 def run_tweak_indicator():
+    """
+    Generates parameter configurations for configurable indicators and inserts them into the database.
+    """
     initialize_database(DB_PATH)
     conn = create_connection(DB_PATH)
     if not conn:
@@ -108,11 +113,7 @@ def run_tweak_indicator():
         sys.exit(1)
 
     if 'parameters' in parameters:
-        configurations = generate_configurations(
-            list(parameters['parameters'].keys()),
-            parameters['parameters'],
-            parameters.get('conditions', [])
-        )
+        configurations = generate_configurations(list(parameters['parameters'].keys()), parameters['parameters'])
     else:
         configurations = []
 
