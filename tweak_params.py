@@ -18,10 +18,18 @@ def generate_configurations(parameter_keys: List[str], parameter_definitions: Di
         if default is None:
             logger.warning(f"Parameter '{param}' does not have a default value. Skipping.")
             continue
-        if isinstance(default, (int, float)):
+        if isinstance(default, int):
             if default >= 1:
-                start = max(1, int(default) - 5)
+                start = max(1, default - 5)
                 param_alternatives[param] = [start + i for i in range(11)]
+            elif 0 < default < 1:
+                param_alternatives[param] = [round(default * (0.9 + 0.02 * i), 4) for i in range(11)]
+            else:
+                logger.warning(f"Parameter '{param}' has a default value that does not fit the criteria. Using default only.")
+                param_alternatives[param] = [default]
+        elif isinstance(default, float):
+            if default >= 1:
+                param_alternatives[param] = [round(default - 5.0 + i, 1) for i in range(11)]
             elif 0 < default < 1:
                 param_alternatives[param] = [round(default * (0.9 + 0.02 * i), 4) for i in range(11)]
             else:
@@ -37,6 +45,41 @@ def generate_configurations(parameter_keys: List[str], parameter_definitions: Di
     keys, values = zip(*param_alternatives.items())
     configurations = [dict(zip(keys, v)) for v in itertools.product(*values)]
     return configurations
+
+def select_indicators(available_indicators: List[str]) -> List[str]:
+    print("\nAvailable Indicators for Tweak:")
+    for idx, indicator in enumerate(available_indicators, 1):
+        print(f"{idx}. {indicator}")
+    print(f"{len(available_indicators)+1}. All Indicators")
+    selected_indicators = []
+    while True:
+        choice = input(f"Select an indicator by number (1-{len(available_indicators)+1}) or type 'done' to finish selection: ").strip().lower()
+        if choice == 'done':
+            break
+        if choice.isdigit():
+            choice_num = int(choice)
+            if 1 <= choice_num <= len(available_indicators):
+                selected_indicators.append(available_indicators[choice_num - 1])
+                print(f"Selected: {available_indicators[choice_num - 1]}")
+            elif choice_num == len(available_indicators) + 1:
+                selected_indicators = available_indicators.copy()
+                print("All indicators selected.")
+                break
+            else:
+                print("Invalid selection. Please try again.")
+        else:
+            print("Invalid input. Please enter a number corresponding to the indicator or 'done'.")
+    if not selected_indicators:
+        print("No indicators selected. Exiting.")
+        sys.exit(0)
+    return selected_indicators
+
+def insert_tweaked_configs(conn, indicator_name: str, configurations: List[Dict]):
+    try:
+        insert_indicator_configs(conn, indicator_name, configurations)
+    except Exception as e:
+        logger.error(f"Error inserting configurations for '{indicator_name}': {e}")
+        raise e
 
 def tweak_params():
     """
@@ -57,10 +100,10 @@ def tweak_params():
         logger.exception(f"Error fetching configurable indicators: {e}")
         print(f"Error fetching configurable indicators: {e}")
         sys.exit(1)
-
+    
     selected_indicators = select_indicators(available_indicators)
     logger.info(f"Selected indicators for tweaking: {selected_indicators}")
-
+    
     for indicator_name in selected_indicators:
         logger.info(f"Processing Indicator: {indicator_name}")
         print(f"\nProcessing Indicator: {indicator_name}")
@@ -99,7 +142,7 @@ def tweak_params():
             print(f"Error generating configurations for '{indicator_name}'. Skipping.")
             continue
         try:
-            insert_indicator_configs(conn, indicator_name, configurations)
+            insert_tweaked_configs(conn, indicator_name, configurations)
             print(f"Inserted configurations for '{indicator_name}' into the database.")
             logger.info(f"Inserted configurations for '{indicator_name}' into the database.")
         except Exception as e:
@@ -110,33 +153,6 @@ def tweak_params():
     logger.info("All selected indicators have been processed successfully.")
     print("\nAll selected indicators have been processed successfully.")
 
-def select_indicators(available_indicators: List[str]) -> List[str]:
-    print("\nAvailable Indicators for Tweak:")
-    for idx, indicator in enumerate(available_indicators, 1):
-        print(f"{idx}. {indicator}")
-    print(f"{len(available_indicators)+1}. All Indicators")
-    selected_indicators = []
-    while True:
-        choice = input(f"Select an indicator by number (1-{len(available_indicators)+1}) or type 'done' to finish selection: ").strip().lower()
-        if choice == 'done':
-            break
-        if choice.isdigit():
-            choice_num = int(choice)
-            if 1 <= choice_num <= len(available_indicators):
-                selected_indicators.append(available_indicators[choice_num - 1])
-                print(f"Selected: {available_indicators[choice_num - 1]}")
-            elif choice_num == len(available_indicators) + 1:
-                selected_indicators = available_indicators.copy()
-                print("All indicators selected.")
-                break
-            else:
-                print("Invalid selection. Please try again.")
-        else:
-            print("Invalid input. Please enter a number corresponding to the indicator or 'done'.")
-    if not selected_indicators:
-        print("No indicators selected. Exiting.")
-        sys.exit(0)
-    return selected_indicators
-
 if __name__ == "__main__":
+    configure_logging(log_file_prefix="tweak_params")
     tweak_params()
