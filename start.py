@@ -148,6 +148,21 @@ def recreate_database(db_path: str):
         print("[DEBUG] recreate_database: failed to create new database")
         sys.exit(1)
 
+def check_database_tables(db_path: str):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='correlations';")
+        result = cursor.fetchone()
+        if not result:
+            print("Correlations table does not exist. Recreating database...")
+            recreate_database(db_path)
+    except sqlite3.Error as e:
+        print(f"Error checking database tables: {e}")
+        raise
+    finally:
+        conn.close()
+
 def main() -> None:
     print("Script start: Clearing screen...")
     clear_screen()
