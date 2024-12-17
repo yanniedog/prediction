@@ -76,8 +76,9 @@ def run_tweak_indicator(symbol: str, timeframe: str):
     logger.info(f"Selected indicator: {selected_indicator}")
 
     parameters = parse_indicator_parameters(selected_indicator)
-    if not parameters:
+    if parameters is None:
         logger.error(f"No parameters found for '{selected_indicator}'. Using base indicator.")
+        return selected_indicator
     else:
         logger.info(f"Parameters for '{selected_indicator}': {parameters}")
 
