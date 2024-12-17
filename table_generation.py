@@ -1,4 +1,4 @@
-# filename: table_generation.py
+# table_generation.py
 
 import os
 import pandas as pd
@@ -18,7 +18,6 @@ def generate_statistical_summary(correlations: dict, max_lag: int) -> pd.DataFra
     """
     summary = {}
     for indicator, values in correlations.items():
-        # Remove None or NaN values
         clean_values = [v for v in values if v is not None and not pd.isna(v)]
         if not clean_values:
             logging.warning(f"No valid correlation values for indicator '{indicator}'. Skipping.")
@@ -48,9 +47,8 @@ def generate_best_indicator_table(correlations: dict, max_lag: int) -> pd.DataFr
         logging.warning("No data available to generate best indicators table.")
         return pd.DataFrame()
     
-    # Sort indicators by mean correlation in descending order
     summary_df_sorted = summary_df.sort_values(by='mean', ascending=False)
-    return summary_df_sorted.head(10)  # Assuming top 10 indicators are desired
+    return summary_df_sorted.head(10)
 
 def generate_correlation_csv(correlations: dict, max_lag: int, base_filename: str, csv_dir: str) -> None:
     """
@@ -65,13 +63,8 @@ def generate_correlation_csv(correlations: dict, max_lag: int, base_filename: st
     Returns:
         None
     """
-    # Create DataFrame
     correlation_df = pd.DataFrame(correlations)
-    # Assign lag periods as the index
     correlation_df.index = range(1, max_lag + 1)
-    # Ensure the CSV directory exists
     os.makedirs(csv_dir, exist_ok=True)
-    # Define file path
     file_path = os.path.join(csv_dir, f"{base_filename}_correlations.csv")
-    # Save to CSV
     correlation_df.to_csv(file_path, index_label='Lag')

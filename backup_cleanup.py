@@ -1,4 +1,4 @@
-# filename: backup_cleanup.py
+# backup_cleanup.py
 import os
 import shutil
 import zipfile

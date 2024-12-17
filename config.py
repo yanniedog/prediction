@@ -1,4 +1,4 @@
-# filename: config.py
+# config.py
 import os
 SCRIPT_DIR=os.path.dirname(os.path.abspath(__file__))
 DATABASE_DIR=os.path.join(SCRIPT_DIR,'database')

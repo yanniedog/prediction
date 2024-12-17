@@ -1,4 +1,4 @@
-# filename: correlation_utils.py
+# correlation_utils.py
 
 import os
 import pandas as pd
@@ -22,15 +22,13 @@ def calculate_correlation(data: pd.DataFrame, indicator_name: str, lag: int, is_
     Returns:
         float: The Pearson correlation coefficient.
     """
-    # Only minimal debug information
     if indicator_name.lower() == 'close':
-        return np.nan  # Avoid self-correlation
+        return np.nan
 
     try:
         shift_value = lag if is_reverse_chronological else -lag
         shifted_col = data[indicator_name].shift(shift_value)
 
-        # Combine the shifted indicator and 'Close' price, dropping NaNs
         valid_data = pd.concat([shifted_col, data['Close']], axis=1).dropna()
 
         if not valid_data.empty:
@@ -147,32 +145,26 @@ def load_or_calculate_correlations(
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
-        # Retrieve or insert symbol and timeframe IDs
         symbol_id = get_symbol_id(conn, symbol)
         timeframe_id = get_timeframe_id(conn, timeframe)
 
-        # Iterate over each indicator
         for i, indicator_name in enumerate(original_indicators, start=1):
             print(f"[INFO] Processing indicator {i}/{len(original_indicators)}: '{indicator_name}'")
             indicator_id = get_indicator_id(conn, indicator_name)
 
-            # Check if the indicator is valid
             if not is_valid_indicator(data[indicator_name]):
                 print(f"[WARN] Indicator '{indicator_name}' is invalid. Skipping.")
                 continue
 
-            # Fetch existing lags for this indicator
             cursor.execute("""
                 SELECT lag FROM correlations
                 WHERE symbol_id = ? AND timeframe_id = ? AND indicator_id = ?
             """, (symbol_id, timeframe_id, indicator_id))
             existing_lags = set(row[0] for row in cursor.fetchall())
 
-            # Determine which lags need to be calculated
             lags_to_calculate = [lag for lag in range(1, max_lag + 1) if lag not in existing_lags]
             print(f"[INFO] {len(lags_to_calculate)} lags to calculate for '{indicator_name}'")
 
-            # Calculate missing correlations
             for lag in lags_to_calculate:
                 corr_value = calculate_correlation(data, indicator_name, lag, is_reverse_chronological)
                 try:
@@ -183,7 +175,6 @@ def load_or_calculate_correlations(
                 except sqlite3.Error as e:
                     print(f"[ERROR] Failed to insert correlation for '{indicator_name}', lag {lag}: {e}")
 
-            # Commit after each indicator to save progress
             conn.commit()
             print(f"[INFO] Completed correlations for indicator '{indicator_name}'")
 

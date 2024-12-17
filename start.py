@@ -1,4 +1,4 @@
-# filename: start.py
+# start.py
 import os
 import sys
 import shutil
@@ -18,7 +18,6 @@ from joblib import Parallel, delayed
 from scipy.stats import t
 from sklearn.preprocessing import StandardScaler
 
-# Project imports
 from linear_regression import perform_linear_regression
 from advanced_analysis import advanced_price_prediction
 from load_data import load_data
@@ -125,7 +124,6 @@ def preview_database(db_path: str):
 
         conn.close()
 
-        # Validate database content
         if symbols_df.empty or timeframes_df.empty or klines_df.empty:
             print("[DEBUG] preview_database: database seems empty or incomplete")
             return False
@@ -140,7 +138,6 @@ def recreate_database(db_path: str):
     if os.path.exists(db_path):
         os.remove(db_path)
         print(f"[DEBUG] recreate_database: deleted existing database at {db_path}")
-    # Assuming you have a script or method to create tables
     from sqlite_data_manager import create_connection, create_tables
     conn = create_connection(db_path)
     if conn:
@@ -214,7 +211,6 @@ def main() -> None:
     load_duration = time.time() - start_time
     print(f"Data load completed in {load_duration:.2f} seconds. Data empty: {data.empty}")
 
-    # Preview DB before proceeding
     print("Previewing database contents...")
     db_ok = preview_database(DB_PATH)
     if not db_ok:
@@ -282,7 +278,6 @@ def main() -> None:
     indicator_duration = time.time() - start_time
     print(f"Indicators computed in {indicator_duration:.2f} seconds.")
 
-    # Ensure 'Date' and 'Close' columns
     if 'Date' not in data.columns:
         if 'open_time' in data.columns:
             data['Date'] = pd.to_datetime(data['open_time'], errors='coerce').dt.tz_localize(None)

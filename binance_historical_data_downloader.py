@@ -1,4 +1,4 @@
-# filename: binance_historical_data_downloader.py
+# binance_historical_data_downloader.py
 import os
 import sys
 import requests
@@ -41,7 +41,6 @@ def download_binance_data(symbol=None, interval=None):
         if not quote_currency:
             quote_currency='BTC'
         symbol=f"{quote_currency}{base_currency}"
-    # Ensure symbol is uppercase
     symbol = symbol.upper()
 
     if not interval:
@@ -137,5 +136,4 @@ def save_dataframe_to_sqlite(df, db_path, symbol, timeframe):
     else:
         print(f"Cannot connect to the database at {db_path}.")
         sys.exit(1)
-    # Save with the symbol and timeframe exactly as given (symbol is already uppercase)
     save_to_sqlite(df, db_path, symbol, timeframe)

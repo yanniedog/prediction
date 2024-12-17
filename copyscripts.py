@@ -91,7 +91,7 @@ if __name__ == "__main__":
     exts = ['.py', '.ps']
     if args.extensions: exts.extend([f".{x.lstrip('.')}" for x in args.extensions])
     bdirs = list(dict.fromkeys([cdir, os.path.join(cdir, "scripts")] + [os.path.join(cdir, f) for f in (args.folders or [])]))
-    fnames = {os.path.basename(__file__).lower(), 'parsetab.py', 'copyscripts.py', 'repair-remarks.py', 'cspell.json', 'revert-to-gpt-scripts.py'}
+    fnames = {os.path.basename(__file__).lower(), 'parsetab.py'}
     excl_dirs_map, always_excl = {cdir: ['scripts']}, ['venv', '.venv']
     fmap = collect_files(bdirs, exts, fnames, excl_dirs_map, always_excl)
     dups = {f: p for f, p in fmap.items() if len(p) > 1}

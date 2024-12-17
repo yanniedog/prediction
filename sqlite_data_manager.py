@@ -1,4 +1,4 @@
-# filename: sqlite_data_manager.py
+# sqlite_data_manager.py
 import os
 import sys
 import sqlite3
