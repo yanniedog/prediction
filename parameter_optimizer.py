@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Any, Optional, Tuple
 import sqlite3
+import time # Import time for potential delays/debugging
 
 import config as app_config
 import indicator_factory
@@ -17,186 +18,28 @@ import parameter_generator
 
 logger = logging.getLogger(__name__)
 
+# --- Helper Functions (_get_config_hash, _generate_candidate) ---
+# (Keep these as they are)
 def _get_config_hash(params: Dict[str, Any]) -> str:
     """Generates a stable SHA256 hash for a parameter dictionary."""
     config_str = json.dumps(params, sort_keys=True, separators=(',', ':'))
     return hashlib.sha256(config_str.encode('utf-8')).hexdigest()
-
-# --- UPDATED FUNCTION ---
-def _calculate_config_performance_and_correlations(
-    params: Dict[str, Any],
-    config_id: int,
-    indicator_name: str,
-    base_data_with_required: pd.DataFrame,
-    max_lag: int,
-    scoring_method: str = 'max_abs'
-) -> Tuple[Optional[float], Optional[int], List[Optional[float]]]:
-    """
-    Calculates indicator and correlations, returning performance score, best lag, AND all correlations.
-
-    Returns:
-        Tuple[Optional[float], Optional[int], List[Optional[float]]]: (score, best_score_lag, correlation_values)
-        Score calculation depends on scoring_method. Returns (None, None, []) on failure.
-        The returned correlation_values list corresponds to the FIRST output column.
-        best_score_lag is the lag associated with the highest score found across all outputs
-                        (only meaningful for max-based scoring methods).
-    """
-    logger.debug(f"Calculating performance for Config ID {config_id} ({indicator_name}, {params}) using '{scoring_method}' score")
-
-    # 1. Compute Indicator
-    config_details = {'indicator_name': indicator_name, 'params': params, 'config_id': config_id}
-    indicator_output_df = indicator_factory._compute_single_indicator(base_data_with_required.copy(), config_details)
-
-    if indicator_output_df is None or indicator_output_df.empty:
-        logger.warning(f"Indicator computation failed or returned empty for Config ID {config_id}. Score: None.")
-        return None, None, []
-    nan_check = indicator_output_df.isnull().all()
-    all_nan_cols = nan_check[nan_check].index.tolist()
-    if all_nan_cols:
-        logger.warning(f"Indicator {indicator_name} (Cfg {config_id}) produced all-NaN columns: {all_nan_cols}. Score: None.")
-        return None, None, []
-
-    # 2. Combine with 'close' and drop NaNs for correlation input
-    if 'close' not in base_data_with_required.columns:
-        logger.error("Base data missing 'close' column for correlation calculation.")
-        return None, None, []
-    data_for_corr = pd.concat([base_data_with_required[['close']], indicator_output_df.reindex(base_data_with_required.index)], axis=1)
-    initial_len = len(data_for_corr)
-    data_for_corr.dropna(inplace=True)
-    dropped_rows = initial_len - len(data_for_corr)
-    if dropped_rows > 0: logger.debug(f"Dropped {dropped_rows} rows with NaNs before correlation for Config ID {config_id}.")
-
-    min_required_len = max_lag + 3
-    if len(data_for_corr) < min_required_len:
-        logger.warning(f"Insufficient data ({len(data_for_corr)} rows) for correlation (max_lag={max_lag}) for Config ID {config_id}. Need {min_required_len}. Score: None.")
-        return None, None, []
-
-    # 3. Calculate Correlations for each output column
-    all_output_correlations = {}
-    output_columns = list(indicator_output_df.columns)
-    logger.debug(f"Config ID {config_id}: Calculating correlations for columns: {output_columns}")
-
-    for indicator_col in output_columns:
-        col_correlations = [np.nan] * max_lag
-        if indicator_col not in data_for_corr.columns:
-            logger.error(f"Internal error: Column '{indicator_col}' not in data_for_corr. Skipping.")
-            continue
-        if data_for_corr[indicator_col].nunique(dropna=True) <= 1:
-            logger.warning(f"Indicator column '{indicator_col}' (Config ID {config_id}) has no variance. Setting correlations to NaN.")
-            all_output_correlations[indicator_col] = [np.nan] * max_lag
-            continue
-        for lag in range(1, max_lag + 1):
-            correlation_value = correlation_calculator.calculate_correlation_indicator_vs_future_price( data_for_corr, indicator_col, lag )
-            db_value = np.nan if correlation_value is None else float(correlation_value)
-            col_correlations[lag-1] = db_value
-        all_output_correlations[indicator_col] = col_correlations
-
-    if not all_output_correlations:
-        logger.warning(f"Config ID {config_id}: No correlation results generated.")
-        return None, None, []
-
-    # 4. Calculate Score and Best Lag based on chosen method across ALL output columns
-    final_score = None
-    best_score_lag = None # Lag associated with the overall best score for this config
-    current_max_score_for_config = -float('inf') # Track the highest score value found
-
-    for col, corrs in all_output_correlations.items():
-        corrs_array = np.array(corrs, dtype=float)
-        if np.isnan(corrs_array).all(): continue
-
-        col_score = None
-        col_best_lag = None # Lag associated with the best score *for this column*
-        valid_corrs_mask = ~np.isnan(corrs_array)
-        valid_corrs_array = corrs_array[valid_corrs_mask]
-        valid_lags = np.array(range(1, max_lag + 1))[valid_corrs_mask]
-
-        if len(valid_corrs_array) == 0: continue
-
-        # Calculate score based on method
-        if scoring_method == 'max_abs':
-             abs_corrs_array = np.abs(valid_corrs_array)
-             col_score = np.max(abs_corrs_array)
-             col_best_lag_index = np.argmax(abs_corrs_array)
-             col_best_lag = valid_lags[col_best_lag_index]
-        elif scoring_method == 'mean_abs':
-             abs_corrs_array = np.abs(valid_corrs_array)
-             col_score = np.mean(abs_corrs_array)
-             col_best_lag = None # Lag is not meaningful for mean score
-        elif scoring_method == 'max_positive':
-             if np.any(valid_corrs_array > 0): # Check if any positive values exist
-                col_score = np.max(valid_corrs_array)
-                col_best_lag_index = np.argmax(valid_corrs_array)
-                col_best_lag = valid_lags[col_best_lag_index]
-             else:
-                col_score = 0.0 # Or perhaps -inf if we strictly want positive
-                col_best_lag = None
-        elif scoring_method == 'mean_positive':
-             positive_corrs = valid_corrs_array[valid_corrs_array > 0]
-             col_score = np.mean(positive_corrs) if len(positive_corrs) > 0 else 0.0
-             col_best_lag = None # Lag is not meaningful for mean score
-        elif scoring_method == 'max_negative':
-             if np.any(valid_corrs_array < 0): # Check if any negative values exist
-                 min_val = np.min(valid_corrs_array)
-                 col_score = -min_val # Score is positive
-                 col_best_lag_index = np.argmin(valid_corrs_array)
-                 col_best_lag = valid_lags[col_best_lag_index]
-             else:
-                 col_score = 0.0 # No negative correlations found
-                 col_best_lag = None
-        elif scoring_method == 'mean_negative':
-             negative_corrs = valid_corrs_array[valid_corrs_array < 0]
-             if len(negative_corrs) > 0:
-                 mean_neg = np.mean(negative_corrs)
-                 col_score = -mean_neg # Score is positive
-             else:
-                 col_score = 0.0 # No negative correlations found
-             col_best_lag = None # Lag is not meaningful for mean score
-        else: # Default to max_abs
-             logger.warning(f"Unknown scoring_method '{scoring_method}'. Defaulting to 'max_abs'.")
-             abs_corrs_array = np.abs(valid_corrs_array)
-             if len(abs_corrs_array) > 0:
-                col_score = np.max(abs_corrs_array)
-                col_best_lag_index = np.argmax(abs_corrs_array)
-                col_best_lag = valid_lags[col_best_lag_index]
-
-        # Update the overall best score and associated lag for this configuration
-        # (comparing scores across different output columns of the same config)
-        if col_score is not None and col_score > current_max_score_for_config:
-            current_max_score_for_config = col_score
-            final_score = col_score
-            best_score_lag = col_best_lag # Store the lag associated with this column's best score
-
-
-    if final_score is None:
-        logger.warning(f"Config ID {config_id}: No valid scores calculated across output columns.")
-        best_score_lag = None # Ensure lag is None if score is None
-
-    # Log the final determined score and lag for the configuration
-    logger.debug(f"Config ID {config_id}: Final Score ({scoring_method}) = {final_score if final_score is not None else 'N/A'} at Best Lag = {best_score_lag if best_score_lag is not None else 'N/A'}")
-
-    first_col_name = output_columns[0] if output_columns else None
-    first_col_correlations = all_output_correlations.get(first_col_name, [np.nan] * max_lag)
-    if len(first_col_correlations) < max_lag: first_col_correlations.extend([np.nan] * (max_lag - len(first_col_correlations)))
-    elif len(first_col_correlations) > max_lag: first_col_correlations = first_col_correlations[:max_lag]
-
-    return final_score, best_score_lag, first_col_correlations
-
 
 def _generate_candidate(
     base_config: Optional[Dict[str, Any]],
     param_defs: Dict[str, Dict],
     conditions: List[Dict],
     indicator_name: str,
-    evaluated_hashes: set
+    evaluated_hashes: set # Hashes evaluated *within the current target_lag optimization*
 ) -> Optional[Dict[str, Any]]:
     """
     Generates a new candidate configuration.
     If base_config is provided, it perturbs it.
     Otherwise, it calls _generate_random_valid_config for exploration.
-    Ensures the generated config hash is not in evaluated_hashes.
+    Ensures the generated config hash is not in evaluated_hashes for the current lag.
     Returns None if it can't generate a new valid config after several tries.
     """
-    max_tries = 30
+    max_tries = 30 # Tries to find a *new* valid config for *this lag's* optimization
     attempt = 0
     period_params = [
         'fast', 'slow', 'fastperiod', 'slowperiod', 'signalperiod',
@@ -220,7 +63,10 @@ def _generate_candidate(
 
             if not tweakable_params:
                  logger.warning(f"{log_prefix} No numeric tweakable parameters found for perturbation.")
-                 return None
+                 # If no numeric params, perturbation yields the same config.
+                 # Force random generation instead.
+                 base_config = None
+                 continue # Go to next attempt, will trigger random generation
 
             param_to_tweak = random.choice(tweakable_params)
             details = param_defs[param_to_tweak]
@@ -250,7 +96,8 @@ def _generate_candidate(
                 elif np.isclose(new_value, current_value): new_value = round(max(min_val, current_value + random.choice([-0.01, 0.01])), 4)
                 candidate_params[param_to_tweak] = new_value
             else:
-                 logger.warning(f"{log_prefix} Cannot perturb non-numeric param '{param_to_tweak}'. Trying again.")
+                 # This case should not be reached if tweakable_params only includes int/float
+                 logger.warning(f"{log_prefix} Cannot perturb non-numeric param '{param_to_tweak}'. Trying random.")
                  base_config = None
                  continue
 
@@ -270,236 +117,403 @@ def _generate_candidate(
 
         candidate_hash = _get_config_hash(candidate_params)
         is_valid = parameter_generator.evaluate_conditions(candidate_params, conditions) # Always re-validate
-        is_new = candidate_hash not in evaluated_hashes
+        is_new_for_this_lag = candidate_hash not in evaluated_hashes # Check against hashes for current lag optimization
 
-        if is_valid and is_new:
-            logger.debug(f"{log_prefix} Found new valid candidate: {candidate_params}")
+        if is_valid and is_new_for_this_lag:
+            logger.debug(f"{log_prefix} Found new valid candidate for this lag: {candidate_params}")
             return candidate_params
         elif not is_valid:
              logger.debug(f"{log_prefix} Generated candidate {candidate_params} is invalid. Retrying.")
              base_config = None # Force random if invalid
-        elif not is_new:
-             logger.debug(f"{log_prefix} Candidate {candidate_params} hash {candidate_hash[:8]}... already evaluated. Retrying.")
-             base_config = None # Force random if hash collision
+        elif not is_new_for_this_lag:
+             logger.debug(f"{log_prefix} Candidate {candidate_params} hash {candidate_hash[:8]}... already evaluated for this lag. Retrying.")
+             base_config = None # Force random if already seen for this lag
 
-    logger.warning(f"Could not generate a new, valid, unique configuration for {indicator_name} after {max_tries} tries.")
+    logger.warning(f"Could not generate a new, valid, unique configuration for {indicator_name} for this lag after {max_tries} tries.")
     return None
 
+# --- NEW/REVISED Evaluation Function ---
+def _evaluate_config_and_get_correlations(
+    params: Dict[str, Any],
+    config_id: int,
+    indicator_name: str,
+    base_data_with_required: pd.DataFrame,
+    max_lag: int,
+) -> Tuple[bool, Dict[str, List[Optional[float]]]]:
+    """
+    Computes indicator and ALL correlations (1 to max_lag) for all output columns.
 
-def optimize_parameters(
+    Returns:
+        Tuple[bool, Dict[str, List[Optional[float]]]]
+        - bool: True if calculation was successful (at least one correlation calculated), False otherwise.
+        - Dict: Maps output column name to its list of correlations [corr_lag1, corr_lag2, ...]. Empty dict on failure.
+    """
+    logger.debug(f"Evaluating all correlations for Config ID {config_id} ({indicator_name}, {params}) up to lag {max_lag}")
+
+    # 1. Compute Indicator
+    config_details = {'indicator_name': indicator_name, 'params': params, 'config_id': config_id}
+    indicator_output_df = indicator_factory._compute_single_indicator(base_data_with_required.copy(), config_details)
+
+    if indicator_output_df is None or indicator_output_df.empty:
+        logger.warning(f"Indicator computation failed or returned empty for Config ID {config_id}.")
+        return False, {}
+    nan_check = indicator_output_df.isnull().all()
+    all_nan_cols = nan_check[nan_check].index.tolist()
+    if all_nan_cols:
+        logger.warning(f"Indicator {indicator_name} (Cfg {config_id}) produced all-NaN columns: {all_nan_cols}.")
+        return False, {}
+
+    # 2. Combine with 'close' and drop NaNs for correlation input
+    if 'close' not in base_data_with_required.columns:
+        logger.error("Base data missing 'close' column for correlation calculation.")
+        return False, {}
+    data_for_corr = pd.concat([base_data_with_required[['close']], indicator_output_df.reindex(base_data_with_required.index)], axis=1)
+    initial_len = len(data_for_corr)
+    data_for_corr.dropna(inplace=True)
+    dropped_rows = initial_len - len(data_for_corr)
+    if dropped_rows > 0: logger.debug(f"Dropped {dropped_rows} rows with NaNs before correlation for Config ID {config_id}.")
+
+    min_required_len = max_lag + 3 # Need at least 3 points for correlation calculation after shifting
+    if len(data_for_corr) < min_required_len:
+        logger.warning(f"Insufficient data ({len(data_for_corr)} rows) for correlation (max_lag={max_lag}) for Config ID {config_id}. Need {min_required_len}.")
+        return False, {}
+
+    # 3. Calculate Correlations for each output column
+    all_output_correlations: Dict[str, List[Optional[float]]] = {}
+    output_columns = list(indicator_output_df.columns)
+    calculation_successful = False
+    logger.debug(f"Config ID {config_id}: Calculating correlations for columns: {output_columns}")
+
+    for indicator_col in output_columns:
+        col_correlations: List[Optional[float]] = [None] * max_lag # Pre-allocate with None
+        if indicator_col not in data_for_corr.columns:
+            logger.error(f"Internal error: Column '{indicator_col}' not in data_for_corr. Skipping.")
+            continue
+        if data_for_corr[indicator_col].nunique(dropna=True) <= 1:
+            logger.warning(f"Indicator column '{indicator_col}' (Config ID {config_id}) has no variance. Setting correlations to NaN.")
+            all_output_correlations[indicator_col] = [np.nan] * max_lag # Store NaNs
+            continue
+
+        any_col_corr_calculated = False
+        for lag in range(1, max_lag + 1):
+            correlation_value = correlation_calculator.calculate_correlation_indicator_vs_future_price( data_for_corr, indicator_col, lag )
+            # Store float or None directly
+            col_correlations[lag-1] = float(correlation_value) if pd.notna(correlation_value) else None
+            if pd.notna(correlation_value):
+                 any_col_corr_calculated = True
+
+        all_output_correlations[indicator_col] = col_correlations
+        if any_col_corr_calculated:
+            calculation_successful = True # Mark success if at least one correlation was calculated for any column
+
+    if not calculation_successful:
+        logger.warning(f"Config ID {config_id}: No valid correlation results generated across all output columns.")
+        return False, {}
+
+    logger.debug(f"Config ID {config_id}: Successfully calculated correlation vectors.")
+    return True, all_output_correlations
+
+
+# --- NEW Main Optimization Function ---
+def optimize_parameters_per_lag(
     indicator_name: str,
     indicator_def: Dict,
     base_data_with_required: pd.DataFrame,
     max_lag: int,
-    num_iterations: int,
-    target_configs: int,
+    num_iterations_per_lag: int, # Renamed for clarity
     db_path: str,
     symbol_id: int,
     timeframe_id: int,
-    scoring_method: str = 'max_abs'
-) -> List[Dict[str, Any]]:
+    # scoring_method: str = 'max_abs' # Scoring method for selecting best *within* a lag
+) -> Tuple[Dict[int, Dict[str, Any]], List[Dict[str, Any]]]:
     """
-    Optimizes parameters for a single indicator using an iterative feedback loop.
-    Aims to find configurations maximizing the chosen scoring metric.
+    Optimizes parameters for a single indicator, finding the best configuration *for each lag*.
+
+    Args:
+        indicator_name: Name of the indicator.
+        indicator_def: Definition dictionary for the indicator.
+        base_data_with_required: DataFrame containing necessary input columns ('close', etc.).
+        max_lag: The maximum lag to optimize for.
+        num_iterations_per_lag: Number of *new* configurations to evaluate for *each lag*.
+        db_path: Path to the SQLite database.
+        symbol_id: ID for the symbol in the database.
+        timeframe_id: ID for the timeframe in the database.
+        # scoring_method: How to determine the 'best' correlation at a specific lag ('max_abs', 'max_positive', 'max_negative').
 
     Returns:
-        List of dictionaries for the top 'target_configs', sorted by score (desc).
-        Includes default config result if evaluation was successful.
-        Format: [{'indicator_name': ..., 'params': ..., 'config_id': ..., 'score': ..., 'correlations': [...]}, ...]
+        Tuple containing:
+        1. Dict[int, Dict[str, Any]]: A dictionary mapping each lag (1 to max_lag) to the details
+           of the best configuration found for that specific lag.
+           Format: {lag: {'params': ..., 'config_id': ..., 'correlation_at_lag': ...}, ...}
+           If no valid config is found for a lag, the entry might be missing or contain None.
+        2. List[Dict[str, Any]]: A list of all unique configurations evaluated across all lags.
+           Format: [{'indicator_name': ..., 'params': ..., 'config_id': ...}, ...]
     """
-    logger.info(f"--- Starting Parameter Optimization for: {indicator_name} ---")
-    logger.info(f"Iterations: {num_iterations}, Target Configs: {target_configs}, Max Lag: {max_lag}, Scoring: {scoring_method}")
+    logger.info(f"--- Starting Per-Lag Parameter Optimization for: {indicator_name} ---")
+    logger.info(f"Target Lags: 1 to {max_lag}, Iterations per Lag: {num_iterations_per_lag}")
 
     param_defs = indicator_def.get('parameters', {})
     conditions = indicator_def.get('conditions', [])
 
-    evaluated_configs_results: List[Dict[str, Any]] = []
-    evaluated_hashes: set = set()
-    correlations_to_batch_insert: List[Tuple[int, int, int, int, Optional[float]]] = []
-    default_config_result: Optional[Dict[str, Any]] = None
+    # --- Global Tracking ---
+    # Stores all unique configs evaluated across all lags and their config IDs
+    master_evaluated_configs: Dict[str, Dict[str, Any]] = {} # {hash: {'params': ..., 'config_id': ...}}
+    # Stores all correlations calculated, ready for batch DB insert
+    master_correlations_to_batch_insert: List[Tuple[int, int, int, int, Optional[float]]] = []
+    # Stores the best result found specifically for each lag
+    best_config_per_lag: Dict[int, Dict[str, Any]] = {} # {lag: {'params':..., 'config_id':..., 'correlation_at_lag':...}}
+    # Cache calculated correlations to avoid recomputing within the same run
+    # Map: {config_hash: {output_col_name: [corr_lag1, ...], ...}}
+    correlation_cache: Dict[str, Dict[str, List[Optional[float]]]] = {}
 
-    # --- 1. Evaluate Default Configuration ---
+
+    # --- Get Default Config Info ---
     default_params = {k: v.get('default') for k, v in param_defs.items() if 'default' in v}
-    if not default_params: logger.error(f"Indicator {indicator_name} has no default parameters. Cannot optimize."); return []
-    if not parameter_generator.evaluate_conditions(default_params, conditions): logger.error(f"Default parameters for {indicator_name} are invalid. Cannot optimize."); return []
-
-    logger.info(f"Evaluating default config: {default_params}")
-    conn = sqlite_manager.create_connection(db_path)
-    if not conn: return []
-    try: default_config_id = sqlite_manager.get_or_create_indicator_config_id(conn, indicator_name, default_params)
-    except Exception as e: logger.error(f"Failed to get/create config ID for default params: {e}", exc_info=True); conn.close(); return []
-    finally: conn.close()
-
-    default_hash = _get_config_hash(default_params)
-    evaluated_hashes.add(default_hash)
-
-    default_score, default_best_lag, default_corrs = _calculate_config_performance_and_correlations(
-        default_params, default_config_id, indicator_name, base_data_with_required, max_lag, scoring_method
-    )
-
-    best_config_params = default_params
-    best_score = -float('inf')
-    best_score_overall_lag = None
-
-    if default_score is not None:
-        default_config_result = {
-            'params': default_params, 'hash': default_hash, 'config_id': default_config_id,
-            'score': default_score, 'correlations': default_corrs, 'best_lag': default_best_lag
-        }
-        evaluated_configs_results.append(default_config_result)
-        best_score = default_score
-        best_score_overall_lag = default_best_lag
-        logger.info(f"Default config score: {best_score:.4f} (Best Lag: {best_score_overall_lag})")
-        for lag_idx, corr_val in enumerate(default_corrs):
-             correlations_to_batch_insert.append((symbol_id, timeframe_id, default_config_id, lag_idx + 1, corr_val))
+    default_config_id = None
+    default_hash = None
+    if default_params and parameter_generator.evaluate_conditions(default_params, conditions):
+        default_hash = _get_config_hash(default_params)
+        conn = sqlite_manager.create_connection(db_path)
+        if conn:
+            try:
+                default_config_id = sqlite_manager.get_or_create_indicator_config_id(conn, indicator_name, default_params)
+                # Add default to master list immediately if valid
+                master_evaluated_configs[default_hash] = {'params': default_params, 'config_id': default_config_id}
+                logger.info(f"Default config prepared (ID: {default_config_id}): {default_params}")
+            except Exception as e:
+                logger.error(f"Failed to get/create config ID for default params: {e}", exc_info=True)
+                default_config_id = None # Ensure it's None if DB interaction failed
+            finally:
+                conn.close()
+        else:
+            logger.error("Cannot connect to DB to get default config ID.")
     else:
-        logger.warning("Default configuration failed evaluation. Starting optimization from scratch/random.")
-        best_config_params = None
+        logger.error(f"Default parameters for {indicator_name} are missing or invalid. Cannot include in optimization base.")
+
+    # --- Outer Loop: Iterate through each target lag ---
+    for target_lag in range(1, max_lag + 1):
+        logger.info(f"--- Optimizing for Lag: {target_lag}/{max_lag} ---")
+
+        # --- Per-Lag Tracking ---
+        evaluated_configs_results_this_lag: List[Dict[str, Any]] = [] # Stores {hash, score_at_lag}
+        evaluated_hashes_this_lag: set = set() # Track hashes evaluated *for this lag's optimization*
+        # correlations_from_this_lag_optimization = {} # Cache {hash: {col: [corrs]}} -> Use global correlation_cache instead
+
+        best_score_for_this_lag = -float('inf') # Using max_abs score for optimization target
+        best_config_params_for_this_lag = None
+        best_config_id_for_this_lag = None
+        best_correlation_at_this_lag = None
+
+        # --- 1. Evaluate Default Config *at this lag* ---
+        if default_config_id is not None and default_hash is not None:
+            logger.debug(f"Lag {target_lag}: Evaluating default config (ID: {default_config_id}).")
+            # Calculate correlations (use cache)
+            calc_success, correlations_dict = False, {}
+            if default_hash in correlation_cache:
+                 logger.debug(f"Lag {target_lag}: Using cached correlations for default config.")
+                 correlations_dict = correlation_cache[default_hash]
+                 calc_success = True # Assume success if cached
+            else:
+                 logger.debug(f"Lag {target_lag}: Calculating correlations for default config.")
+                 calc_success, correlations_dict = _evaluate_config_and_get_correlations(
+                     default_params, default_config_id, indicator_name, base_data_with_required, max_lag
+                 )
+                 if calc_success:
+                      correlation_cache[default_hash] = correlations_dict
+                      # Add to batch insert list *only once*
+                      # Check based on config_id to prevent duplicates if hash collision occurred (unlikely)
+                      if not any(row[2] == default_config_id for row in master_correlations_to_batch_insert):
+                           logger.debug(f"Lag {target_lag}: Scheduling correlations for default config ID {default_config_id} for batch insert.")
+                           for col_name, corr_list in correlations_dict.items():
+                                for lag_idx, corr_val in enumerate(corr_list):
+                                     master_correlations_to_batch_insert.append((symbol_id, timeframe_id, default_config_id, lag_idx + 1, corr_val))
+
+            if calc_success:
+                 evaluated_hashes_this_lag.add(default_hash)
+                 # Determine score *at this target lag* from *all* output columns
+                 score_at_target_lag = -float('inf')
+                 correlation_value_at_target_lag = None # The actual correlation value associated with the best score
+                 for col, corrs in correlations_dict.items():
+                      if len(corrs) >= target_lag:
+                           corr_val = corrs[target_lag - 1]
+                           if pd.notna(corr_val):
+                                current_score = abs(corr_val) # Score is absolute value for this lag
+                                if current_score > score_at_target_lag:
+                                     score_at_target_lag = current_score
+                                     correlation_value_at_target_lag = corr_val # Store the actual value
+
+                 if score_at_target_lag > -float('inf'):
+                      logger.debug(f"Lag {target_lag}: Default config score = {score_at_target_lag:.4f} (Corr: {correlation_value_at_target_lag:.4f})")
+                      evaluated_configs_results_this_lag.append({'hash': default_hash, 'score_at_lag': score_at_target_lag})
+                      best_score_for_this_lag = score_at_target_lag
+                      best_config_params_for_this_lag = default_params
+                      best_config_id_for_this_lag = default_config_id
+                      best_correlation_at_this_lag = correlation_value_at_target_lag
+                 else: logger.debug(f"Lag {target_lag}: Default config had NaN correlation at this lag.")
+            else: logger.warning(f"Lag {target_lag}: Failed to calculate correlations for default config.")
 
 
-    # --- 2. Iterative Optimization Loop ---
-    successful_evaluations = 1 if default_score is not None else 0
-    iteration = 0
+        # --- 2. Iterative Optimization Loop (for this target_lag) ---
+        successful_evaluations_this_lag = 1 if best_config_params_for_this_lag is not None else 0
+        iteration_this_lag = 0
+        max_iterations_for_lag_opt = num_iterations_per_lag * 3 # Give some leeway
 
-    while successful_evaluations < num_iterations:
-        iteration += 1
-        logger.debug(f"\n--- Optimizer Iteration {iteration} (Evaluations: {successful_evaluations}/{num_iterations}) ---")
+        while successful_evaluations_this_lag < num_iterations_per_lag and iteration_this_lag < max_iterations_for_lag_opt:
+            iteration_this_lag += 1
+            logger.debug(f"\n--- Lag {target_lag} - Opt Iteration {iteration_this_lag} (Evals: {successful_evaluations_this_lag}/{num_iterations_per_lag}) ---")
 
-        explore = random.random() < app_config.OPTIMIZER_RANDOM_EXPLORE_PROB
-        base_for_candidate = None
-        generation_method = "random"
-        if not explore and best_config_params is not None:
-            base_for_candidate = best_config_params
-            generation_method = "perturbation"
-        logger.debug(f"Generation method: {generation_method}")
+            # Determine base config for perturbation vs random exploration
+            explore = random.random() < app_config.OPTIMIZER_RANDOM_EXPLORE_PROB
+            base_for_candidate = None
+            generation_method = "random"
+            if not explore and best_config_params_for_this_lag is not None:
+                base_for_candidate = best_config_params_for_this_lag
+                generation_method = "perturbation"
+            logger.debug(f"Lag {target_lag} - Gen method: {generation_method}")
 
-        candidates_generated_this_iter = 0
-        while candidates_generated_this_iter < app_config.OPTIMIZER_CANDIDATES_PER_ITERATION:
-             if successful_evaluations >= num_iterations: break
+            candidates_generated_this_iter = 0
+            while candidates_generated_this_iter < app_config.OPTIMIZER_CANDIDATES_PER_ITERATION:
+                 if successful_evaluations_this_lag >= num_iterations_per_lag: break
 
-             candidate_params = _generate_candidate(
-                 base_for_candidate, param_defs, conditions, indicator_name, evaluated_hashes
-             )
+                 # Generate a candidate NOT already evaluated *for this lag's optimization*
+                 candidate_params = _generate_candidate(
+                     base_for_candidate, param_defs, conditions, indicator_name, evaluated_hashes_this_lag
+                 )
 
-             if candidate_params is None:
-                 logger.warning("Failed to generate a new valid candidate in this attempt.")
-                 if generation_method == "perturbation":
-                      base_for_candidate = None; generation_method = "random (fallback)"
-                      logger.debug("Switching to random generation for next attempt in iteration.")
-                      continue
-                 else: logger.error("Failed to generate even a 'random' valid candidate. Breaking inner loop."); break
+                 if candidate_params is None:
+                     logger.warning(f"Lag {target_lag}: Failed to generate a new valid candidate in this attempt.")
+                     if generation_method == "perturbation": base_for_candidate = None; generation_method = "random (fallback)"; logger.debug("Switching to random generation for next attempt.") ; continue
+                     else: logger.error(f"Lag {target_lag}: Failed to generate even a 'random' valid candidate. Breaking inner loop."); break
 
-             candidate_hash = _get_config_hash(candidate_params)
-             evaluated_hashes.add(candidate_hash)
-             candidates_generated_this_iter += 1
+                 candidate_hash = _get_config_hash(candidate_params)
+                 candidates_generated_this_iter += 1
+                 evaluated_hashes_this_lag.add(candidate_hash) # Mark as evaluated for this lag
 
-             conn = sqlite_manager.create_connection(db_path)
-             if not conn: continue
-             try: config_id = sqlite_manager.get_or_create_indicator_config_id(conn, indicator_name, candidate_params)
-             except Exception as e: logger.error(f"Failed to get/create config ID for candidate {candidate_params}: {e}"); conn.close(); continue
-             finally: conn.close()
+                 # Get/Create Config ID (add to master list if new)
+                 candidate_config_id = None
+                 if candidate_hash in master_evaluated_configs:
+                      candidate_config_id = master_evaluated_configs[candidate_hash]['config_id']
+                 else:
+                      conn = sqlite_manager.create_connection(db_path)
+                      if not conn: continue # Skip if cannot connect
+                      try:
+                           candidate_config_id = sqlite_manager.get_or_create_indicator_config_id(conn, indicator_name, candidate_params)
+                           master_evaluated_configs[candidate_hash] = {'params': candidate_params, 'config_id': candidate_config_id}
+                           logger.debug(f"Lag {target_lag}: Registered new master config ID {candidate_config_id} for hash {candidate_hash[:8]}")
+                      except Exception as e: logger.error(f"Lag {target_lag}: Failed get/create config ID for {candidate_params}: {e}"); candidate_config_id = None
+                      finally: conn.close()
+                 if candidate_config_id is None: continue # Skip if failed to get ID
 
-             score, best_lag, correlations = _calculate_config_performance_and_correlations(
-                 candidate_params, config_id, indicator_name, base_data_with_required, max_lag, scoring_method
-             )
+                 # Evaluate correlations (use cache if possible)
+                 calc_success, correlations_dict = False, {}
+                 if candidate_hash in correlation_cache:
+                      logger.debug(f"Lag {target_lag}: Using cached correlations for candidate ID {candidate_config_id} / hash {candidate_hash[:8]}.")
+                      correlations_dict = correlation_cache[candidate_hash]
+                      calc_success = True
+                 else:
+                      logger.debug(f"Lag {target_lag}: Calculating correlations for candidate ID {candidate_config_id} / hash {candidate_hash[:8]}.")
+                      calc_success, correlations_dict = _evaluate_config_and_get_correlations(
+                           candidate_params, candidate_config_id, indicator_name, base_data_with_required, max_lag
+                      )
+                      if calc_success:
+                           correlation_cache[candidate_hash] = correlations_dict
+                           # Add to batch insert list *only once* per unique config ID
+                           if not any(row[2] == candidate_config_id for row in master_correlations_to_batch_insert):
+                                logger.debug(f"Lag {target_lag}: Scheduling correlations for config ID {candidate_config_id} for batch insert.")
+                                for col_name, corr_list in correlations_dict.items():
+                                     for lag_idx, corr_val in enumerate(corr_list):
+                                         master_correlations_to_batch_insert.append((symbol_id, timeframe_id, candidate_config_id, lag_idx + 1, corr_val))
+                           # else: logger.debug(f"Lag {target_lag}: Correlations for config ID {candidate_config_id} already scheduled for insert.")
 
-             if score is not None:
-                 logger.info(f"Iter {iteration}: Evaluated Config ID {config_id} ({candidate_params}). Score: {score:.4f} (Best Lag: {best_lag})")
-                 evaluated_configs_results.append({
-                     'params': candidate_params, 'hash': candidate_hash, 'config_id': config_id,
-                     'score': score, 'correlations': correlations, 'best_lag': best_lag
-                 })
-                 successful_evaluations += 1
+                 if calc_success:
+                      # Determine score *at this target lag*
+                      score_at_target_lag = -float('inf')
+                      correlation_value_at_target_lag = None
+                      for col, corrs in correlations_dict.items():
+                           if len(corrs) >= target_lag:
+                               corr_val = corrs[target_lag - 1]
+                               if pd.notna(corr_val):
+                                    current_score = abs(corr_val) # Maximize absolute correlation at target lag
+                                    if current_score > score_at_target_lag:
+                                        score_at_target_lag = current_score
+                                        correlation_value_at_target_lag = corr_val
 
-                 for lag_idx, corr_val in enumerate(correlations):
-                     correlations_to_batch_insert.append((symbol_id, timeframe_id, config_id, lag_idx + 1, corr_val))
+                      if score_at_target_lag > -float('inf'):
+                           logger.info(f"Lag {target_lag} Iter {iteration_this_lag}: Eval Config ID {candidate_config_id} ({candidate_params}). Score@Lag = {score_at_target_lag:.4f} (Corr: {correlation_value_at_target_lag:.4f})")
+                           evaluated_configs_results_this_lag.append({'hash': candidate_hash, 'score_at_lag': score_at_target_lag})
+                           successful_evaluations_this_lag += 1
 
-                 if score > best_score:
-                     logger.info(f"***** New best score found: {score:.4f} at Lag {best_lag} (Config ID {config_id}) *****")
-                     best_score = score
-                     best_score_overall_lag = best_lag
-                     best_config_params = candidate_params
-             else:
-                 logger.warning(f"Iter {iteration}: Evaluation failed for Config ID {config_id} ({candidate_params}).")
+                           # Update best for *this lag*
+                           if score_at_target_lag > best_score_for_this_lag:
+                               logger.info(f"***** Lag {target_lag}: New best score found: {score_at_target_lag:.4f} (Config ID {candidate_config_id}) *****")
+                               best_score_for_this_lag = score_at_target_lag
+                               best_config_params_for_this_lag = candidate_params
+                               best_config_id_for_this_lag = candidate_config_id
+                               best_correlation_at_this_lag = correlation_value_at_target_lag
+                      else:
+                           logger.warning(f"Lag {target_lag} Iter {iteration_this_lag}: Config ID {candidate_config_id} ({candidate_params}) had NaN correlation at this lag.")
+                           # Still count as evaluation attempt, but don't increment success count
+                 else:
+                     logger.warning(f"Lag {target_lag} Iter {iteration_this_lag}: Correlation calculation failed for Config ID {candidate_config_id} ({candidate_params}).")
 
-             if successful_evaluations >= num_iterations: break
+                 if successful_evaluations_this_lag >= num_iterations_per_lag: break # Exit inner candidate loop
 
-        if successful_evaluations >= num_iterations:
-            logger.info(f"Reached target number of {num_iterations} successful evaluations during iteration {iteration}.")
-            break
-        if candidates_generated_this_iter < app_config.OPTIMIZER_CANDIDATES_PER_ITERATION and generation_method == "random (fallback)":
-             logger.warning(f"Could not generate sufficient candidates in iteration {iteration}.")
+            # End inner candidate generation loop
+            if successful_evaluations_this_lag >= num_iterations_per_lag:
+                 logger.info(f"Lag {target_lag}: Reached target evals ({num_iterations_per_lag}) in iteration {iteration_this_lag}.")
+                 break
+            if candidates_generated_this_iter == 0 and generation_method == "random (fallback)":
+                 logger.warning(f"Lag {target_lag}: Could not generate any candidates in iteration {iteration_this_lag}.")
+        # End optimization loop for this lag
 
-        if iteration >= num_iterations * 3:
-             logger.warning(f"Optimizer potentially stuck after {iteration} iterations with only {successful_evaluations} successful evals. Stopping early.")
-             break
+        # --- Store Best Result for target_lag ---
+        if best_config_id_for_this_lag is not None:
+            logger.info(f"--- Lag {target_lag} Best Result ---")
+            logger.info(f"  Config ID: {best_config_id_for_this_lag}")
+            logger.info(f"  Params: {best_config_params_for_this_lag}")
+            logger.info(f"  Correlation @ Lag {target_lag}: {best_correlation_at_this_lag:.6f}")
+            logger.info(f"  Score (Abs Corr): {best_score_for_this_lag:.6f}")
+            best_config_per_lag[target_lag] = {
+                'params': best_config_params_for_this_lag,
+                'config_id': best_config_id_for_this_lag,
+                'correlation_at_lag': best_correlation_at_this_lag,
+                'score_at_lag': best_score_for_this_lag
+            }
+        else:
+            logger.warning(f"Lag {target_lag}: No valid configuration found with non-NaN correlation at this lag.")
+            best_config_per_lag[target_lag] = None # Explicitly mark as None if no best found
 
+    # End outer lag loop
 
-    # --- 3. Batch Insert Correlations ---
-    if correlations_to_batch_insert:
-        logger.info(f"Attempting to batch insert correlations for {len(correlations_to_batch_insert)} records...")
+    # --- Batch Insert All Collected Correlations ---
+    if master_correlations_to_batch_insert:
+        logger.info(f"Attempting to batch insert correlations for {len(master_evaluated_configs)} unique configs ({len(master_correlations_to_batch_insert)} total records)...")
         conn = sqlite_manager.create_connection(db_path)
         if conn:
              try:
-                 success = sqlite_manager.batch_insert_correlations(conn, correlations_to_batch_insert)
+                 success = sqlite_manager.batch_insert_correlations(conn, master_correlations_to_batch_insert)
                  if not success: logger.error("Batch insertion of correlations failed.")
              except Exception as db_err: logger.error(f"Error during batch correlation insert call: {db_err}", exc_info=True)
              finally: conn.close()
         else: logger.error("Could not connect to DB for batch correlation insert.")
-    else: logger.info("No new correlations generated to batch insert.")
+    else: logger.info("No correlations generated to batch insert.")
 
+    # --- Prepare Final Results ---
+    # 1. The best config per lag
+    final_best_per_lag = best_config_per_lag
 
-    # --- 4. Select Top Configurations ---
-    if not evaluated_configs_results:
-        logger.error(f"No configurations were successfully evaluated for {indicator_name}.")
-        return []
+    # 2. The list of all unique evaluated configs
+    final_all_evaluated_configs = []
+    for cfg_hash, cfg_data in master_evaluated_configs.items():
+         final_all_evaluated_configs.append({
+              'indicator_name': indicator_name,
+              'params': cfg_data['params'],
+              'config_id': cfg_data['config_id']
+         })
 
-    evaluated_configs_results.sort(key=lambda x: x.get('score', -float('inf')), reverse=True)
+    logger.info(f"--- Per-Lag Optimization Finished for {indicator_name} ---")
+    logger.info(f"Evaluated {len(master_evaluated_configs)} unique configurations across all lags.")
+    found_best_count = sum(1 for v in final_best_per_lag.values() if v is not None)
+    logger.info(f"Found best configurations for {found_best_count} out of {max_lag} target lags.")
 
-    top_configs_unique = []
-    seen_hashes_top = set()
-    for cfg in evaluated_configs_results:
-        if len(top_configs_unique) >= target_configs: break
-        if cfg['hash'] not in seen_hashes_top:
-             top_configs_unique.append(cfg)
-             seen_hashes_top.add(cfg['hash'])
-
-    final_top_configs = top_configs_unique
-    if default_config_result:
-        default_in_top = any(cfg['config_id'] == default_config_result['config_id'] for cfg in final_top_configs)
-        if not default_in_top:
-            if len(final_top_configs) < target_configs:
-                final_top_configs.append(default_config_result)
-                logger.info(f"Added default config (ID: {default_config_id}, Score: {default_score:.4f}) to results as it wasn't in top {target_configs} and space was available.")
-            elif final_top_configs:
-                worst_score_in_top = final_top_configs[-1]['score'] if final_top_configs[-1].get('score') is not None else -float('inf')
-                # Check score before replacing
-                if default_config_result.get('score', -float('inf')) >= worst_score_in_top :
-                    logger.warning(f"Replacing worst config (ID: {final_top_configs[-1]['config_id']}, Score: {final_top_configs[-1].get('score', 'N/A'):.4f}) with default (ID: {default_config_id}, Score: {default_score:.4f}) to ensure it's included in top {target_configs}.")
-                    final_top_configs[-1] = default_config_result
-                else: logger.info(f"Default config (Score: {default_score:.4f}) was not among top {target_configs} and its score was worse than the lowest ({worst_score_in_top:.4f}). Not included in final list.")
-            # Re-sort only if default was added or replaced
-            final_top_configs.sort(key=lambda x: x.get('score', -float('inf')), reverse=True)
-
-
-    logger.info(f"--- Optimization Finished for {indicator_name} ---")
-    logger.info(f"Evaluated {len(evaluated_hashes)} unique configurations ({successful_evaluations} successful evaluations).")
-    # Log lag associated with the actual best score found
-    best_overall_result = final_top_configs[0] if final_top_configs else None
-    best_score_overall_lag_final = best_overall_result.get('best_lag') if best_overall_result else None
-    logger.info(f"Best score found ({scoring_method}): {best_score:.4f} (Associated Lag: {best_score_overall_lag_final if best_score_overall_lag_final is not None else 'N/A'})")
-    logger.info(f"Returning final top {len(final_top_configs)} configurations (incl. default if evaluated).")
-
-    results_for_main = []
-    for result_config in final_top_configs:
-        params = result_config.get('params', {})
-        config_id = result_config.get('config_id', -1)
-        score = result_config.get('score', None)
-        corrs = result_config.get('correlations', [])
-        results_for_main.append({
-            'indicator_name': indicator_name, 'params': params, 'config_id': config_id,
-            'score': score, 'correlations': corrs
-        })
-        if config_id == -1: logger.warning(f"Result config missing 'config_id': {result_config}")
-
-    return results_for_main
+    return final_best_per_lag, final_all_evaluated_configs
