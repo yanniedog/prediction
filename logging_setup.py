@@ -7,7 +7,9 @@ import config # Assuming config.py defines LOG_DIR
 def setup_logging():
     """Configures logging with different levels for console and file, overwriting the log file each run."""
     # --- Use a fixed filename ---
-    log_filename = config.LOG_DIR / "prediction.log"
+    # >>> MODIFIED: Changed log filename <<<
+    log_filename = config.LOG_DIR / "logfile.txt"
+    # >>> END MODIFIED <<<
 
     # Ensure log directory exists
     config.LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -53,4 +55,6 @@ def setup_logging():
     logging.getLogger('PIL').setLevel(logging.WARNING) # Pillow can be noisy
 
     # Use logger.info AFTER handlers are added
+    # >>> MODIFIED: Updated log message <<<
     logger.info(f"Logging initialized (Console: INFO+, File: DEBUG+, Overwriting: {log_filename})")
+    # >>> END MODIFIED <<<
