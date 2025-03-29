@@ -7,6 +7,7 @@ import numpy as np
 import config
 import os
 from pathlib import Path
+import hashlib # <<< ENSURED IMPORT IS PRESENT
 
 logger = logging.getLogger(__name__)
 
@@ -148,8 +149,8 @@ def get_or_create_indicator_config_id(conn: sqlite3.Connection, indicator_name: 
     try:
         indicator_id = _get_or_create_id(conn, 'indicators', 'name', indicator_name)
         config_str = json.dumps(params, sort_keys=True, separators=(',', ':'))
-        # Use str() representation of hash - more robust storage as TEXT
-        config_hash = str(hash(config_str))
+        # Using hashlib SHA256 hash instead of default hash() for better stability/distribution
+        config_hash = hashlib.sha256(config_str.encode('utf-8')).hexdigest() # Now hashlib is defined
 
         cursor = conn.cursor()
         # Query using the composite key
@@ -199,28 +200,72 @@ def get_or_create_indicator_config_id(conn: sqlite3.Connection, indicator_name: 
          raise # Re-raise DB errors
     except Exception as e:
          logger.error(f"Unexpected error in get_or_create_indicator_config_id for '{indicator_name}' / {params}: {e}", exc_info=True)
-         raise # Re-raise other errors
+         raise
 
-def insert_correlation(conn: sqlite3.Connection, symbol_id: int, timeframe_id: int, indicator_config_id: int, lag: int, correlation_value: Optional[float]) -> None:
-    """Inserts or replaces a single correlation value."""
-    # 'indicator_config_id' in the function signature matches the column name in 'correlations' table
+
+# --- Batch Insert Function ---
+def batch_insert_correlations(
+    conn: sqlite3.Connection,
+    data_to_insert: List[Tuple[int, int, int, int, Optional[float]]]
+) -> bool:
+    """
+    Inserts or replaces multiple correlation values in a single transaction.
+
+    Args:
+        conn: Active SQLite connection.
+        data_to_insert: A list of tuples, where each tuple is
+                        (symbol_id, timeframe_id, indicator_config_id, lag, correlation_value)
+    Returns:
+        True if successful or partially successful (some rows inserted), False on major error.
+    """
+    if not data_to_insert:
+        logger.info("No correlation data provided for batch insert.")
+        return True
+
     query = """
     INSERT OR REPLACE INTO correlations (symbol_id, timeframe_id, indicator_config_id, lag, correlation_value)
     VALUES (?, ?, ?, ?, ?);
     """
-    try:
-        cursor = conn.cursor()
-        db_value = None if correlation_value is None or np.isnan(correlation_value) else float(correlation_value)
-        # Log the exact values being passed
-        logger.debug(f"Inserting correlation: symbol_id={symbol_id}, timeframe_id={timeframe_id}, indicator_config_id={indicator_config_id}, lag={lag}, value={db_value}")
-        cursor.execute(query, (symbol_id, timeframe_id, indicator_config_id, lag, db_value))
-        # Batch commit handled by caller (process_correlations)
-    except sqlite3.Error as e:
-        # Log error but don't stop batch processing
-        logger.error(f"DB error inserting correlation (cfg_id={indicator_config_id}, lag={lag}): {e}", exc_info=False) # Keep log concise
-    except Exception as e:
-         logger.error(f"Value error inserting correlation (cfg_id={indicator_config_id}, lag={lag}, val={correlation_value}): {e}", exc_info=False)
+    cursor = conn.cursor()
+    inserted_count = 0
+    error_count = 0
 
+    try:
+        # Use executemany for potentially faster inserts within a transaction
+        cursor.execute("BEGIN TRANSACTION;")
+        # Prepare data (handle potential NaNs in correlation value)
+        prepared_data = []
+        for row in data_to_insert:
+            s_id, t_id, cfg_id, lag, corr_val = row
+            # Ensure corr_val is float or None before isnan check
+            if isinstance(corr_val, (int, float)):
+                 db_value = None if np.isnan(corr_val) else float(corr_val)
+            else:
+                 db_value = None # Treat non-numeric as None/NULL
+            prepared_data.append((s_id, t_id, cfg_id, lag, db_value))
+
+        cursor.executemany(query, prepared_data)
+        inserted_count = cursor.rowcount # Note: executemany rowcount might be -1 or unreliable on some drivers/versions
+        conn.commit()
+        # If rowcount unreliable, use len(prepared_data) as estimate
+        actual_inserted = inserted_count if inserted_count != -1 else len(prepared_data)
+        logger.info(f"Batch inserted/replaced correlations for {actual_inserted} records.")
+        return True
+    except sqlite3.Error as e:
+        logger.error(f"Database error during batch correlation insert: {e}", exc_info=True)
+        try:
+            conn.rollback()
+            logger.warning("Rolled back batch correlation insert due to error.")
+        except sqlite3.Error as rb_err:
+             logger.error(f"Error during rollback: {rb_err}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error during batch correlation preparation/insert: {e}", exc_info=True)
+        try: conn.rollback()
+        except: pass
+        return False
+
+# --- fetch_correlations remains unchanged ---
 def fetch_correlations(conn: sqlite3.Connection, symbol_id: int, timeframe_id: int, config_ids: List[int]) -> Dict[int, List[Optional[float]]]:
     """Fetches correlations for given config IDs, returns dict {config_id: [corr_lag1, ...]}."""
     if not config_ids: return {}
@@ -269,8 +314,11 @@ def fetch_correlations(conn: sqlite3.Connection, symbol_id: int, timeframe_id: i
                  current_list = [None] * max_lag_found
 
             # Populate the list at the correct index (lag-1)
+            # Ensure lag is within the expected range (1 to max_lag_found)
             if 1 <= lag <= max_lag_found:
-                 current_list[lag - 1] = value
+                 # Convert DB value (which could be None) to float or keep None
+                 current_list[lag - 1] = float(value) if value is not None else None
+
 
         # Store the last processed list after loop finishes
         if current_row_cfg_id != -1:
