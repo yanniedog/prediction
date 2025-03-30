@@ -27,21 +27,26 @@ DEFAULTS = {
     "max_lag": 7,                 # Default max correlation lag if user doesn't specify
     "min_data_points_for_lag": 51, # Minimum data points needed beyond max_lag for reliable calculation
     "target_max_correlations": 50000, # Target limit for estimated correlations (triggers warning)
+    "default_param_range_steps": 5,   # +/- steps around default value for Default Path param generation
+                                      # Set higher for more exploration, lower for speed. (Used if not in indicator_params.json)
+
+    # --- Regression/Prediction ---
+    "min_regression_points": 30,  # Minimum historical (Indicator[t], Close[t+lag]) pairs needed for regression
 
     # --- Visualization ---
     "heatmap_max_configs": 50,     # Max indicators/configs to show on heatmap/combined chart
     "plot_dpi": 300,               # DPI for saved plots
 
     # --- Parameter Optimization (Bayesian) ---
-    "optimizer_n_calls": 10,       # Total evaluations per lag per indicator
-    "optimizer_n_initial_points": 10,# Random points before fitting model per lag
+    "optimizer_n_calls": 50,       # Total evaluations per lag per indicator (Increased for guided steps)
+    "optimizer_n_initial_points": 10, # Random points before fitting model per lag (Standard value)
     "optimizer_acq_func": 'gp_hedge',# Acquisition function ('LCB', 'EI', 'PI', 'gp_hedge')
 }
 # ==========================
 
 
 # --- Ensure Core Directories Exist ---
-DB_DIR.mkdir(parents=True, exist_ok=True) # Added parents=True for robustness
+DB_DIR.mkdir(parents=True, exist_ok=True)
 REPORTS_DIR.mkdir(parents=True, exist_ok=True)
 HEATMAPS_DIR.mkdir(parents=True, exist_ok=True)
 LINE_CHARTS_DIR.mkdir(parents=True, exist_ok=True)

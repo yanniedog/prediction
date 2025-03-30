@@ -9,19 +9,22 @@
                 "nbdevdn": { "default": 2.0, "min": 0.1, "max": 5.0 },
                 "matype": { "default": 0 }
              },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "dema": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "ema": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "ht_trendline": {
             "type": "ta-lib",
@@ -33,7 +36,8 @@
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "ma": {
             "type": "ta-lib",
@@ -42,7 +46,8 @@
                 "timeperiod": { "default": 30, "min": 2, "max": 200 },
                 "matype": { "default": 0 }
             },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "mama": {
             "type": "ta-lib",
@@ -51,19 +56,22 @@
                 "fastlimit": { "default": 0.5, "min": 0.01, "max": 0.99 },
                 "slowlimit": { "default": 0.05, "min": 0.01, "max": 0.99 }
              },
-            "conditions": [ {"fastlimit": {"gt": 0}}, {"slowlimit": {"gt": 0}}, {"slowlimit": {"lt": "fastlimit"}} ]
+            "conditions": [ {"fastlimit": {"gt": 0}}, {"slowlimit": {"gt": 0}}, {"slowlimit": {"lt": "fastlimit"}} ],
+            "range_steps_default": 3
         },
         "midpoint": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "midprice": {
             "type": "ta-lib",
             "required_inputs": ["high", "low"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "sar": {
             "type": "ta-lib",
@@ -72,13 +80,15 @@
                  "acceleration": { "default": 0.02, "min": 0.01, "max": 0.3 },
                  "maximum": { "default": 0.2, "min": 0.01, "max": 0.3 }
              },
-            "conditions": [ {"acceleration": {"gt": 0}}, {"maximum": {"gt": 0}}, {"acceleration": {"lte": "maximum"}} ]
+            "conditions": [ {"acceleration": {"gt": 0}}, {"maximum": {"gt": 0}}, {"acceleration": {"lte": "maximum"}} ],
+            "range_steps_default": 3
         },
          "sma": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "t3": {
             "type": "ta-lib",
@@ -87,37 +97,43 @@
                 "timeperiod": { "default": 5, "min": 2, "max": 200 },
                 "vfactor": { "default": 0.7, "min": 0.0, "max": 1.0 }
             },
-            "conditions": [ { "timeperiod": { "gte": 2 } }, {"vfactor": {"gte": 0}}, {"vfactor": {"lte": 1}} ]
+            "conditions": [ { "timeperiod": { "gte": 2 } }, {"vfactor": {"gte": 0}}, {"vfactor": {"lte": 1}} ],
+            "range_steps_default": 5
         },
         "tema": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "trima": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "wma": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "adx": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "adxr": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "apo": {
             "type": "ta-lib",
@@ -127,19 +143,22 @@
                 "slowperiod": { "default": 26, "min": 2, "max": 200 },
                 "matype": { "default": 0 }
              },
-            "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ]
+            "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ],
+            "range_steps_default": 5
         },
         "aroon": {
             "type": "ta-lib",
             "required_inputs": ["high", "low"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "aroonosc": {
             "type": "ta-lib",
             "required_inputs": ["high", "low"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "bop": {
             "type": "ta-lib",
@@ -151,19 +170,22 @@
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "cmo": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "dx": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "macd": {
             "type": "ta-lib",
@@ -173,37 +195,43 @@
                 "slowperiod": { "default": 26, "min": 2, "max": 200 },
                 "signalperiod": { "default": 9, "min": 1, "max": 100 }
              },
-            "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "signalperiod": { "gte": 1 } }, { "fastperiod": { "lt": "slowperiod" } } ]
+            "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "signalperiod": { "gte": 1 } }, { "fastperiod": { "lt": "slowperiod" } } ],
+            "range_steps_default": 5
         },
         "minus_di": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "minus_dm": {
             "type": "ta-lib",
             "required_inputs": ["high", "low"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "mom": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 1 } } ]
+            "conditions": [ { "timeperiod": { "gte": 1 } } ],
+            "range_steps_default": 5
         },
         "plus_di": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "plus_dm": {
             "type": "ta-lib",
             "required_inputs": ["high", "low"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "ppo": {
             "type": "ta-lib",
@@ -213,37 +241,43 @@
                 "slowperiod": { "default": 26, "min": 2, "max": 200 },
                 "matype": { "default": 0 }
              },
-            "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ]
+            "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ],
+            "range_steps_default": 5
         },
         "roc": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 1 } } ]
+            "conditions": [ { "timeperiod": { "gte": 1 } } ],
+            "range_steps_default": 5
         },
         "rocp": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 1 } } ]
+            "conditions": [ { "timeperiod": { "gte": 1 } } ],
+            "range_steps_default": 5
         },
         "rocr": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 1 } } ]
+            "conditions": [ { "timeperiod": { "gte": 1 } } ],
+            "range_steps_default": 5
         },
         "rocr100": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 1 } } ]
+            "conditions": [ { "timeperiod": { "gte": 1 } } ],
+            "range_steps_default": 5
         },
         "rsi": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "stoch": {
             "type": "ta-lib",
@@ -255,7 +289,8 @@
                 "slowd_period":{ "default": 3, "min": 1, "max": 100 },
                 "slowd_matype":{ "default": 0 }
             },
-            "conditions": [ { "fastk_period": { "gte": 1 } }, { "slowk_period": { "gte": 1 } }, { "slowd_period": { "gte": 1 } } ]
+            "conditions": [ { "fastk_period": { "gte": 1 } }, { "slowk_period": { "gte": 1 } }, { "slowd_period": { "gte": 1 } } ],
+            "range_steps_default": 3
         },
         "stochf": {
             "type": "ta-lib",
@@ -265,7 +300,8 @@
                 "fastd_period":{ "default": 3, "min": 1, "max": 100 },
                 "fastd_matype":{ "default": 0 }
             },
-            "conditions": [ { "fastk_period": { "gte": 1 } }, { "fastd_period": { "gte": 1 } } ]
+            "conditions": [ { "fastk_period": { "gte": 1 } }, { "fastd_period": { "gte": 1 } } ],
+            "range_steps_default": 3
         },
         "stochrsi": {
             "type": "ta-lib",
@@ -276,13 +312,15 @@
                 "fastd_period": { "default": 3, "min": 1, "max": 100 },
                 "fastd_matype": { "default": 0 }
             },
-            "conditions": [ { "timeperiod": { "gte": 2 } }, { "fastk_period": { "gte": 1 } }, { "fastd_period": { "gte": 1 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } }, { "fastk_period": { "gte": 1 } }, { "fastd_period": { "gte": 1 } } ],
+            "range_steps_default": 5
         },
         "trix": {
             "type": "ta-lib",
             "required_inputs": ["close"],
              "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
-             "conditions": [ { "timeperiod": { "gte": 2 } } ]
+             "conditions": [ { "timeperiod": { "gte": 2 } } ],
+             "range_steps_default": 5
         },
         "ultosc": {
             "type": "ta-lib",
@@ -292,13 +330,15 @@
                 "timeperiod2":{ "default": 14, "min": 1, "max": 150 },
                 "timeperiod3":{ "default": 28, "min": 1, "max": 200 }
              },
-            "conditions": [ { "timeperiod1": { "gte": 1 } }, { "timeperiod2": { "gte": 1 } }, { "timeperiod3": { "gte": 1 } }, { "timeperiod1": { "lt": "timeperiod2" } }, { "timeperiod2": { "lt": "timeperiod3" } } ]
+            "conditions": [ { "timeperiod1": { "gte": 1 } }, { "timeperiod2": { "gte": 1 } }, { "timeperiod3": { "gte": 1 } }, { "timeperiod1": { "lt": "timeperiod2" } }, { "timeperiod2": { "lt": "timeperiod3" } } ],
+            "range_steps_default": 5
         },
         "willr": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "ad": {
             "type": "ta-lib",
@@ -313,7 +353,8 @@
                 "fastperiod": { "default": 3, "min": 2, "max": 100 },
                 "slowperiod": { "default": 10, "min": 2, "max": 200 }
              },
-            "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ]
+            "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ],
+            "range_steps_default": 5
         },
         "obv": {
             "type": "ta-lib",
@@ -325,13 +366,15 @@
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
             "parameters": { "timeperiod": { "default": 14, "min": 1, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 1 } } ]
+            "conditions": [ { "timeperiod": { "gte": 1 } } ],
+            "range_steps_default": 5
         },
         "natr": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
             "parameters": { "timeperiod": { "default": 14, "min": 1, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 1 } } ]
+            "conditions": [ { "timeperiod": { "gte": 1 } } ],
+            "range_steps_default": 5
         },
         "trange": {
             "type": "ta-lib",
@@ -373,37 +416,43 @@
             "type": "ta-lib",
             "required_inputs": ["high", "low"],
             "parameters": { "timeperiod": { "default": 5, "min": 1, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 1 } } ]
+            "conditions": [ { "timeperiod": { "gte": 1 } } ],
+            "range_steps_default": 3
         },
         "correl": {
             "type": "ta-lib",
             "required_inputs": ["high", "low"],
             "parameters": { "timeperiod": { "default": 30, "min": 1, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 1 } } ]
+            "conditions": [ { "timeperiod": { "gte": 1 } } ],
+            "range_steps_default": 5
         },
         "linearreg": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "linearreg_angle": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "linearreg_intercept": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "linearreg_slope": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "stddev": {
             "type": "ta-lib",
@@ -412,13 +461,15 @@
                 "timeperiod": { "default": 5, "min": 2, "max": 200 },
                 "nbdev": { "default": 1.0, "min": 0.1, "max": 5.0 }
             },
-            "conditions": [ { "timeperiod": { "gte": 2 } }, {"nbdev": { "gte": 0.1 }} ]
+            "conditions": [ { "timeperiod": { "gte": 2 } }, {"nbdev": { "gte": 0.1 }} ],
+            "range_steps_default": 3
         },
         "tsf": {
             "type": "ta-lib",
             "required_inputs": ["close"],
             "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "conditions": [ { "timeperiod": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "var": {
             "type": "ta-lib",
@@ -427,7 +478,8 @@
                 "timeperiod": { "default": 5, "min": 2, "max": 200 },
                  "nbdev": { "default": 1.0, "min": 0.1, "max": 5.0 }
              },
-            "conditions": [ { "timeperiod": { "gte": 2 } }, {"nbdev": { "gte": 0.1 }} ]
+            "conditions": [ { "timeperiod": { "gte": 2 } }, {"nbdev": { "gte": 0.1 }} ],
+             "range_steps_default": 3
         },
         "ao": {
             "type": "pandas-ta",
@@ -436,7 +488,8 @@
                 "fast": { "default": 5, "min": 2, "max": 100 },
                 "slow": { "default": 34, "min": 2, "max": 200 }
              },
-            "conditions": [ { "fast": { "gte": 2 } }, { "slow": { "gte": 2 } }, { "fast": { "lt": "slow" } } ]
+            "conditions": [ { "fast": { "gte": 2 } }, { "slow": { "gte": 2 } }, { "fast": { "lt": "slow" } } ],
+            "range_steps_default": 5
         },
         "ichimoku": {
             "type": "pandas-ta",
@@ -446,7 +499,8 @@
                 "kijun": { "default": 26, "min": 2, "max": 150 },
                 "senkou": { "default": 52, "min": 2, "max": 200 }
             },
-            "conditions": [ { "tenkan": { "gte": 2 } }, { "kijun": { "gte": 2 } }, { "senkou": { "gte": 2 } }, {"tenkan": {"lt": "kijun"}}, {"kijun": {"lt": "senkou"}} ]
+            "conditions": [ { "tenkan": { "gte": 2 } }, { "kijun": { "gte": 2 } }, { "senkou": { "gte": 2 } }, {"tenkan": {"lt": "kijun"}}, {"kijun": {"lt": "senkou"}} ],
+            "range_steps_default": 5
         },
         "kc": {
             "type": "pandas-ta",
@@ -457,13 +511,15 @@
                 "mamode": { "default": "ema" },
                 "offset": { "default": 0 }
             },
-            "conditions": [ { "length": { "gte": 2 } }, { "scalar": { "gte": 0.1 } } ]
+            "conditions": [ { "length": { "gte": 2 } }, { "scalar": { "gte": 0.1 } } ],
+            "range_steps_default": 5
         },
          "mfi": {
             "type": "pandas-ta",
             "required_inputs": ["high", "low", "close", "volume"],
             "parameters": { "length": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "length": { "gte": 2 } } ]
+            "conditions": [ { "length": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "rvi": {
             "type": "pandas-ta",
@@ -474,7 +530,8 @@
                 "refined": { "default": false },
                 "thirds": { "default": false }
              },
-            "conditions": [ { "length": { "gte": 2 } } ]
+            "conditions": [ { "length": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "tsi": {
             "type": "pandas-ta",
@@ -484,13 +541,15 @@
                 "slow": { "default": 25, "min": 2, "max": 200 },
                 "signal": { "default": 13, "min": 2, "max": 100 }
             },
-            "conditions": [ { "fast": { "gte": 2 } }, { "slow": { "gte": 2 } }, { "signal": { "gte": 2 } }, { "fast": { "lt": "slow" } } ]
+            "conditions": [ { "fast": { "gte": 2 } }, { "slow": { "gte": 2 } }, { "signal": { "gte": 2 } }, { "fast": { "lt": "slow" } } ],
+            "range_steps_default": 5
         },
         "vortex": {
             "type": "pandas-ta",
             "required_inputs": ["high", "low", "close"],
             "parameters": { "length": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "length": { "gte": 2 } } ]
+            "conditions": [ { "length": { "gte": 2 } } ],
+            "range_steps_default": 5
         },
         "obv_price_divergence": {
              "type": "custom",
@@ -505,14 +564,16 @@
                 "smoothing":{"default":0.01, "min": 0.001, "max": 0.1 }
             },
              "conditions": [ {"obv_period": {"gte": 2}}, {"price_period": {"gte": 2}}, {"smoothing": {"gt": 0}} ],
-             "function_name": "compute_obv_price_divergence"
+             "function_name": "compute_obv_price_divergence",
+             "range_steps_default": 5
         },
          "volume_osc": {
              "type": "custom",
              "required_inputs": ["volume"],
              "parameters": { "window": { "default": 20, "min": 2, "max": 200 } },
              "conditions": [ {"window": {"gte": 2}} ],
-             "function_name": "compute_volume_oscillator"
+             "function_name": "compute_volume_oscillator",
+             "range_steps_default": 5
          },
          "vwap": {
               "type": "custom",
