@@ -34,6 +34,7 @@ import leaderboard_manager # Import leaderboard manager
 logger = logging.getLogger(__name__)
 
 # --- Caches ---
+# These caches are now intended to be cleared *before* each indicator optimization run in main.py
 indicator_series_cache: Dict[str, pd.DataFrame] = {} # param_hash -> indicator_output_df
 single_correlation_cache: Dict[Tuple[str, int], Optional[float]] = {} # (param_hash, lag) -> correlation_value
 
@@ -109,7 +110,7 @@ def _objective_function(params_list: List[Any], *, # Use keyword-only args after
                          # ----> NEW PARAMETERS FOR LEADERBOARD <----
                          symbol: str, timeframe: str, data_daterange: str, source_db_name: str
                          ) -> float:
-    """Objective function for Bayesian opt, using FAST single-lag evaluation and caches."""
+    """Objective function for Bayesian opt, using FAST single-lag evaluation, caches, and REAL-TIME leaderboard update."""
     # Convert/Clean params
     params_dict = dict(zip(param_names, params_list))
     for k, v in params_dict.items():
@@ -167,13 +168,14 @@ def _objective_function(params_list: List[Any], *, # Use keyword-only args after
     progress_state['last_report_time'] = current_time
 
     # --- Check & Update Leaderboard IMMEDIATELY ---
+    # This is the key change for real-time updates during Tweak path
     if config_id is not None and pd.notna(correlation_value):
         try:
             updated = leaderboard_manager.check_and_update_single_lag(
                 lag=target_lag,
                 correlation_value=float(correlation_value),
                 indicator_name=indicator_name,
-                params=params_to_store,
+                params=params_to_store, # Pass the actual parameters used
                 config_id=config_id,
                 symbol=symbol,
                 timeframe=timeframe,
@@ -181,7 +183,18 @@ def _objective_function(params_list: List[Any], *, # Use keyword-only args after
                 source_db_name=source_db_name
             )
             # Optional: Trigger text file export less frequently if needed
-            # if updated: maybe_export_leaderboard_text(...)
+            # Add a counter or timer check here if export needs throttling
+            # Example: Export every 50 updates or every 10 seconds
+            # For simplicity now, export only if updated (could be frequent)
+            if updated:
+                try:
+                    if leaderboard_manager.export_leaderboard_to_text():
+                        logger.debug(f"Leaderboard text exported after update (Lag {target_lag}, ID {config_id}).")
+                    else:
+                        logger.error("Failed to export leaderboard text after update.")
+                except Exception as ex_err:
+                    logger.error(f"Error exporting leaderboard text: {ex_err}", exc_info=True)
+
         except Exception as lb_err:
             logger.error(f"Error during immediate leaderboard update check (Lag {target_lag}, ID {config_id}): {lb_err}", exc_info=True)
 
@@ -228,13 +241,18 @@ def optimize_parameters_bayesian_per_lag(
     logger.info(f"Shifted closes pre-calc complete: {time.time() - start_shift:.2f}s.")
 
     # --- Clear Caches ---
-    # Clear only for this specific indicator's optimization run?
-    # Let's clear globally before each indicator in main.py instead.
-    # indicator_series_cache.clear(); single_correlation_cache.clear()
+    # Clearing is now done in main.py *before* calling this function for an indicator
     # logger.info(f"Caches cleared before optimizing {indicator_name}.")
 
-    # --- Evaluate Default Config ---
-    default_config_id = _process_default_config_fast_eval(indicator_name, indicator_def, fixed_params, param_names, db_path, master_evaluated_configs, base_data_with_required, max_lag, shifted_closes_global_cache)
+    # --- Evaluate Default Config (Fast Eval) ---
+    # This pre-populates caches and ensures default is considered
+    default_config_id = _process_default_config_fast_eval(
+        indicator_name, indicator_def, fixed_params, param_names, db_path,
+        master_evaluated_configs, base_data_with_required, max_lag,
+        shifted_closes_global_cache,
+        # --> Pass Context <--
+        symbol, timeframe, data_daterange, source_db_name
+    )
     default_params_full = None
     if default_config_id is not None: # Find params for default ID
         for cfg_data in master_evaluated_configs.values():
@@ -259,9 +277,16 @@ def optimize_parameters_bayesian_per_lag(
                   warnings.simplefilter("ignore", category=RuntimeWarning)
                   x0, y0 = _prepare_initial_point_fast_eval(default_config_id, default_params_full, param_names, target_lag)
                   if x0: logger.debug(f"Lag {target_lag}: Using default as x0={x0}, y0=[{y0[0]:.4f}]")
+                  else: logger.debug(f"Lag {target_lag}: No valid initial point (x0) from default.")
+
+                  # Ensure n_initial_points is not larger than n_calls
+                  current_n_initial = min(n_initial_points_per_lag, n_calls_per_lag)
+                  if x0 is not None and current_n_initial > 0:
+                      current_n_initial = max(0, current_n_initial - 1) # Reduce random points if x0 is used
+
                   result = gp_minimize(func=objective_partial, dimensions=search_space,
                                        acq_func=app_config.DEFAULTS["optimizer_acq_func"],
-                                       n_calls=n_calls_per_lag, n_initial_points=n_initial_points_per_lag,
+                                       n_calls=n_calls_per_lag, n_initial_points=current_n_initial, # Use adjusted initial points
                                        x0=x0, y0=y0, random_state=None, noise='gaussian') # Consider noise='gaussian'
 
              best_params_list = result.x; best_objective_value = result.fun
@@ -287,7 +312,7 @@ def optimize_parameters_bayesian_per_lag(
                      default_hash = _get_config_hash(default_params_full)
                      default_corr = single_correlation_cache.get((default_hash, target_lag))
                      if default_corr is not None and pd.notna(default_corr):
-                         logger.info(f"Lag {target_lag}: Falling back to default config for {indicator_name}.")
+                         logger.info(f"Lag {target_lag}: Falling back to default config ID {default_config_id} for {indicator_name}.")
                          best_config_per_lag[target_lag] = {'params': default_params_full, 'config_id': default_config_id, 'correlation_at_lag': default_corr, 'score_at_lag': abs(default_corr)}
                      else: logger.warning(f"Lag {target_lag}: Default ({default_config_id}) for {indicator_name} had NaN/None corr. No solution."); best_config_per_lag[target_lag] = None
                  else: logger.warning(f"Lag {target_lag}: No default config available/evaluated for {indicator_name}. No solution."); best_config_per_lag[target_lag] = None
@@ -297,11 +322,7 @@ def optimize_parameters_bayesian_per_lag(
     _log_final_progress(indicator_name, progress_state)
 
     # --- POST-OPTIMIZATION Calculation REMOVED ---
-    # logger.info(f"--- Post-Opt: Calculating full corr vectors for {len(master_evaluated_configs)} unique configs ({indicator_name}) ---")
-    # ... (removed loop and call to _calculate_all_correlations_for_config_post_opt) ...
-
-    # --- Final Batch Insert REMOVED ---
-    # _perform_final_batch_insert(indicator_name, final_correlations_to_batch_insert, db_path)
+    # The final calculation of all correlations for all evaluated configs will happen in main.py
 
     # Format and return evaluated configurations
     final_all_evaluated_configs = _format_final_evaluated_configs(indicator_name, master_evaluated_configs)
@@ -341,8 +362,13 @@ def _define_search_space(param_defs: Dict) -> Tuple[List, List[str], Dict, bool]
         elif issubclass(p_type, float): search_space.append(Real(low=float(low), high=float(high), prior='uniform', name=name)); param_names.append(name); has_tunable = True; logger.debug(f"Space '{name}': Real({float(low):.4f},{float(high):.4f}) ({b_src})")
     return search_space, param_names, fixed_params, has_tunable
 
-def _process_default_config_fast_eval(indicator_name, indicator_def, fixed_params, param_names, db_path, master_evaluated_configs, base_data, max_lag, shifted_closes_cache) -> Optional[int]:
-    """Evaluates default config using FAST eval, populates caches."""
+def _process_default_config_fast_eval(
+    indicator_name, indicator_def, fixed_params, param_names, db_path,
+    master_evaluated_configs, base_data, max_lag, shifted_closes_cache,
+    # --> Context <--
+    symbol: str, timeframe: str, data_daterange: str, source_db_name: str
+) -> Optional[int]:
+    """Evaluates default config using FAST eval, populates caches, AND checks leaderboard."""
     param_defs = indicator_def.get('parameters', {})
     defaults_opt = {p: param_defs[p]['default'] for p in param_names if 'default' in param_defs.get(p, {})}
     defaults_full = {**fixed_params, **defaults_opt}; default_id = None
@@ -355,23 +381,46 @@ def _process_default_config_fast_eval(indicator_name, indicator_def, fixed_param
                     master_evaluated_configs[default_hash] = {'params': defaults_full, 'config_id': default_id}
                     logger.info(f"Default added to master (ID: {default_id}): {defaults_full}")
                 else: default_id = master_evaluated_configs[default_hash]['config_id']
-                if default_id is not None: # Pre-calc single corrs for default
-                    logger.debug("Pre-calc single corrs for default...")
+                if default_id is not None: # Pre-calc single corrs for default AND check leaderboard
+                    logger.debug("Pre-calc single corrs for default and check leaderboard...")
+                    any_updated = False
                     for lag in range(1, max_lag + 1):
-                         cache_key = (default_hash, lag)
-                         if cache_key not in single_correlation_cache:
+                         cache_key = (default_hash, lag); corr = None
+                         if cache_key in single_correlation_cache:
+                             corr = single_correlation_cache[cache_key]
+                         else:
                              shifted_close = shifted_closes_cache.get(lag)
                              if shifted_close is not None:
-                                 corr = _calculate_correlation_at_target_lag(defaults_full, default_id, indicator_name, lag, base_data, shifted_close);
+                                 corr = _calculate_correlation_at_target_lag(defaults_full, default_id, indicator_name, lag, base_data, shifted_close)
                                  single_correlation_cache[cache_key] = corr
                              else:
-                                 single_correlation_cache[cache_key] = None # Ensure cache entry exists even if shift failed
-                    logger.debug("Finished pre-calc single corrs for default.")
+                                 single_correlation_cache[cache_key] = None # Ensure cache entry exists
+
+                         # Check leaderboard for this default correlation
+                         if corr is not None and pd.notna(corr):
+                             try:
+                                 updated = leaderboard_manager.check_and_update_single_lag(
+                                     lag=lag, correlation_value=float(corr), indicator_name=indicator_name,
+                                     params=defaults_full, config_id=default_id, symbol=symbol,
+                                     timeframe=timeframe, data_daterange=data_daterange, source_db_name=source_db_name
+                                 )
+                                 if updated: any_updated = True
+                             except Exception as lb_err:
+                                 logger.error(f"Error checking leaderboard for default (Lag {lag}, ID {default_id}): {lb_err}", exc_info=True)
+                    # Export leaderboard text if default caused any update
+                    if any_updated:
+                        try:
+                            if leaderboard_manager.export_leaderboard_to_text(): logger.debug("Leaderboard exported after default eval.")
+                            else: logger.error("Failed export leaderboard after default eval.")
+                        except Exception as ex_err: logger.error(f"Error exporting leaderboard: {ex_err}", exc_info=True)
+
+                    logger.debug("Finished pre-calc/leaderboard check for default.")
             except Exception as e: logger.error(f"Failed process default for {indicator_name}: {e}", exc_info=True); default_id = None
             finally: conn.close()
         else: logger.error("Cannot connect DB for default config.")
     else: logger.warning(f"Default params missing/invalid for {indicator_name}.")
     return default_id
+
 
 def _prepare_initial_point_fast_eval(default_config_id, default_params_full, param_names, target_lag):
     """Prepares x0, y0 using the single_correlation_cache."""
@@ -384,8 +433,14 @@ def _prepare_initial_point_fast_eval(default_config_id, default_params_full, par
             if corr is not None and pd.notna(corr):
                  obj = -abs(corr)
                  if all(p in default_params_full for p in param_names):
-                     x0 = [[default_params_full[p] for p in param_names]] # Needs to be list of lists
-                     y0 = [obj] # Needs to be a list
+                     # Ensure correct order and handle potential missing tunable params (shouldn't happen if default_params_full is correct)
+                     try:
+                         x0_vals = [default_params_full[p] for p in param_names]
+                         x0 = [x0_vals] # Needs to be list of lists
+                         y0 = [obj] # Needs to be a list
+                     except KeyError as ke:
+                         logger.error(f"KeyError preparing x0 for default lag {target_lag}: {ke}. Params: {default_params_full}, Names: {param_names}")
+                         x0, y0 = None, None # Fail safe
                  else: logger.warning(f"Lag {target_lag}: Default missing tunable params for x0.")
             else: logger.debug(f"Lag {target_lag}: Default corr NaN/None in single cache. No x0.")
         else: logger.debug(f"Lag {target_lag}: Default corr not found in single cache. No x0.")

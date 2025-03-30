@@ -29,8 +29,7 @@ import visualization_generator
 import custom_indicators
 import leaderboard_manager
 import predictor
-# Import backtester, but its call will be disabled
-import backtester
+# Backtester functionality removed
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +41,7 @@ def cleanup_previous_content():
     locations_to_clean = [
         (config.DB_DIR, "*.db"),
         (config.LOG_DIR, "*.log"), # Keep log dir, remove old .log files
-        # Note: Current log 'logfile.txt' in LOG_DIR might be removed if pattern matches
+        # Note: Current log 'logfile.txt' in LOG_DIR will be skipped explicitly below
         config.REPORTS_DIR, # Remove entire reports dir and its contents
     ]
     leaderboard_db_path_abs = config.LEADERBOARD_DB_PATH.resolve()
@@ -107,13 +106,16 @@ def run_analysis():
         cleanup_choice = input("Delete previous analysis content (DBs, reports - EXCLUDING Leaderboard)? [Y/n]: ").strip().lower() or 'y'
         if cleanup_choice == 'y':
             print("Proceeding with cleanup (excluding leaderboard)...")
+            # Close logging handlers before deleting log file
             handlers = logging.getLogger().handlers[:]
             for handler in handlers: handler.close(); logging.getLogger().removeHandler(handler)
-            logging.shutdown()
-            cleanup_previous_content()
-            logging_setup.setup_logging() # Re-init logging
+            logging.shutdown() # Ensure all logging activity ceases
+
+            cleanup_previous_content() # Perform cleanup
+
+            logging_setup.setup_logging() # Re-initialize logging AFTER cleanup
             logger.info(f"Re-initialized logging after cleanup. Continuing run: {timestamp_str}")
-            # Re-check leaderboard DB
+            # Re-check leaderboard DB initialization after cleanup (it shouldn't be deleted, but good practice)
             if not leaderboard_manager.initialize_leaderboard_db():
                  logger.error("Failed re-init leaderboard DB after cleanup.")
             else: logger.info("Leaderboard database ok after cleanup.")
@@ -124,7 +126,7 @@ def run_analysis():
     # --- Mode Selection: Analysis vs Custom ---
     while True:
         print("\n--- Mode Selection ---")
-        print("[A]nalysis: Run full analysis (Download/Indicators/Correlations/Reports).")
+        print("[A]nalysis: Run full analysis (Download/Indicators/Correlations/Reports/Predict).")
         print("[C]ustom:   Generate reports/predictions from existing database.")
         mode_choice = input("Select mode [A/c]: ").strip().lower() or 'a'
 
@@ -226,7 +228,7 @@ def run_analysis():
             while True:
                 print("\n--- Custom Mode Actions ---")
                 print(f"Using Data: {symbol_custom} ({timeframe_custom}) | Max Lag: {max_lag_custom} | Configs: {len(indicator_configs_processed_custom)}")
-                print("[P]redict price using leaderboard")
+                print("[P]redict price path using leaderboard")
                 print("[V]isualize correlations (Heatmap, Combined, Lines, etc.)")
                 print("[B]oth Predict and Visualize")
                 print("[Q]uit Custom Mode")
@@ -246,15 +248,13 @@ def run_analysis():
                 # --- Execute Prediction (if chosen) ---
                 if run_predict:
                     print("\n--- Custom Prediction ---")
-                    target_pred = input("Enter forecast target (+N periods or YYYY-MM-DD date): ").strip()
-                    if target_pred:
-                        try:
-                            predictor.predict_price(db_path_custom, symbol_custom, timeframe_custom, target_pred)
-                        except Exception as pred_err:
-                            logger.error(f"Custom Mode prediction error: {pred_err}", exc_info=True)
-                            print("\nPrediction encountered an error. Check logs.")
-                    else:
-                        print("No target entered. Skipping prediction.")
+                    # Automatically use the max_lag determined from the custom DB
+                    print(f"Predicting path up to determined max lag: {max_lag_custom}")
+                    try:
+                        predictor.predict_price(db_path_custom, symbol_custom, timeframe_custom, max_lag_custom)
+                    except Exception as pred_err:
+                        logger.error(f"Custom Mode prediction error: {pred_err}", exc_info=True)
+                        print("\nPrediction encountered an error. Check logs.")
 
                 # --- Execute Visualization (if chosen) ---
                 if run_visualize:
@@ -270,7 +270,7 @@ def run_analysis():
                         if not indicator_configs_processed_custom:
                              logger.warning("No configs for viz."); vis_total = 0
                         else:
-                            # Note: is_tweak_path is False here as we didn't run optimizer
+                            # Note: is_tweak_path is False here as we didn't run optimizer in custom mode
                             is_tweak_path_custom = False
                             # Limit visualizations based on fetched data
                             configs_for_viz_custom = indicator_configs_processed_custom
@@ -286,8 +286,10 @@ def run_analysis():
                                     cfg_id = cfg.get('config_id')
                                     if cfg_id is None: continue
                                     corrs = corrs_for_viz_custom.get(cfg_id, [])
+                                    # Check length against the potentially adjusted max_lag_custom
                                     if corrs and len(corrs) >= max_lag_custom:
                                         try:
+                                            # Slice to max_lag_custom
                                             corr_arr = np.array(corrs[:max_lag_custom], dtype=float)
                                             if not np.isnan(corr_arr).all(): peak_abs = np.nanmax(np.abs(corr_arr)); perf_data_custom.append({'config_id': cfg_id, 'peak_abs': peak_abs})
                                         except Exception as peak_err: logger.warning(f"Error calc peak abs for {cfg_id} in custom viz: {peak_err}")
@@ -341,20 +343,8 @@ def run_analysis():
         if data_source_info is None: logger.info("Exiting: No data source selected."); sys.exit(0)
         db_path, symbol, timeframe = data_source_info
         logger.info(f"Using data source: {db_path.name} ({symbol}, {timeframe})")
+        # Removed initial prediction prompt
 
-        # --- Optional Prediction Start (Only for Analysis Mode Start) ---
-        if input("\nRun prediction based on existing leaderboard? [y/N]: ").strip().lower() == 'y':
-            target = input("Enter forecast target (+N periods or YYYY-MM-DD date): ").strip()
-            if target:
-                try:
-                    predictor.predict_price(db_path, symbol, timeframe, target)
-                    input("Press Enter to continue with the main analysis...") # Wait for user
-                except Exception as pred_err:
-                     logger.error(f"Start prediction error: {pred_err}", exc_info=True)
-                     print("\nPrediction encountered an error. Check logs. Continuing...")
-                     input("Press Enter to continue...") # Still wait even on error
-            else:
-                print("No target entered. Skipping prediction.")
     # Need to handle case where mode was not 'a' (should not happen with current logic, but safety)
     if db_path is None or symbol is None or timeframe is None:
         logger.critical("Data source not defined. Exiting.")
@@ -369,22 +359,23 @@ def run_analysis():
     except Exception as e: logger.critical(f"Failed load indicator definitions: {e}", exc_info=True); sys.exit(1)
 
     # --- Load Data & Date Range ---
-    logger.info("--- DEBUG: Preparing to load initial data for date range calculation ---") # DEBUG LINE
+    logger.info("--- Loading initial data for date range calculation ---")
     data = data_manager.load_data(db_path)
     if data is None or data.empty:
         logger.error(f"Failed load data from {db_path} during initial date range calc. Exiting."); sys.exit(1)
 
-    logger.info(f"--- DEBUG: Initial data loaded for date range calc. Shape: {data.shape}. ---") # DEBUG LINE
+    logger.info(f"--- Initial data loaded for date range calc. Shape: {data.shape}. ---")
     if 'date' in data.columns:
-        logger.info(f"--- DEBUG: 'date' column preview (first 5, last 5):\n{data['date'].head()}\n...\n{data['date'].tail()} ---") # DEBUG LINE
+        logger.debug(f"--- DEBUG: 'date' column preview (first 5, last 5):\n{data['date'].head()}\n...\n{data['date'].tail()} ---")
     else:
-        logger.error("--- DEBUG: 'date' column MISSING after initial load_data! ---")
+        logger.error("CRITICAL: 'date' column MISSING after initial load_data! Cannot proceed.")
+        sys.exit(1)
 
     data_daterange_str = "Unknown"
     if not data.empty and 'date' in data.columns:
         try:
             min_date_dt = data['date'].min(); max_date_dt = data['date'].max()
-            logger.info(f"--- DEBUG: Raw min_date={min_date_dt}, Raw max_date={max_date_dt} ---") # DEBUG LINE
+            logger.info(f"--- Data Date Range (Raw): {min_date_dt} to {max_date_dt} ---")
             if pd.isna(min_date_dt) or pd.isna(max_date_dt):
                 logger.error("NaN found in min/max date during initial calc.")
                 data_daterange_str = "Invalid Dates"
@@ -393,12 +384,12 @@ def run_analysis():
                 if min_date_dt.tzinfo is None: min_date_dt = min_date_dt.tz_localize('UTC')
                 if max_date_dt.tzinfo is None: max_date_dt = max_date_dt.tz_localize('UTC')
                 data_daterange_str = f"{min_date_dt.strftime('%Y%m%d')}-{max_date_dt.strftime('%Y%m%d')}"
-                logger.info(f"--- DEBUG: Calculated data_daterange_str = {data_daterange_str} ---") # DEBUG LINE
+                logger.info(f"--- Calculated data_daterange_str = {data_daterange_str} ---")
                 # ---> ADD SANITY CHECK <---
-                if min_date_dt < datetime(2015, 1, 1, tzinfo=timezone.utc):
-                     logger.error(f"--- DEBUG: Calculated min_date {min_date_dt} is unreasonably old! Check data source integrity. ---")
-                     # Decide how to handle this - exit or try to continue? Exit might be safer.
-                     # sys.exit("Exiting due to suspected invalid date range in source data.")
+                # Use earliest valid date from data_manager
+                if min_date_dt < data_manager.EARLIEST_VALID_DATE:
+                     logger.error(f"--- Calculated min_date {min_date_dt} is before {data_manager.EARLIEST_VALID_DATE}! Check data source integrity. ---")
+                     sys.exit(f"Exiting due to suspected invalid date range in source data (Min: {min_date_dt}).")
                 # ---> END SANITY CHECK <---
         except Exception as e:
             logger.error(f"Error determining date range: {e}", exc_info=True)
@@ -412,8 +403,7 @@ def run_analysis():
         logger.critical(f"Could not determine a valid data date range ({data_daterange_str}). Exiting analysis.")
         sys.exit(1)
     # ---> END CRITICAL CHECK <---
-
-    logger.info(f"Final data_daterange_str to be used: {data_daterange_str}") # Log the final value passed on
+    logger.info(f"Final data_daterange_str to be used: {data_daterange_str}")
 
 
     # --- Determine Max Lag ---
@@ -484,7 +474,7 @@ def run_analysis():
     # --- Analysis State ---
     conn = None; indicator_configs_to_process: List[Dict] = []; is_tweak_path = False
     selected_indicator_for_tweak = None; analysis_path_successful = False
-    best_config_per_lag_result = {}; all_indicators_optimized_results = {}; all_evaluated_configs_aggregated = [] # Renamed from master_evaluated_configs_list
+    best_config_per_lag_result = {}; all_indicators_optimized_results = {}; all_evaluated_configs_aggregated = []
 
     try:
         # --- Get DB IDs ---
@@ -500,7 +490,7 @@ def run_analysis():
             choice = input("Select path [D/t]: ").strip().lower() or 'd'
 
             if choice == 'd':
-                # --- Default Path Logic (remains the same) ---
+                # --- Default Path Logic ---
                 logger.info("Processing Default Path...")
                 is_tweak_path = False; temp_config_list = []
                 conn = sqlite_manager.create_connection(str(db_path)); assert conn is not None
@@ -528,7 +518,7 @@ def run_analysis():
 
 
             elif choice == 't':
-                # --- Tweak Path Logic (Modified) ---
+                # --- Tweak Path Logic ---
                 if not parameter_optimizer.SKOPT_AVAILABLE:
                      logger.error("skopt required for Tweak path."); print("\nError: scikit-optimize not installed."); continue
                 is_tweak_path = True
@@ -573,19 +563,22 @@ def run_analysis():
                 print(f"\nStarting Bayesian Opt for {len(indicators_to_optimize)} indicator(s)...")
                 opt_n_calls = config.DEFAULTS["optimizer_n_calls"]; opt_n_initial = config.DEFAULTS["optimizer_n_initial_points"]
 
-                # Clear caches *before* starting the loop for this set of optimizations
-                parameter_optimizer.indicator_series_cache.clear()
-                parameter_optimizer.single_correlation_cache.clear()
-                logger.info("Cleared optimizer caches before Tweak path loop.")
-
                 for i, ind_name_opt in enumerate(indicators_to_optimize):
                     print(f"\n[{i+1}/{len(indicators_to_optimize)}] Optimizing: {ind_name_opt}...")
                     logger.info(f"--- Starting Bayesian Opt for: {ind_name_opt} ({i+1}/{len(indicators_to_optimize)}) ---")
                     definition = indicator_definitions.get(ind_name_opt)
                     if not definition: logger.error(f"Definition missing for {ind_name_opt}. Skipping."); any_opt_failed = True; continue
-                    required_cols = definition.get('required_inputs', []) + ['close']
-                    if not all(col in data.columns for col in required_cols): logger.error(f"Data missing cols for {ind_name_opt}: {required_cols}. Skipping."); any_opt_failed = True; continue
+                    required_cols = definition.get('required_inputs', []) + ['close'] # Ensure close is always included
+                    if not all(col in data.columns for col in required_cols):
+                        missing_c = [c for c in required_cols if c not in data.columns]
+                        logger.error(f"Data missing cols {missing_c} for {ind_name_opt}. Skipping."); any_opt_failed = True; continue
                     print(f"(Evals={opt_n_calls}/lag, Init={opt_n_initial}, MaxLag={max_lag}, Acq={config.DEFAULTS['optimizer_acq_func']})")
+
+                    # Clear caches *before* optimizing each indicator
+                    parameter_optimizer.indicator_series_cache.clear()
+                    parameter_optimizer.single_correlation_cache.clear()
+                    logger.info(f"Cleared optimizer caches before optimizing {ind_name_opt}.")
+
                     try:
                         # Function now returns evaluated configs list directly
                         best_result_for_log, evaluated_configs_for_indicator = parameter_optimizer.optimize_parameters_bayesian_per_lag(
@@ -608,11 +601,7 @@ def run_analysis():
                         all_indicators_optimized_results[ind_name_opt] = best_result_for_log
                         if len(indicators_to_optimize) == 1: best_config_per_lag_result = best_result_for_log
 
-                        # Export leaderboard frequently during optimization
-                        try:
-                             if leaderboard_manager.export_leaderboard_to_text(): logger.info(f"Leaderboard exported after {ind_name_opt}.")
-                             else: logger.error(f"Failed export leaderboard after {ind_name_opt}.")
-                        except Exception as lb_ex: logger.error(f"Error exporting leaderboard: {lb_ex}", exc_info=True)
+                        # Leaderboard text is exported automatically on update within optimizer now
 
                     except Exception as opt_err:
                         logger.error(f"Optimization loop failed for '{ind_name_opt}': {opt_err}", exc_info=True);
@@ -625,12 +614,14 @@ def run_analysis():
                     print("\nOpt process completed, no results generated.");
                     continue # Go back to D/T selection
 
-                # Deduplicate the master list
+                # Deduplicate the master list based on config_id
                 seen_final_ids = set(); unique_final_configs = []
                 for cfg in all_evaluated_configs_aggregated:
                     cfg_id = cfg.get('config_id')
                     if cfg_id is not None and cfg_id not in seen_final_ids:
                         unique_final_configs.append(cfg); seen_final_ids.add(cfg_id)
+                    elif cfg_id is None:
+                        logger.warning(f"Found evaluated config with missing ID: {cfg}")
 
                 indicator_configs_to_process = unique_final_configs # Use the combined, unique list
                 logger.info(f"Tweak path complete. Using {len(indicator_configs_to_process)} unique configs from optimization for final processing.")
@@ -638,7 +629,7 @@ def run_analysis():
 
             else: print("Invalid choice."); logger.warning(f"Invalid path choice: '{choice}'")
 
-    except Exception as prep_err: logger.critical(f"Error during path prep: {prep_err}", exc_info=True); sys.exit(1)
+    except Exception as prep_err: logger.critical(f"Error during analysis path prep: {prep_err}", exc_info=True); sys.exit(1)
     finally:
         if conn: conn.close() # Ensure connection closed if error occurred
 
@@ -646,7 +637,6 @@ def run_analysis():
     logger.info(f"Analysis path prep complete. Processing {len(indicator_configs_to_process)} final configurations.")
 
     # --- Log Path Summary ---
-    # (Logging summary logic remains the same)
     if is_tweak_path:
         if len(all_indicators_optimized_results) > 1: # Sequential run
              logger.info(f"Tweak path (Bayesian Sequential) used across {len(all_indicators_optimized_results)} indicator(s).")
@@ -670,11 +660,12 @@ def run_analysis():
     data_with_indicators = indicator_factory.compute_configured_indicators(data, indicator_configs_to_process)
 
     # Handle custom indicators separately if needed (assuming they are only run with defaults)
+    # If custom indicators were optimized, their results are already in indicator_configs_to_process
+    # If only default path, they are also included. This ensures defaults are added if missed.
     custom_configs_present = any(indicator_definitions.get(cfg.get('indicator_name', ''), {}).get('type') == 'custom' for cfg in indicator_configs_to_process)
     if custom_configs_present:
-         # Find which custom indicators were potentially included in configs_to_process
-         custom_names_in_list = {cfg['indicator_name'] for cfg in indicator_configs_to_process if indicator_definitions.get(cfg.get('indicator_name', ''), {}).get('type') == 'custom'}
-         logger.warning(f"Re-applying default custom indicators ({custom_names_in_list}) for consistency.")
+         # Re-applying defaults is potentially redundant if they were already in the list, but safe.
+         logger.info("Ensuring default custom indicators are applied for consistency if present...")
          data_with_indicators = custom_indicators.apply_all_custom_indicators(data_with_indicators)
          # Add default custom configs to the list if they weren't optimized/added
          all_custom_defaults = []
@@ -694,10 +685,10 @@ def run_analysis():
              finally:
                  conn_temp.close()
          # Add missing custom defaults to the list to ensure correlations are calculated
-         existing_cfg_ids = {cfg['config_id'] for cfg in indicator_configs_to_process}
+         existing_cfg_ids = {cfg['config_id'] for cfg in indicator_configs_to_process if cfg.get('config_id') is not None}
          added_custom_defaults = 0
          for cfg in all_custom_defaults:
-             if cfg['config_id'] not in existing_cfg_ids:
+             if cfg.get('config_id') not in existing_cfg_ids:
                  indicator_configs_to_process.append(cfg)
                  existing_cfg_ids.add(cfg['config_id'])
                  added_custom_defaults += 1
@@ -706,7 +697,8 @@ def run_analysis():
 
 
     logger.info("Dropping NaNs for correlation calculation...")
-    data_final = data_with_indicators.dropna(how='any') # Critical step where rows are dropped
+    # Drop rows where *any* column is NaN, to ensure consistent data length for parallel calc
+    data_final = data_with_indicators.dropna(how='any')
     logger.info(f"Shape for Correlation (NaNs dropped): {data_final.shape}")
 
     min_required_corr = max_lag + config.DEFAULTS["min_data_points_for_lag"]
@@ -737,6 +729,8 @@ def run_analysis():
     if not final_configs_for_corr: logger.error("No valid configs remaining for correlation after NaN drop. Exiting."); sys.exit(1)
     if skipped_configs_count > 0: logger.warning(f"Skipped {skipped_configs_count} configs due to missing columns post-NaN drop.")
 
+    # --- Final PARALLEL Correlation Calculation ---
+    # This runs for ALL unique configurations (Default or Tweak)
     logger.info(f"Proceeding with PARALLEL correlation calculation for {len(final_configs_for_corr)} configs...")
     corr_success = correlation_calculator.process_correlations(
         data_final, str(db_path), symbol_id, timeframe_id, final_configs_for_corr, max_lag
@@ -748,34 +742,37 @@ def run_analysis():
 
 
     # --- Fetch Final Correlations for Reporting ---
-    # (Fetch logic remains the same, uses indicator_configs_to_process which now contains all evaluated/default configs)
+    # Fetches results for all configurations processed
     conn = sqlite_manager.create_connection(str(db_path)); report_data_ok = False
     correlations_by_config_id: Dict[int, List[Optional[float]]] = {}
     if not conn: logger.error("Failed connect DB for fetching final correlations."); sys.exit(1)
     try:
-        config_ids_to_fetch = [cfg['config_id'] for cfg in indicator_configs_to_process if 'config_id' in cfg] # Fetch for all processed
+        config_ids_to_fetch = [cfg['config_id'] for cfg in final_configs_for_corr if 'config_id' in cfg] # Use the final list
         if not config_ids_to_fetch: raise ValueError("No config IDs to fetch correlations.")
         logger.info(f"Fetching final correlations for {len(config_ids_to_fetch)} IDs (up to lag {max_lag})...")
         correlations_by_config_id = sqlite_manager.fetch_correlations(conn, symbol_id, timeframe_id, config_ids_to_fetch)
         if not correlations_by_config_id: logger.error("No correlation data structure returned.")
         else:
-             # Adjust max_lag based on fetched data (logic remains same)
+             # Adjust max_lag based on fetched data
              actual_max_lag_in_data = 0; configs_with_data = 0
              for cfg_id, data_list in correlations_by_config_id.items():
                   if data_list and isinstance(data_list, list):
                       configs_with_data += 1; valid_indices = [i for i, v in enumerate(data_list) if pd.notna(v)]
                       if valid_indices: actual_max_lag_in_data = max(actual_max_lag_in_data, max(valid_indices) + 1)
              logger.info(f"Found correlation data for {configs_with_data} configs. Max lag found: {actual_max_lag_in_data}")
+             # Use the user-defined max_lag or the actual max found, whichever is smaller
              reporting_max_lag = min(max_lag, actual_max_lag_in_data) if actual_max_lag_in_data > 0 else 0
-             if reporting_max_lag < max_lag: logger.warning(f"Reporting max lag adjusted from {max_lag} to {reporting_max_lag}.")
-             if reporting_max_lag <= 0: logger.error("No valid correlation data for lag 1+. Reporting cannot proceed.")
+             if reporting_max_lag <= 0: logger.error("No valid correlation data found for lag 1+. Reporting cannot proceed.")
+             elif reporting_max_lag < max_lag:
+                 logger.warning(f"Reporting max lag adjusted from {max_lag} to {reporting_max_lag} based on available data.")
+                 max_lag = reporting_max_lag # Update main max_lag for subsequent steps
              else:
-                 max_lag = reporting_max_lag # Update main max_lag
                  logger.info(f"Using effective max_lag = {max_lag} for reporting.")
-                 configs_valid_at_lag = sum(1 for cfg_id, dlist in correlations_by_config_id.items() if dlist and len(dlist) >= max_lag and any(pd.notna(x) for x in dlist[:max_lag]))
-                 if configs_valid_at_lag > 0: logger.info(f"{configs_valid_at_lag} configs have data up to lag {max_lag}."); report_data_ok = True
-                 else: logger.error(f"No configs have data up to adjusted lag {max_lag}.")
-                 if 0 < configs_valid_at_lag < len(correlations_by_config_id): logger.warning(f"Retrieved valid data for only {configs_valid_at_lag}/{len(correlations_by_config_id)} requested configs.")
+             # Check if we have data up to the final max_lag
+             configs_valid_at_lag = sum(1 for cfg_id, dlist in correlations_by_config_id.items() if dlist and len(dlist) >= max_lag and any(pd.notna(x) for x in dlist[:max_lag]))
+             if configs_valid_at_lag > 0: logger.info(f"{configs_valid_at_lag} configs have data up to lag {max_lag}."); report_data_ok = True
+             else: logger.error(f"No configs have data up to adjusted lag {max_lag}.")
+             if 0 < configs_valid_at_lag < len(correlations_by_config_id): logger.warning(f"Retrieved valid data for only {configs_valid_at_lag}/{len(correlations_by_config_id)} requested configs.")
     except Exception as fetch_err: logger.error(f"Error fetching final correlations: {fetch_err}", exc_info=True)
     finally:
         if conn: conn.close()
@@ -783,16 +780,14 @@ def run_analysis():
     if not report_data_ok: logger.error("Cannot generate reports - no valid correlation data."); sys.exit(1)
 
 
-    # --- Update Leaderboard ---
-    # Leaderboard is updated incrementally during Tweak path's objective function.
-    # Default path correlation inserts/replaces, so leaderboard update is less critical here,
-    # but running it ensures consistency if correlations changed significantly.
-    # Let's keep the explicit update call for now, as it compares against the *existing* leaderboard state.
-    logger.info("Attempting final leaderboard comparison and potential update...")
+    # --- Leaderboard Update Call (Batch Mode) ---
+    # This acts as a final consistency check, especially for the Default path.
+    # For the Tweak path, most updates should have happened in real-time.
+    logger.info("Running final leaderboard comparison and potential update (Batch Mode)...")
     try:
         leaderboard_manager.update_leaderboard(
-            correlations_by_config_id, indicator_configs_to_process, max_lag,
-            symbol, timeframe, data_daterange_str, db_path.name )
+            correlations_by_config_id, final_configs_for_corr, # Use final list
+            max_lag, symbol, timeframe, data_daterange_str, db_path.name )
     except Exception as lb_err: logger.error(f"Failed final leaderboard update/comparison: {lb_err}", exc_info=True)
 
 
@@ -807,11 +802,11 @@ def run_analysis():
          file_prefix += suffix
     else: file_prefix += "_DEFAULT"
 
-    try: logger.info("Generating peak correlation report..."); visualization_generator.generate_peak_correlation_report(correlations_by_config_id, indicator_configs_to_process, max_lag, config.REPORTS_DIR, file_prefix)
+    try: logger.info("Generating peak correlation report..."); visualization_generator.generate_peak_correlation_report(correlations_by_config_id, final_configs_for_corr, max_lag, config.REPORTS_DIR, file_prefix)
     except Exception as report_err: logger.error(f"Error generating peak report: {report_err}", exc_info=True)
 
     # Limit visualizations if needed
-    configs_for_viz = indicator_configs_to_process; corrs_for_viz = correlations_by_config_id
+    configs_for_viz = final_configs_for_corr; corrs_for_viz = correlations_by_config_id
     configs_limited = configs_for_viz; corrs_limited = corrs_for_viz
     limit = config.DEFAULTS["heatmap_max_configs"]
     if len(configs_for_viz) > limit:
@@ -823,6 +818,7 @@ def run_analysis():
             corrs = corrs_for_viz.get(cfg_id, [])
             if corrs and len(corrs) >= max_lag:
                  try:
+                     # Slice to current max_lag
                      corr_arr = np.array(corrs[:max_lag], dtype=float)
                      if not np.isnan(corr_arr).all(): peak_abs = np.nanmax(np.abs(corr_arr)); perf_data.append({'config_id': cfg_id, 'peak_abs': peak_abs})
                  except Exception as peak_err: logger.warning(f"Error calc peak abs for {cfg_id}: {peak_err}")
@@ -856,13 +852,13 @@ def run_analysis():
     print(f"\nAnalysis complete (lag={max_lag}). Reports saved in '{config.REPORTS_DIR}'. Total time: {duration}")
 
     # --- Export Final Leaderboard (Text File) ---
-    # This should always run to reflect the latest state after the full run
+    # This provides a final snapshot after all processing.
     try:
         logger.info("Exporting final leaderboard state (text file)...");
         if not leaderboard_manager.export_leaderboard_to_text(): logger.error("Final leaderboard text export failed.")
     except Exception as ex_err: logger.error(f"Failed export final leaderboard text: {ex_err}", exc_info=True)
 
-    # --- Generate Leading Indicator Report --- <--- NEW CALL
+    # --- Generate Leading Indicator Report ---
     try:
         logger.info("Generating leading indicator tally report...")
         if not leaderboard_manager.generate_leading_indicator_report():
@@ -871,39 +867,17 @@ def run_analysis():
         logger.error(f"Failed to generate leading indicator report: {lead_ind_err}", exc_info=True)
 
 
-    # --- Optional Prediction End ---
-    if input("\nRun prediction based on updated leaderboard? [y/N]: ").strip().lower() == 'y':
-        target_end = input("Enter forecast target (+N periods or YYYY-MM-DD date): ").strip()
-        if target_end:
-            try: predictor.predict_price(db_path, symbol, timeframe, target_end)
-            except Exception as pred_err: logger.error(f"End prediction error: {pred_err}", exc_info=True); print("\nPrediction error.")
-        else: print("No target entered. Skipping prediction.")
+    # --- AUTOMATIC Prediction Execution ---
+    # Removed the prompt, now runs automatically using determined max_lag
+    print("\n--- Automatic Price Prediction ---")
+    logger.info(f"Running automatic prediction for {symbol} ({timeframe}) up to lag {max_lag}...")
+    try:
+        predictor.predict_price(db_path, symbol, timeframe, max_lag)
+    except Exception as pred_err:
+        logger.error(f"Automatic prediction error: {pred_err}", exc_info=True)
+        print("\nAutomatic prediction encountered an error. Check logs.")
 
-    # --- Optional Backtesting (Disabled) ---
-    # if input("\nRun historical backtest (experimental, uses lookahead bias)? [y/N]: ").strip().lower() == 'y':
-    #     try:
-    #         # Example: Prompt for parameters or use defaults
-    #         try:
-    #             num_points_str = input(f"Enter number of historical points per lag to test [default=50]: ").strip()
-    #             num_points = int(num_points_str) if num_points_str else 50
-    #             if num_points <= 0: raise ValueError("Must be positive")
-    #         except ValueError:
-    #             print("Invalid input, using 50 points.")
-    #             num_points = 50
-    #
-    #         max_lag_backtest = max_lag # Use the analysis max_lag or prompt for a different value
-    #
-    #         print(f"Starting backtest for {num_points} points up to lag {max_lag_backtest}...")
-    #         # Import is already done at the top now
-    #         backtester.run_backtest(db_path, symbol, timeframe, max_lag_backtest, num_points)
-    #     except ImportError: # Keep this check just in case
-    #         logger.error("Backtester module not found or failed to import.")
-    #         print("Error: Backtester module unavailable.")
-    #     except Exception as bt_err:
-    #         logger.error(f"Backtesting failed: {bt_err}", exc_info=True)
-    #         print(f"Backtesting encountered an error: {bt_err}")
-    # else:
-    #      logger.info("Skipping optional backtest.") # Optional log message
+    # --- Backtester functionality removed ---
 
 
 # --- Main Execution Block ---
@@ -912,10 +886,19 @@ if __name__ == "__main__":
     except SystemExit as e:
          exit_code = e.code if isinstance(e.code, int) else 1
          log_msg = "Analysis finished successfully" if exit_code == 0 else f"Analysis exited prematurely (code {exit_code})"
-         logger.log(logging.INFO if exit_code == 0 else logging.ERROR, f"--- {log_msg}. ---")
+         # Ensure logger is available if exiting early
+         try:
+            logger.log(logging.INFO if exit_code == 0 else logging.ERROR, f"--- {log_msg}. ---")
+         except NameError: # Logger might not be defined if error happened before setup
+            print(f"--- {log_msg}. ---")
          sys.exit(exit_code)
     except KeyboardInterrupt: logger.warning("--- Analysis interrupted by user. ---"); print("\nAnalysis interrupted."); sys.exit(130)
     except Exception as e:
-        logger.critical(f"--- Unhandled exception in main: {e} ---", exc_info=True)
-        print(f"\nCRITICAL ERROR: {e}\nCheck log file ('{config.LOG_DIR / 'logfile.txt'}') for details.")
+        # Log critical error, then exit
+        try:
+            logger.critical(f"--- Unhandled exception in main: {e} ---", exc_info=True)
+            print(f"\nCRITICAL ERROR: {e}\nCheck log file ('{config.LOG_DIR / 'logfile.txt'}') for details.")
+        except Exception as log_err: # Fallback if logging fails
+            print(f"\nCRITICAL ERROR: {e}")
+            print(f"Logging failed: {log_err}")
         sys.exit(1)
