@@ -7,15 +7,20 @@ import sqlite3 # For specific error handling if needed
 import time
 import concurrent.futures
 import os # To get CPU count
+from datetime import timedelta # For ETA calculation
 
 import config
 import sqlite_manager
-import utils
+import utils # For ETA formatting
 
 logger = logging.getLogger(__name__)
 
+# --- Constants ---
+ETA_UPDATE_INTERVAL_SECONDS_CORR = config.DEFAULTS.get("eta_update_interval_seconds", 15) # Use global config
+
 # --- Core Correlation Calculation Function ---
 # Calculates Corr(Indicator[t], Close[t+lag]) by shifting Close backward.
+# (No changes needed in this specific function)
 def calculate_correlation_indicator_vs_future_price(
     data: pd.DataFrame, indicator_col: str, lag: int
 ) -> Optional[float]:
@@ -46,8 +51,12 @@ def calculate_correlation_indicator_vs_future_price(
     try:
         # Shift Close Price BACKWARD by lag
         shifted_close_future = close_series.shift(-lag)
-        # Calculate correlation using pandas (handles alignment and pairwise NaNs)
-        correlation = indicator_series.corr(shifted_close_future)
+        # Combine, dropna, and check length before correlating
+        combined = pd.concat([indicator_series, shifted_close_future], axis=1).dropna()
+        if len(combined) < 2: # Need at least 2 pairs
+            return np.nan
+        # Calculate correlation using pandas on the cleaned data
+        correlation = combined.iloc[:, 0].corr(combined.iloc[:, 1])
         # Return float or nan
         return float(correlation) if pd.notna(correlation) else np.nan
     except Exception as e:
@@ -75,7 +84,8 @@ def _calculate_correlations_for_single_indicator(
     # Basic check before loop
     if indicator_series.isnull().all() or indicator_series.nunique(dropna=True) <= 1:
         is_all_nan = indicator_series.isnull().all()
-        logger.warning(f"Worker: Skipping {indicator_col_name} (ConfigID: {config_id}) - {'All NaN' if is_all_nan else 'Constant Value'}.")
+        # Changed to DEBUG as this is common/expected for some indicators
+        logger.debug(f"Worker: Skipping {indicator_col_name} (ConfigID: {config_id}) - {'All NaN' if is_all_nan else 'Constant Value'}.")
         # Return Nones (for DB) for all lags
         return [(symbol_id, timeframe_id, config_id, lag, None) for lag in range(1, max_lag + 1)]
 
@@ -88,8 +98,15 @@ def _calculate_correlations_for_single_indicator(
                 correlation_value = None # Or np.nan? Using None for DB consistency
                 error_count += 1
             else:
-                # Use pandas .corr() - assumes alignment and NaN handling
-                correlation = indicator_series.corr(shifted_close)
+                # Use pandas .corr() - handles alignment and NaN pair removal
+                # Combine first to ensure enough pairs after dropping NaNs
+                combined = pd.concat([indicator_series, shifted_close], axis=1).dropna()
+                if len(combined) < 2: # Check if enough data remains
+                     correlation = np.nan
+                else:
+                     # Correlate the cleaned columns
+                     correlation = combined.iloc[:, 0].corr(combined.iloc[:, 1])
+
                 if pd.notna(correlation):
                     correlation_value = float(correlation)
                 else:
@@ -105,6 +122,7 @@ def _calculate_correlations_for_single_indicator(
         results_for_indicator.append((symbol_id, timeframe_id, config_id, lag, db_value))
 
     if nan_count > 0 or error_count > 0:
+         # Changed to DEBUG
          logger.debug(f"Worker ({indicator_col_name}, ConfigID: {config_id}): Completed with {nan_count} NaN results, {error_count} errors.")
 
     return results_for_indicator
@@ -120,9 +138,9 @@ def process_correlations(
     max_lag: int
 ) -> bool:
     """
-    Calculates correlations using parallel processing across indicators.
+    Calculates correlations using parallel processing across indicators, with progress reporting.
     """
-    start_time_total = time.time()
+    start_time_total = time.time() # Absolute start time for this function
     num_configs = len(indicator_configs_processed)
     logger.info(f"Starting PARALLELIZED correlation calculation for {num_configs} configurations up to lag {max_lag}...")
 
@@ -133,15 +151,17 @@ def process_correlations(
     if max_lag <= 0:
         logger.error(f"Max lag must be positive, got {max_lag}.")
         return False
-    min_required_len = max_lag + config.DEFAULTS["min_data_points_for_lag"]
+    # Ensure sufficient data length *after* NaN drop (as done in main.py)
+    min_required_len = max_lag + config.DEFAULTS.get("min_data_points_for_lag", 1) # Use default, min 1 point after lag
     if len(data) < min_required_len:
-         logger.error(f"Input data has insufficient rows ({len(data)}) for max_lag={max_lag}. Need {min_required_len}.");
+         logger.error(f"Input data has insufficient rows ({len(data)}) for max_lag={max_lag} after NaN drop. Need {min_required_len}.");
          return False
     # Find valid indicator columns *after* main data checks
     indicator_columns_present = [col for col in data.columns if utils.parse_indicator_column_name(col) is not None]
     if not indicator_columns_present:
         logger.error("No valid indicator columns found in input data for correlation.")
         return False
+    num_indicator_cols = len(indicator_columns_present) # Number of columns to process
 
     # --- Database Connection ---
     conn = sqlite_manager.create_connection(db_path)
@@ -152,7 +172,8 @@ def process_correlations(
         logger.info(f"Pre-calculating {max_lag} shifted 'close' price series...")
         start_shift_time = time.time()
         close_series = data['close'].astype(float)
-        shifted_closes_future = {lag: close_series.shift(-lag) for lag in range(1, max_lag + 1)}
+        # Reindex shifted series to match the main data index for robust alignment
+        shifted_closes_future = {lag: close_series.shift(-lag).reindex(data.index) for lag in range(1, max_lag + 1)}
         logger.info(f"Pre-calculation of shifted closes complete. Time: {time.time() - start_shift_time:.2f}s.")
 
         # --- Prepare tasks for parallel execution ---
@@ -169,8 +190,9 @@ def process_correlations(
             # Ensure config_id is int
             if not isinstance(config_id, int):
                 logger.warning(f"Parsed non-integer config_id {config_id} from '{indicator_col_name}'. Skipping."); skipped_task_configs += 1; continue
+            # Only add tasks for configs we actually processed and have details for
             if config_id not in config_details_map:
-                logger.warning(f"ConfigID {config_id} ('{indicator_col_name}') not found in map. Skipping."); skipped_task_configs += 1; continue
+                logger.debug(f"ConfigID {config_id} ('{indicator_col_name}') not in processed list map. Skipping task."); skipped_task_configs += 1; continue
 
             # Pass the actual indicator series to the task
             indicator_series = data[indicator_col_name].astype(float) # Ensure float
@@ -181,18 +203,20 @@ def process_correlations(
             ))
             valid_tasks_count += 1
 
-        logger.info(f"Prepared {valid_tasks_count} correlation tasks. Skipped {skipped_task_configs} columns due to parsing/mapping issues.")
+        logger.info(f"Prepared {valid_tasks_count} correlation tasks for {num_indicator_cols} indicator columns. Skipped {skipped_task_configs} columns.")
         if not tasks: logger.error("No valid tasks generated."); return False
 
-        # --- Execute in Parallel ---
+        # --- Execute in Parallel with Progress Reporting ---
         all_correlation_results: List[Tuple[int, int, int, int, Optional[float]]] = []
-        num_cores = os.cpu_count()
-        max_workers = max(1, num_cores - 1) if num_cores else 4 # Use N-1 cores or default to 4
+        num_cores = os.cpu_count() or 4 # Default to 4 if cannot detect
+        max_workers = max(1, num_cores - 1) if num_cores > 1 else 1 # Use N-1 cores, minimum 1
         logger.info(f"Starting parallel execution with up to {max_workers} workers...")
         start_parallel_time = time.time()
-
+        last_progress_update_time = start_parallel_time
         processed_tasks = 0
+
         with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+            # Submit tasks and store future-to-task mapping
             future_to_task = {executor.submit(_calculate_correlations_for_single_indicator, *task_args): task_args for task_args in tasks}
 
             for future in concurrent.futures.as_completed(future_to_task):
@@ -206,29 +230,56 @@ def process_correlations(
                     logger.error(f"Worker for '{indicator_name_done}' generated exception: {exc}", exc_info=True)
 
                 processed_tasks += 1
-                # Log progress periodically
-                if processed_tasks % 50 == 0 or processed_tasks == valid_tasks_count:
-                    progress_perc = (processed_tasks / valid_tasks_count) * 100 if valid_tasks_count > 0 else 0
-                    logger.info(f"Parallel Correlation Progress: {processed_tasks}/{valid_tasks_count} tasks processed ({progress_perc:.1f}%).")
+                current_time = time.time()
 
-        logger.info(f"Parallel execution finished. Time: {time.time() - start_parallel_time:.2f}s.")
+                # --- Update Progress & ETA ---
+                if current_time - last_progress_update_time > ETA_UPDATE_INTERVAL_SECONDS_CORR or processed_tasks == valid_tasks_count:
+                    elapsed_td = timedelta(seconds=current_time - start_parallel_time)
+                    elapsed_str = utils.format_duration(elapsed_td)
+                    percent = (processed_tasks / valid_tasks_count * 100) if valid_tasks_count > 0 else 0
+                    eta_str = "Calculating..."
+                    if percent > 1 and processed_tasks < valid_tasks_count : # Estimate after some progress
+                        rate = processed_tasks / elapsed_td.total_seconds() if elapsed_td.total_seconds() > 1 else 0
+                        if rate > 0:
+                            remaining_tasks = valid_tasks_count - processed_tasks
+                            eta_td = timedelta(seconds=remaining_tasks / rate)
+                            eta_str = utils.format_duration(eta_td)
+                        # else: eta_str remains "Calculating..."
+                    elif processed_tasks == valid_tasks_count:
+                        eta_str = "Done"
+
+                    print(f"\rCorrelation Progress: {processed_tasks}/{valid_tasks_count} tasks ({percent:.1f}%) | Elapsed: {elapsed_str} | ETA: {eta_str}   ", end="")
+                    last_progress_update_time = current_time
+                    # Log less frequently to file
+                    if processed_tasks % 50 == 0 or processed_tasks == valid_tasks_count:
+                        logger.info(f"Parallel Correlation Progress: {processed_tasks}/{valid_tasks_count} tasks ({percent:.1f}%) | Elapsed: {elapsed_str} | ETA: {eta_str}")
+
+        print() # Newline after progress updates finish
+        parallel_duration = time.time() - start_parallel_time
+        logger.info(f"Parallel execution finished. Time: {parallel_duration:.2f}s.")
         logger.info(f"Total correlation records collected: {len(all_correlation_results)}")
 
         # --- Batch Insert Results ---
         if not all_correlation_results:
             logger.warning("No correlation results generated by parallel workers.")
+            # Ensure database connection is closed even if no data to insert
+            if conn: conn.close()
             return True # Success, but no data inserted
 
         logger.info(f"Starting batch insert of {len(all_correlation_results)} records...")
         start_insert_time = time.time()
+        # Pass the existing connection to the batch insert function
         batch_success = sqlite_manager.batch_insert_correlations(conn, all_correlation_results)
-        logger.info(f"Batch insertion complete. Success: {batch_success}. Time: {time.time() - start_insert_time:.2f}s.")
+        insert_duration = time.time() - start_insert_time
+        logger.info(f"Batch insertion complete. Success: {batch_success}. Time: {insert_duration:.2f}s.")
 
         if not batch_success:
             logger.error("Batch insertion of correlations failed.")
+            # Connection is closed in finally block
             return False
 
-        logger.info(f"Parallel correlation processing finished. Total time: {time.time() - start_time_total:.2f}s.")
+        total_duration = time.time() - start_time_total
+        logger.info(f"Parallel correlation processing finished. Total time: {total_duration:.2f}s.")
         return True
 
     except Exception as e:
@@ -236,4 +287,8 @@ def process_correlations(
         return False
     finally:
         if conn:
-            conn.close()
+            try:
+                conn.close()
+                logger.debug("Correlation processing DB connection closed.")
+            except Exception as close_err:
+                logger.error(f"Error closing correlation DB connection: {close_err}")
