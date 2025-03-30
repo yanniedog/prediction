@@ -116,7 +116,9 @@ def _get_historical_indicator_price_pairs(
     potential_cols = [col for col in indicator_df.columns if col.startswith(f"{indicator_name}_{config_id}")]
     if not potential_cols: logger.error(f"Could not find output col like '{indicator_name}_{config_id}_...'"); return None
     indicator_col_name = potential_cols[0]
-    if len(potential_cols) > 1: logger.warning(f"Multiple outputs for {indicator_name} Cfg {config_id}: {potential_cols}. Using first: '{indicator_col_name}'.")
+    # ----- CHANGE WARNING TO DEBUG -----
+    if len(potential_cols) > 1: logger.debug(f"Multiple outputs for {indicator_name} Cfg {config_id}: {potential_cols}. Using first: '{indicator_col_name}'.")
+    # ----- END CHANGE -----
     logger.debug(f"Using indicator column '{indicator_col_name}' for regression for lag {lag}.")
 
     # Align Indicator[t] and Close[t+lag] using the full historical data
@@ -370,7 +372,9 @@ def predict_price(db_path: Path, symbol: str, timeframe: str, final_target_lag: 
         if not potential_cols:
             logger.error(f"Could not find output col for CfgID {cfg_id}."); skipped_lags+=1; continue
         current_ind_col = potential_cols[0]
-        if len(potential_cols) > 1: logger.warning(f"Predictor {ind_name} Cfg {cfg_id} multiple outputs: {potential_cols}. Using first: '{current_ind_col}'.")
+        # ----- CHANGE WARNING TO INFO -----
+        if len(potential_cols) > 1: logger.info(f"Predictor {ind_name} Cfg {cfg_id} multiple outputs: {potential_cols}. Using first: '{current_ind_col}'.")
+        # ----- END CHANGE -----
         # Get the last non-NaN value for the current indicator value
         current_ind_series = indicator_df_full[current_ind_col].dropna()
         if current_ind_series.empty:

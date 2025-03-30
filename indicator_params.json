@@ -438,21 +438,15 @@
              },
             "conditions": [ { "fast": { "gte": 2 } }, { "slow": { "gte": 2 } }, { "fast": { "lt": "slow" } } ]
         },
-        "fi": {
-            "type": "pandas-ta",
-            "required_inputs": ["close", "volume"],
-            "parameters": { "length": { "default": 13, "min": 1, "max": 200 } },
-            "conditions": [ { "length": { "gte": 1 } } ]
-        },
         "ichimoku": {
             "type": "pandas-ta",
             "required_inputs": ["high", "low", "close"],
             "parameters": {
-                "tenkan": { "default": 9, "min": 1, "max": 100 },
-                "kijun": { "default": 26, "min": 1, "max": 150 },
-                "senkou": { "default": 52, "min": 1, "max": 200 }
+                "tenkan": { "default": 9, "min": 2, "max": 100 },
+                "kijun": { "default": 26, "min": 2, "max": 150 },
+                "senkou": { "default": 52, "min": 2, "max": 200 }
             },
-            "conditions": [ { "tenkan": { "gte": 1 } }, { "kijun": { "gte": 1 } }, { "senkou": { "gte": 1 } }, {"tenkan": {"lt": "kijun"}}, {"kijun": {"lt": "senkou"}} ]
+            "conditions": [ { "tenkan": { "gte": 2 } }, { "kijun": { "gte": 2 } }, { "senkou": { "gte": 2 } }, {"tenkan": {"lt": "kijun"}}, {"kijun": {"lt": "senkou"}} ]
         },
         "kc": {
             "type": "pandas-ta",
@@ -475,22 +469,22 @@
             "type": "pandas-ta",
             "required_inputs": ["close", "high", "low", "open"],
             "parameters": {
-                "length": { "default": 14, "min": 1, "max": 200 },
+                "length": { "default": 14, "min": 2, "max": 200 },
                  "scalar": { "default": 100, "min": 50, "max": 150 },
                 "refined": { "default": false },
                 "thirds": { "default": false }
              },
-            "conditions": [ { "length": { "gte": 1 } } ]
+            "conditions": [ { "length": { "gte": 2 } } ]
         },
         "tsi": {
             "type": "pandas-ta",
             "required_inputs": ["close"],
             "parameters": {
-                "fast": { "default": 13, "min": 1, "max": 100 },
-                "slow": { "default": 25, "min": 1, "max": 200 },
-                "signal": { "default": 13, "min": 1, "max": 100 }
+                "fast": { "default": 13, "min": 2, "max": 100 },
+                "slow": { "default": 25, "min": 2, "max": 200 },
+                "signal": { "default": 13, "min": 2, "max": 100 }
             },
-            "conditions": [ { "fast": { "gte": 1 } }, { "slow": { "gte": 1 } }, { "signal": { "gte": 1 } }, { "fast": { "lt": "slow" } } ]
+            "conditions": [ { "fast": { "gte": 2 } }, { "slow": { "gte": 2 } }, { "signal": { "gte": 2 } }, { "fast": { "lt": "slow" } } ]
         },
         "vortex": {
             "type": "pandas-ta",

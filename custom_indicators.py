@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import talib as ta
 import logging
-from typing import List # Added List import
+from typing import List, Optional # Added Optional import
 
 logger = logging.getLogger(__name__)
 
@@ -27,15 +27,15 @@ def _check_required_cols(data: pd.DataFrame, required: List[str], indicator_name
 
 def compute_obv_price_divergence(data: pd.DataFrame, method: str ="Difference", obv_method: str ="SMA", obv_period: int =14,
                                  price_input_type: str ="OHLC/4", price_method: str ="SMA", price_period: int =14,
-                                 smoothing: float =0.01) -> pd.DataFrame:
-    """Calculates OBV/Price divergence."""
+                                 smoothing: float =0.01) -> Optional[pd.DataFrame]:
+    """Calculates OBV/Price divergence. Returns a DataFrame with the result or None."""
     col_name = OBV_PRICE_DIVERGENCE
     required_cols = ['open', 'high', 'low', 'close', 'volume']
     if not _check_required_cols(data, required_cols, col_name):
-        data[col_name] = np.nan
-        return data
+        return None # Return None on failure
 
     logger.debug(f"Computing {col_name}: method={method}, obv={obv_method}/{obv_period}, price={price_input_type}/{price_method}/{price_period}")
+    result_df = pd.DataFrame(index=data.index) # Create new DataFrame
 
     try:
         # Select Price Series
@@ -52,13 +52,13 @@ def compute_obv_price_divergence(data: pd.DataFrame, method: str ="Difference", 
         obv_ma = obv
         if obv_method == "SMA": obv_ma = ta.SMA(obv, timeperiod=obv_period)
         elif obv_method == "EMA": obv_ma = ta.EMA(obv, timeperiod=obv_period)
-        elif obv_method is not None and obv_method.lower() != "none": raise ValueError(f"Unsupported obv_method: {obv_method}")
+        elif obv_method is not None and str(obv_method).lower() != "none": raise ValueError(f"Unsupported obv_method: {obv_method}") # Added str()
 
         # Calculate Smoothed Price
         price_ma = selected_price
         if price_method == "SMA": price_ma = ta.SMA(selected_price, timeperiod=price_period)
         elif price_method == "EMA": price_ma = ta.EMA(selected_price, timeperiod=price_period)
-        elif price_method is not None and price_method.lower() != "none": raise ValueError(f"Unsupported price_method: {price_method}")
+        elif price_method is not None and str(price_method).lower() != "none": raise ValueError(f"Unsupported price_method: {price_method}") # Added str()
 
         # Calculate Percentage Changes robustly
         obv_change_percent = obv_ma.pct_change().multiply(100).replace([np.inf, -np.inf], np.nan)
@@ -77,58 +77,64 @@ def compute_obv_price_divergence(data: pd.DataFrame, method: str ="Difference", 
              metric = np.log(obv_ratio.divide(price_ratio))
         else: raise ValueError(f"Unsupported divergence method: {method}")
 
-        data[col_name] = metric.replace([np.inf, -np.inf], np.nan)
+        result_df[col_name] = metric.replace([np.inf, -np.inf], np.nan) # Add to new DF
+        return result_df
 
     except Exception as e:
         logger.error(f"Error calculating {col_name}: {e}", exc_info=True)
-        data[col_name] = np.nan
-    return data
+        # data[col_name] = np.nan # Don't modify input
+        return None # Return None on failure
 
 
-def compute_volume_oscillator(data: pd.DataFrame, window: int = 20) -> pd.DataFrame:
-    """Calculates Volume Oscillator."""
+def compute_volume_oscillator(data: pd.DataFrame, window: int = 20) -> Optional[pd.DataFrame]:
+    """Calculates Volume Oscillator. Returns a DataFrame with the result or None."""
     col_name = VOLUME_OSCILLATOR
     if not _check_required_cols(data, ['volume'], col_name):
-        data[col_name] = np.nan; return data
+        return None
     if window < 2:
         logger.error(f"Window ({window}) must be >= 2 for {col_name}. Skipping.")
-        data[col_name] = np.nan; return data
+        return None
 
     logger.debug(f"Computing {col_name}: window={window}")
+    result_df = pd.DataFrame(index=data.index) # Create new DataFrame
     try:
         vol_ma = data['volume'].rolling(window=window, min_periods=max(1, window // 2)).mean()
         denominator = vol_ma.replace(0, np.nan)
-        data[col_name] = (data['volume'] - vol_ma).divide(denominator).replace([np.inf, -np.inf], np.nan)
+        result_df[col_name] = (data['volume'] - vol_ma).divide(denominator).replace([np.inf, -np.inf], np.nan) # Add to new DF
+        return result_df
     except Exception as e:
         logger.error(f"Error calculating {col_name}: {e}", exc_info=True)
-        data[col_name] = np.nan
-    return data
+        # data[col_name] = np.nan # Don't modify input
+        return None
 
 
-def compute_vwap(data: pd.DataFrame) -> pd.DataFrame:
-    """Calculates Volume Weighted Average Price (VWAP) cumulatively."""
+def compute_vwap(data: pd.DataFrame) -> Optional[pd.DataFrame]:
+    """Calculates Volume Weighted Average Price (VWAP) cumulatively. Returns a DataFrame with the result or None."""
     col_name = VWAP
     if not _check_required_cols(data, ['close', 'volume'], col_name):
-        data[col_name] = np.nan; return data
+        return None
 
     logger.debug(f"Computing {col_name}")
+    result_df = pd.DataFrame(index=data.index) # Create new DataFrame
     try:
         safe_volume = data['volume'].clip(lower=0)
         cum_vol = safe_volume.cumsum()
         cum_vol_price = (data['close'] * safe_volume).cumsum()
-        data[col_name] = cum_vol_price.divide(cum_vol.replace(0, np.nan)).replace([np.inf, -np.inf], np.nan)
+        result_df[col_name] = cum_vol_price.divide(cum_vol.replace(0, np.nan)).replace([np.inf, -np.inf], np.nan) # Add to new DF
+        return result_df
     except Exception as e:
         logger.error(f"Error calculating {col_name}: {e}", exc_info=True)
-        data[col_name] = np.nan
-    return data
+        # data[col_name] = np.nan # Don't modify input
+        return None
 
 
-def _compute_volume_index(data: pd.DataFrame, col_name: str, volume_condition: callable) -> pd.DataFrame:
-    """Helper for PVI and NVI calculation."""
+def _compute_volume_index(data: pd.DataFrame, col_name: str, volume_condition: callable) -> Optional[pd.DataFrame]:
+    """Helper for PVI and NVI calculation. Returns a DataFrame with the result or None."""
     if not _check_required_cols(data, ['close', 'volume'], col_name):
-        data[col_name] = np.nan; return data
+        return None
 
     logger.debug(f"Computing {col_name}")
+    result_df = pd.DataFrame(index=data.index) # Create new DataFrame
     try:
         vol_diff = data['volume'].diff()
         price_change_ratio = data['close'].pct_change() # NaN at index 0
@@ -160,35 +166,61 @@ def _compute_volume_index(data: pd.DataFrame, col_name: str, volume_condition: c
             index_series.iloc[i] = current_index
 
         # Forward fill initial NaNs if any, and handle potential infinities
-        data[col_name] = index_series.ffill().replace([np.inf, -np.inf], np.nan)
+        result_df[col_name] = index_series.ffill().replace([np.inf, -np.inf], np.nan) # Add to new DF
+        return result_df
 
     except Exception as e:
         logger.error(f"Error calculating {col_name}: {e}", exc_info=True)
-        data[col_name] = np.nan
-    return data
+        # data[col_name] = np.nan # Don't modify input
+        return None
 
-def compute_pvi(data: pd.DataFrame) -> pd.DataFrame:
+def compute_pvi(data: pd.DataFrame) -> Optional[pd.DataFrame]:
     """Calculates Positive Volume Index (PVI)."""
     return _compute_volume_index(data, PVI, lambda vol_diff: vol_diff > 0)
 
-def compute_nvi(data: pd.DataFrame) -> pd.DataFrame:
+def compute_nvi(data: pd.DataFrame) -> Optional[pd.DataFrame]:
     """Calculates Negative Volume Index (NVI)."""
     return _compute_volume_index(data, NVI, lambda vol_diff: vol_diff < 0)
 
 
 # --- Apply All Custom Indicators ---
+# Note: This function might be less relevant now, as indicator computation
+# is primarily driven by configurations in main.py. Keep for testing?
 def apply_all_custom_indicators(data: pd.DataFrame) -> pd.DataFrame:
     """
     Applies all defined custom indicators using their default parameters.
+    Returns a NEW DataFrame with original data + new columns.
     """
     logger.info("Applying custom indicators (using internal defaults)...")
-    # Create a copy to avoid modifying the original DataFrame passed to this function
-    data_copy = data.copy()
-    # Apply functions using their defaults
-    data_copy = compute_obv_price_divergence(data_copy)
-    data_copy = compute_volume_oscillator(data_copy)
-    data_copy = compute_vwap(data_copy)
-    data_copy = compute_pvi(data_copy)
-    data_copy = compute_nvi(data_copy)
-    logger.info("Finished applying custom indicators.")
-    return data_copy
+    data_copy = data.copy() # Work on a copy
+    all_custom_dfs = []
+
+    # Call each function, they should now return a DataFrame or None
+    df_obv_div = compute_obv_price_divergence(data_copy)
+    if df_obv_div is not None: all_custom_dfs.append(df_obv_div)
+
+    df_vol_osc = compute_volume_oscillator(data_copy)
+    if df_vol_osc is not None: all_custom_dfs.append(df_vol_osc)
+
+    df_vwap = compute_vwap(data_copy)
+    if df_vwap is not None: all_custom_dfs.append(df_vwap)
+
+    df_pvi = compute_pvi(data_copy)
+    if df_pvi is not None: all_custom_dfs.append(df_pvi)
+
+    df_nvi = compute_nvi(data_copy)
+    if df_nvi is not None: all_custom_dfs.append(df_nvi)
+
+    if all_custom_dfs:
+        logger.info(f"Concatenating {len(all_custom_dfs)} custom indicator results.")
+        try:
+            # Concatenate results onto the original data copy
+            data_with_custom = pd.concat([data_copy] + all_custom_dfs, axis=1)
+            logger.info(f"Finished applying custom indicators. Shape: {data_with_custom.shape}")
+            return data_with_custom
+        except Exception as e:
+            logger.error(f"Error concatenating custom indicators: {e}", exc_info=True)
+            return data_copy # Return original copy on error
+    else:
+        logger.warning("No custom indicators successfully computed.")
+        return data_copy

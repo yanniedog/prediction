@@ -308,10 +308,12 @@ def export_leaderboard_to_text() -> bool:
 
         # Formatting
         na_rep = 'N/A'; max_json_len = 50
-        df['pos_value'] = df['pos_value'].map('{:.6f}'.format).replace('nan', na_rep)
-        df['neg_value'] = df['neg_value'].map('{:.6f}'.format).replace('nan', na_rep)
-        df['pos_config_id'] = df['pos_config_id'].map('{:.0f}'.format).replace('nan', na_rep)
-        df['neg_config_id'] = df['neg_config_id'].map('{:.0f}'.format).replace('nan', na_rep)
+        # --- FIX: Handle potential None values before formatting ---
+        df['pos_value'] = df['pos_value'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else na_rep)
+        df['neg_value'] = df['neg_value'].apply(lambda x: f"{x:.6f}" if pd.notna(x) else na_rep)
+        df['pos_config_id'] = df['pos_config_id'].apply(lambda x: f"{x:.0f}" if pd.notna(x) else na_rep)
+        df['neg_config_id'] = df['neg_config_id'].apply(lambda x: f"{x:.0f}" if pd.notna(x) else na_rep)
+        # ----------------------------------------------------------
         df['pos_params'] = df['pos_params'].fillna(na_rep).apply(lambda x: x if x == na_rep or len(x) <= max_json_len else x[:max_json_len-3] + '...')
         df['neg_params'] = df['neg_params'].fillna(na_rep).apply(lambda x: x if x == na_rep or len(x) <= max_json_len else x[:max_json_len-3] + '...')
         for col in df.columns:

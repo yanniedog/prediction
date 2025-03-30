@@ -180,7 +180,9 @@ def generate_combined_correlation_chart(
     ax.set_ylim(-1.05, 1.05); ax.set_xlim(0, max_lag + 1)
     ax.grid(True, which='both', linestyle='--', linewidth=0.5, zorder=1); _set_axis_intersection_at_zero(ax)
     if plotted_count <= 30: ax.legend(loc='best', fontsize='xx-small', ncol=2 if plotted_count > 15 else 1)
-    else: logger.warning(f"Hiding legend for combined chart ({plotted_count} lines).")
+    # ----- CHANGE WARNING TO INFO -----
+    else: logger.info(f"Hiding legend for combined chart ({plotted_count} lines).")
+    # ----- END CHANGE -----
     fig.tight_layout()
     filename_suffix = f"Combined_{plotted_count}Configs" if len(plot_data) > max_lines else f"Combined_All_{plotted_count}"
     filepath = _prepare_filenames(output_dir, file_prefix, filename_suffix, "chart")
