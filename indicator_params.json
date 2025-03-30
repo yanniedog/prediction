@@ -3,19 +3,24 @@
         "bbands": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 5 }, "nbdevup": { "default": 2.0 }, "nbdevdn": { "default": 2.0 }, "matype": { "default": 0 } },
+            "parameters": {
+                "timeperiod": { "default": 5, "min": 2, "max": 200 },
+                "nbdevup": { "default": 2.0, "min": 0.1, "max": 5.0 },
+                "nbdevdn": { "default": 2.0, "min": 0.1, "max": 5.0 },
+                "matype": { "default": 0 }
+             },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "dema": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 30 } },
+            "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "ema": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 30 } },
+            "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "ht_trendline": {
@@ -27,97 +32,113 @@
         "kama": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 30 } },
+            "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "ma": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 30 }, "matype": { "default": 0 } },
+            "parameters": {
+                "timeperiod": { "default": 30, "min": 2, "max": 200 },
+                "matype": { "default": 0 }
+            },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "mama": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "fastlimit": { "default": 0.5 }, "slowlimit": { "default": 0.05 } },
+            "parameters": {
+                "fastlimit": { "default": 0.5, "min": 0.01, "max": 0.99 },
+                "slowlimit": { "default": 0.05, "min": 0.01, "max": 0.99 }
+             },
             "conditions": [ {"fastlimit": {"gt": 0}}, {"slowlimit": {"gt": 0}}, {"slowlimit": {"lt": "fastlimit"}} ]
         },
         "midpoint": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "midprice": {
             "type": "ta-lib",
             "required_inputs": ["high", "low"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "sar": {
             "type": "ta-lib",
             "required_inputs": ["high", "low"],
-            "parameters": { "acceleration": { "default": 0.02 }, "maximum": { "default": 0.2 } },
-            "conditions": [ {"acceleration": {"gt": 0}}, {"maximum": {"gt": 0}} ]
+            "parameters": {
+                 "acceleration": { "default": 0.02, "min": 0.01, "max": 0.3 },
+                 "maximum": { "default": 0.2, "min": 0.01, "max": 0.3 }
+             },
+            "conditions": [ {"acceleration": {"gt": 0}}, {"maximum": {"gt": 0}}, {"acceleration": {"lte": "maximum"}} ]
         },
          "sma": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 30 } },
+            "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "t3": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 5 }, "vfactor": { "default": 0.7 } },
+            "parameters": {
+                "timeperiod": { "default": 5, "min": 2, "max": 200 },
+                "vfactor": { "default": 0.7, "min": 0.0, "max": 1.0 }
+            },
             "conditions": [ { "timeperiod": { "gte": 2 } }, {"vfactor": {"gte": 0}}, {"vfactor": {"lte": 1}} ]
         },
         "tema": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 30 } },
+            "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "trima": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 30 } },
+            "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "wma": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 30 } },
+            "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "adx": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "adxr": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "apo": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "fastperiod": { "default": 12 }, "slowperiod": { "default": 26 }, "matype": { "default": 0 } },
+            "parameters": {
+                "fastperiod": { "default": 12, "min": 2, "max": 100 },
+                "slowperiod": { "default": 26, "min": 2, "max": 200 },
+                "matype": { "default": 0 }
+             },
             "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ]
         },
         "aroon": {
             "type": "ta-lib",
             "required_inputs": ["high", "low"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "aroonosc": {
             "type": "ta-lib",
             "required_inputs": ["high", "low"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "bop": {
@@ -129,127 +150,154 @@
         "cci": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "cmo": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "dx": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "macd": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "fastperiod": { "default": 12 }, "slowperiod": { "default": 26 }, "signalperiod": { "default": 9 } },
-            "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "signalperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ]
+            "parameters": {
+                "fastperiod": { "default": 12, "min": 2, "max": 100 },
+                "slowperiod": { "default": 26, "min": 2, "max": 200 },
+                "signalperiod": { "default": 9, "min": 1, "max": 100 }
+             },
+            "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "signalperiod": { "gte": 1 } }, { "fastperiod": { "lt": "slowperiod" } } ]
         },
         "minus_di": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "minus_dm": {
             "type": "ta-lib",
             "required_inputs": ["high", "low"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "mom": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 10 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "parameters": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
+            "conditions": [ { "timeperiod": { "gte": 1 } } ]
         },
         "plus_di": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "plus_dm": {
             "type": "ta-lib",
             "required_inputs": ["high", "low"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "ppo": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "fastperiod": { "default": 12 }, "slowperiod": { "default": 26 }, "matype": { "default": 0 } },
+            "parameters": {
+                "fastperiod": { "default": 12, "min": 2, "max": 100 },
+                "slowperiod": { "default": 26, "min": 2, "max": 200 },
+                "matype": { "default": 0 }
+             },
             "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ]
         },
         "roc": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 10 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "parameters": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
+            "conditions": [ { "timeperiod": { "gte": 1 } } ]
         },
         "rocp": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 10 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "parameters": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
+            "conditions": [ { "timeperiod": { "gte": 1 } } ]
         },
         "rocr": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 10 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "parameters": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
+            "conditions": [ { "timeperiod": { "gte": 1 } } ]
         },
         "rocr100": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 10 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "parameters": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
+            "conditions": [ { "timeperiod": { "gte": 1 } } ]
         },
         "rsi": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "stoch": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
-            "parameters": { "fastk_period":{ "default": 5 }, "slowk_period":{ "default": 3 }, "slowk_matype":{ "default": 0 }, "slowd_period":{ "default": 3 }, "slowd_matype":{ "default": 0 } },
-            "conditions": [ { "fastk_period": { "gte": 2 } }, { "slowk_period": { "gte": 2 } }, { "slowd_period": { "gte": 2 } } ]
+            "parameters": {
+                "fastk_period":{ "default": 5, "min": 1, "max": 100 },
+                "slowk_period":{ "default": 3, "min": 1, "max": 100 },
+                "slowk_matype":{ "default": 0 },
+                "slowd_period":{ "default": 3, "min": 1, "max": 100 },
+                "slowd_matype":{ "default": 0 }
+            },
+            "conditions": [ { "fastk_period": { "gte": 1 } }, { "slowk_period": { "gte": 1 } }, { "slowd_period": { "gte": 1 } } ]
         },
         "stochf": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
-            "parameters": { "fastk_period":{ "default": 5 }, "fastd_period":{ "default": 3 }, "fastd_matype":{ "default": 0 } },
-            "conditions": [ { "fastk_period": { "gte": 2 } }, { "fastd_period": { "gte": 2 } } ]
+            "parameters": {
+                "fastk_period":{ "default": 5, "min": 1, "max": 100 },
+                "fastd_period":{ "default": 3, "min": 1, "max": 100 },
+                "fastd_matype":{ "default": 0 }
+            },
+            "conditions": [ { "fastk_period": { "gte": 1 } }, { "fastd_period": { "gte": 1 } } ]
         },
         "stochrsi": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 14 }, "fastk_period": { "default": 5 }, "fastd_period": { "default": 3 }, "fastd_matype": { "default": 0 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } }, { "fastk_period": { "gte": 2 } }, { "fastd_period": { "gte": 2 } } ]
+            "parameters": {
+                "timeperiod": { "default": 14, "min": 2, "max": 200 },
+                "fastk_period": { "default": 5, "min": 1, "max": 100 },
+                "fastd_period": { "default": 3, "min": 1, "max": 100 },
+                "fastd_matype": { "default": 0 }
+            },
+            "conditions": [ { "timeperiod": { "gte": 2 } }, { "fastk_period": { "gte": 1 } }, { "fastd_period": { "gte": 1 } } ]
         },
         "trix": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 30 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+             "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
+             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "ultosc": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod1":{ "default": 7 }, "timeperiod2":{ "default": 14 }, "timeperiod3":{ "default": 28 } },
-            "conditions": [ { "timeperiod1": { "gte": 2 } }, { "timeperiod2": { "gte": 2 } }, { "timeperiod3": { "gte": 2 } }, { "timeperiod1": { "lt": "timeperiod2" } }, { "timeperiod2": { "lt": "timeperiod3" } } ]
+            "parameters": {
+                "timeperiod1":{ "default": 7, "min": 1, "max": 100 },
+                "timeperiod2":{ "default": 14, "min": 1, "max": 150 },
+                "timeperiod3":{ "default": 28, "min": 1, "max": 200 }
+             },
+            "conditions": [ { "timeperiod1": { "gte": 1 } }, { "timeperiod2": { "gte": 1 } }, { "timeperiod3": { "gte": 1 } }, { "timeperiod1": { "lt": "timeperiod2" } }, { "timeperiod2": { "lt": "timeperiod3" } } ]
         },
         "willr": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "ad": {
@@ -261,7 +309,10 @@
         "adosc": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close", "volume"],
-            "parameters": { "fastperiod": { "default": 3 }, "slowperiod": { "default": 10 } },
+            "parameters": {
+                "fastperiod": { "default": 3, "min": 2, "max": 100 },
+                "slowperiod": { "default": 10, "min": 2, "max": 200 }
+             },
             "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ]
         },
         "obv": {
@@ -273,14 +324,14 @@
         "atr": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "parameters": { "timeperiod": { "default": 14, "min": 1, "max": 200 } },
+            "conditions": [ { "timeperiod": { "gte": 1 } } ]
         },
         "natr": {
             "type": "ta-lib",
             "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "parameters": { "timeperiod": { "default": 14, "min": 1, "max": 200 } },
+            "conditions": [ { "timeperiod": { "gte": 1 } } ]
         },
         "trange": {
             "type": "ta-lib",
@@ -321,116 +372,151 @@
         "beta": {
             "type": "ta-lib",
             "required_inputs": ["high", "low"],
-            "parameters": { "timeperiod": { "default": 5 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "parameters": { "timeperiod": { "default": 5, "min": 1, "max": 200 } },
+            "conditions": [ { "timeperiod": { "gte": 1 } } ]
         },
         "correl": {
             "type": "ta-lib",
             "required_inputs": ["high", "low"],
-            "parameters": { "timeperiod": { "default": 30 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ]
+            "parameters": { "timeperiod": { "default": 30, "min": 1, "max": 200 } },
+            "conditions": [ { "timeperiod": { "gte": 1 } } ]
         },
         "linearreg": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "linearreg_angle": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "linearreg_intercept": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "linearreg_slope": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "stddev": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 5 }, "nbdev": { "default": 1.0 } },
+            "parameters": {
+                "timeperiod": { "default": 5, "min": 2, "max": 200 },
+                "nbdev": { "default": 1.0, "min": 0.1, "max": 5.0 }
+            },
             "conditions": [ { "timeperiod": { "gte": 2 } }, {"nbdev": { "gte": 0.1 }} ]
         },
         "tsf": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 14 } },
+            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "timeperiod": { "gte": 2 } } ]
         },
         "var": {
             "type": "ta-lib",
             "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 5 }, "nbdev": { "default": 1.0 } },
+            "parameters": {
+                "timeperiod": { "default": 5, "min": 2, "max": 200 },
+                 "nbdev": { "default": 1.0, "min": 0.1, "max": 5.0 }
+             },
             "conditions": [ { "timeperiod": { "gte": 2 } }, {"nbdev": { "gte": 0.1 }} ]
         },
         "ao": {
             "type": "pandas-ta",
             "required_inputs": ["high", "low"],
-            "parameters": { "fast": { "default": 5 }, "slow": { "default": 34 } },
+            "parameters": {
+                "fast": { "default": 5, "min": 2, "max": 100 },
+                "slow": { "default": 34, "min": 2, "max": 200 }
+             },
             "conditions": [ { "fast": { "gte": 2 } }, { "slow": { "gte": 2 } }, { "fast": { "lt": "slow" } } ]
         },
         "fi": {
             "type": "pandas-ta",
             "required_inputs": ["close", "volume"],
-            "parameters": { "length": { "default": 13 } },
+            "parameters": { "length": { "default": 13, "min": 1, "max": 200 } },
             "conditions": [ { "length": { "gte": 1 } } ]
         },
         "ichimoku": {
             "type": "pandas-ta",
             "required_inputs": ["high", "low", "close"],
-            "parameters": { "tenkan": { "default": 9 }, "kijun": { "default": 26 }, "senkou": { "default": 52 } },
-            "conditions": [ { "tenkan": { "gte": 1 } }, { "kijun": { "gte": 1 } }, { "senkou": { "gte": 1 } } ]
+            "parameters": {
+                "tenkan": { "default": 9, "min": 1, "max": 100 },
+                "kijun": { "default": 26, "min": 1, "max": 150 },
+                "senkou": { "default": 52, "min": 1, "max": 200 }
+            },
+            "conditions": [ { "tenkan": { "gte": 1 } }, { "kijun": { "gte": 1 } }, { "senkou": { "gte": 1 } }, {"tenkan": {"lt": "kijun"}}, {"kijun": {"lt": "senkou"}} ]
         },
         "kc": {
             "type": "pandas-ta",
             "required_inputs": ["high", "low", "close"],
-            "parameters": { "length": { "default": 20 }, "scalar": { "default": 2.0 }, "mamode": { "default": "ema" }, "offset": { "default": 0 } },
+            "parameters": {
+                "length": { "default": 20, "min": 2, "max": 200 },
+                "scalar": { "default": 2.0, "min": 0.1, "max": 5.0 },
+                "mamode": { "default": "ema" },
+                "offset": { "default": 0 }
+            },
             "conditions": [ { "length": { "gte": 2 } }, { "scalar": { "gte": 0.1 } } ]
         },
          "mfi": {
             "type": "pandas-ta",
             "required_inputs": ["high", "low", "close", "volume"],
-            "parameters": { "length": { "default": 14 } },
+            "parameters": { "length": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "length": { "gte": 2 } } ]
         },
         "rvi": {
             "type": "pandas-ta",
             "required_inputs": ["close", "high", "low", "open"],
-            "parameters": { "length": { "default": 14 }, "scalar": { "default": 100 }, "refined": { "default": "false" }, "thirds": { "default": "false" } },
+            "parameters": {
+                "length": { "default": 14, "min": 1, "max": 200 },
+                 "scalar": { "default": 100, "min": 50, "max": 150 },
+                "refined": { "default": false },
+                "thirds": { "default": false }
+             },
             "conditions": [ { "length": { "gte": 1 } } ]
         },
         "tsi": {
             "type": "pandas-ta",
             "required_inputs": ["close"],
-            "parameters": { "fast": { "default": 13 }, "slow": { "default": 25 }, "signal": { "default": 13 } },
+            "parameters": {
+                "fast": { "default": 13, "min": 1, "max": 100 },
+                "slow": { "default": 25, "min": 1, "max": 200 },
+                "signal": { "default": 13, "min": 1, "max": 100 }
+            },
             "conditions": [ { "fast": { "gte": 1 } }, { "slow": { "gte": 1 } }, { "signal": { "gte": 1 } }, { "fast": { "lt": "slow" } } ]
         },
         "vortex": {
             "type": "pandas-ta",
             "required_inputs": ["high", "low", "close"],
-            "parameters": { "length": { "default": 14 } },
+            "parameters": { "length": { "default": 14, "min": 2, "max": 200 } },
             "conditions": [ { "length": { "gte": 2 } } ]
         },
         "obv_price_divergence": {
              "type": "custom",
              "required_inputs": ["open", "high", "low", "close", "volume"],
-             "parameters": { "method":{"default":"Difference"}, "obv_method":{"default":"SMA"}, "obv_period":{"default":14}, "price_input_type":{"default":"OHLC/4"}, "price_method":{"default":"SMA"}, "price_period":{"default":14}, "smoothing":{"default":0.01} },
-             "conditions": [ {"obv_period": {"gte": 2}}, {"price_period": {"gte": 2}} ],
+             "parameters": {
+                "method":{"default":"Difference"},
+                "obv_method":{"default":"SMA"},
+                "obv_period":{"default":14, "min": 2, "max": 200},
+                "price_input_type":{"default":"OHLC/4"},
+                "price_method":{"default":"SMA"},
+                "price_period":{"default":14, "min": 2, "max": 200},
+                "smoothing":{"default":0.01, "min": 0.001, "max": 0.1 }
+            },
+             "conditions": [ {"obv_period": {"gte": 2}}, {"price_period": {"gte": 2}}, {"smoothing": {"gt": 0}} ],
              "function_name": "compute_obv_price_divergence"
         },
          "volume_osc": {
              "type": "custom",
              "required_inputs": ["volume"],
-             "parameters": { "window": { "default": 20 } },
+             "parameters": { "window": { "default": 20, "min": 2, "max": 200 } },
              "conditions": [ {"window": {"gte": 2}} ],
              "function_name": "compute_volume_oscillator"
          },

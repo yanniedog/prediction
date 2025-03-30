@@ -6,34 +6,37 @@ import json
 from typing import Dict, List, Optional, Tuple, Any
 import pandas as pd
 import numpy as np
+from collections import Counter # For tallying
 
-import config # For LEADERBOARD_DB_PATH and REPORTS_DIR
-import utils # For compare_param_dicts
+import config
+import utils
 
 logger = logging.getLogger(__name__)
 
-# --- Database Functions (_create_leaderboard_connection, initialize_leaderboard_db, load_leaderboard) ---
-# (Keep existing functions - no changes needed here)
+# --- Database Connection Helper ---
 def _create_leaderboard_connection() -> Optional[sqlite3.Connection]:
     """Creates a connection to the leaderboard SQLite database."""
     conn = None
     try:
+        config.LEADERBOARD_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         logger.debug(f"Connecting to leaderboard database: {config.LEADERBOARD_DB_PATH}")
         conn = sqlite3.connect(config.LEADERBOARD_DB_PATH, timeout=10)
         conn.execute("PRAGMA journal_mode=WAL;")
         conn.execute("PRAGMA foreign_keys = OFF;") # Leaderboard is standalone
-        logger.debug(f"Successfully connected to leaderboard database.")
+        logger.debug("Successfully connected to leaderboard database.")
         return conn
     except sqlite3.Error as e:
         logger.error(f"Error connecting to leaderboard database '{config.LEADERBOARD_DB_PATH}': {e}", exc_info=True)
         return None
 
+# --- Database Initialization ---
 def initialize_leaderboard_db() -> bool:
     """Initializes the leaderboard database table if it doesn't exist."""
     conn = _create_leaderboard_connection()
     if conn is None: return False
     try:
         cursor = conn.cursor()
+        cursor.execute("BEGIN TRANSACTION;")
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS leaderboard (
             lag INTEGER NOT NULL,
@@ -43,41 +46,46 @@ def initialize_leaderboard_db() -> bool:
             config_json TEXT NOT NULL,
             symbol TEXT NOT NULL,
             timeframe TEXT NOT NULL,
-            dataset_daterange TEXT NOT NULL, -- Format: YYYYMMDD-YYYYMMDD
-            calculation_timestamp TEXT NOT NULL, -- ISO 8601 Format
-            config_id_source_db INTEGER, -- Optional: ID from the analysis DB
-            source_db_name TEXT,      -- Optional: Filename of the analysis DB
+            dataset_daterange TEXT NOT NULL,
+            calculation_timestamp TEXT NOT NULL, -- Store as ISO 8601 text
+            config_id_source_db INTEGER,
+            source_db_name TEXT,
             PRIMARY KEY (lag, correlation_type)
         );""")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_lag ON leaderboard(lag);")
         conn.commit()
-        logger.info(f"Leaderboard database schema initialized successfully: {config.LEADERBOARD_DB_PATH}")
+        logger.info(f"Leaderboard DB schema initialized: {config.LEADERBOARD_DB_PATH}")
         return True
     except sqlite3.Error as e:
-        logger.error(f"Error initializing leaderboard database schema: {e}", exc_info=True)
+        logger.error(f"Error initializing leaderboard DB schema: {e}", exc_info=True)
         try: conn.rollback()
-        except Exception: pass
+        except Exception as rb_err: logger.error(f"Rollback failed during schema init: {rb_err}")
         return False
     finally:
         if conn: conn.close()
 
+# --- Load Leaderboard Data ---
 def load_leaderboard() -> Dict[Tuple[int, str], Dict[str, Any]]:
-    """Loads the current leaderboard data into a dictionary."""
-    leaderboard_data = {}
+    """Loads current leaderboard data from the database into a dictionary."""
+    leaderboard_data: Dict[Tuple[int, str], Dict[str, Any]] = {}
     conn = _create_leaderboard_connection()
-    if conn is None:
-        logger.warning("Could not connect to load leaderboard. Returning empty.")
-        return {}
+    if conn is None: logger.warning("Could not connect to load leaderboard."); return {}
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='leaderboard';")
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='leaderboard';")
         if cursor.fetchone() is None:
-            logger.warning("Leaderboard table does not exist. Returning empty leaderboard.")
+            logger.warning("Leaderboard table does not exist. Returning empty.")
             return {}
 
-        cursor.execute("SELECT lag, correlation_type, correlation_value, indicator_name, config_json, symbol, timeframe, dataset_daterange, calculation_timestamp, config_id_source_db, source_db_name FROM leaderboard")
+        cursor.execute("""
+            SELECT lag, correlation_type, correlation_value, indicator_name, config_json,
+                   symbol, timeframe, dataset_daterange, calculation_timestamp,
+                   config_id_source_db, source_db_name
+            FROM leaderboard
+        """)
         rows = cursor.fetchall()
         for row in rows:
-            lag, corr_type, value, ind_name, cfg_json, sym, tf, dr, ts, cfg_id, src_db = row
+            (lag, corr_type, value, ind_name, cfg_json, sym, tf, dr, ts, cfg_id, src_db) = row
             key = (lag, corr_type)
             leaderboard_data[key] = {
                 'correlation_value': value, 'indicator_name': ind_name, 'config_json': cfg_json,
@@ -92,108 +100,185 @@ def load_leaderboard() -> Dict[Tuple[int, str], Dict[str, Any]]:
     finally:
         if conn: conn.close()
 
-# --- Leaderboard Update Logic (update_leaderboard) ---
-# (Keep existing function - no changes needed here)
+
+# --- NEW FUNCTION: Check and Update Single Lag ---
+def check_and_update_single_lag(
+    lag: int,
+    correlation_value: float,
+    indicator_name: str,
+    params: Dict[str, Any],
+    config_id: int,
+    symbol: str,
+    timeframe: str,
+    data_daterange: str,
+    source_db_name: str
+) -> bool:
+    """
+    Checks if the provided correlation is a new best for the given lag
+    and updates the leaderboard DB immediately if it is.
+    Returns True if an update was made, False otherwise.
+    """
+    if not pd.notna(correlation_value):
+        return False # Cannot compare NaN
+
+    conn = _create_leaderboard_connection()
+    if conn is None:
+        logger.error("Cannot connect to leaderboard DB for single lag update.")
+        return False
+
+    updated = False
+    try:
+        cursor = conn.cursor()
+        current_best_pos = -np.inf
+        current_best_neg = np.inf
+
+        # Get current bests for this lag
+        cursor.execute("SELECT correlation_type, correlation_value FROM leaderboard WHERE lag = ?", (lag,))
+        rows = cursor.fetchall()
+        for corr_type_db, value_db in rows:
+            if corr_type_db == 'positive':
+                current_best_pos = value_db
+            elif corr_type_db == 'negative':
+                current_best_neg = value_db
+
+        # --- Confirmation Comment (Requirement 4) ---
+        # The logic below correctly seeks the highest positive correlation (> current best positive)
+        # and the lowest negative correlation (< current best negative), effectively finding
+        # the values closest to +1.0 and -1.0 respectively for this lag.
+        # ------------------------------------------
+
+        # Determine correlation type and check if it's a new best
+        new_corr_type = 'positive' if correlation_value > 0 else 'negative'
+        is_new_best = False
+        if new_corr_type == 'positive' and correlation_value > current_best_pos:
+            is_new_best = True
+        elif new_corr_type == 'negative' and correlation_value < current_best_neg:
+            is_new_best = True
+
+        if is_new_best:
+            logger.info(f"LEADERBOARD UPDATE (Lag: {lag}, Type: {new_corr_type}): New Best Corr={correlation_value:.6f} (beats {current_best_pos if new_corr_type=='positive' else current_best_neg:.6f}) by Ind '{indicator_name}' (ID: {config_id})")
+            config_json = json.dumps(params, sort_keys=True, separators=(',', ':'))
+            # Use millisecond precision for timestamp
+            calculation_ts = datetime.now(timezone.utc).isoformat(timespec='milliseconds')
+            query = """INSERT OR REPLACE INTO leaderboard (lag, correlation_type, correlation_value, indicator_name, config_json,
+                         symbol, timeframe, dataset_daterange, calculation_timestamp, config_id_source_db, source_db_name)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"""
+            cursor.execute(query, (lag, new_corr_type, correlation_value, indicator_name, config_json,
+                                  symbol, timeframe, data_daterange, calculation_ts, config_id, source_db_name))
+            conn.commit()
+            updated = True
+        else:
+            logger.debug(f"Leaderboard check (Lag: {lag}, Type: {new_corr_type}): Corr {correlation_value:.4f} not better than current best.")
+
+    except sqlite3.Error as e:
+        logger.error(f"Error checking/updating leaderboard for lag {lag}: {e}", exc_info=True)
+        try:
+            conn.rollback()
+        except Exception as rb_err:
+            logger.error(f"Rollback failed: {rb_err}")
+    finally:
+        if conn:
+            conn.close()
+
+    return updated
+
+# --- Update Leaderboard Logic (Original - Still used for Default Path) ---
 def update_leaderboard(
     current_run_correlations: Dict[int, List[Optional[float]]],
     indicator_configs: List[Dict[str, Any]],
     max_lag: int,
     symbol: str,
     timeframe: str,
-    data_daterange: str, # Format "YYYYMMDD-YYYYMMDD"
+    data_daterange: str,
     source_db_name: str
 ) -> None:
-    """
-    Compares current run results against the persistent leaderboard and updates it.
-    """
-    logger.info(f"Starting leaderboard update process for {symbol}_{timeframe} (Max Lag: {max_lag})...")
-    existing_leaderboard = load_leaderboard()
-    if not isinstance(existing_leaderboard, dict):
-        logger.error("Failed to load existing leaderboard correctly. Aborting update.")
-        return
+    """Compares current run's results against the leaderboard and updates if better correlation found."""
+    logger.info(f"Starting leaderboard update (FULL BATCH) for {symbol}_{timeframe} (Max Lag: {max_lag})...")
 
-    config_details_map = {cfg['config_id']: cfg for cfg in indicator_configs}
-    updates_to_make = []
-    calculation_ts = datetime.now(timezone.utc).isoformat(timespec='seconds')
+    existing_leaderboard = load_leaderboard()
+    config_details_map = {cfg['config_id']: cfg for cfg in indicator_configs if 'config_id' in cfg}
+    updates_to_make: List[Tuple] = []
+    # Use millisecond precision for timestamp for the whole batch
+    calculation_ts = datetime.now(timezone.utc).isoformat(timespec='milliseconds')
 
     for lag in range(1, max_lag + 1):
-        best_pos_in_run = {'config_id': None, 'value': -float('inf')}
-        best_neg_in_run = {'config_id': None, 'value': float('inf')}
+        best_pos_in_run = {'config_id': None, 'value': -np.inf}
+        best_neg_in_run = {'config_id': None, 'value': np.inf}
 
         for config_id, correlations in current_run_correlations.items():
             if correlations and len(correlations) >= lag:
                 value = correlations[lag-1]
-                if pd.notna(value):
-                    if value > best_pos_in_run['value']: best_pos_in_run = {'config_id': config_id, 'value': value}
-                    if value < best_neg_in_run['value']: best_neg_in_run = {'config_id': config_id, 'value': value}
+                if pd.notna(value) and isinstance(value, (float, int)):
+                    value_f = float(value)
+                    if value_f > best_pos_in_run['value']: best_pos_in_run = {'config_id': config_id, 'value': value_f}
+                    if value_f < best_neg_in_run['value']: best_neg_in_run = {'config_id': config_id, 'value': value_f}
 
-        current_best_pos_val = existing_leaderboard.get((lag, 'positive'), {}).get('correlation_value', -float('inf'))
+        # Compare positive
+        current_best_pos_val = existing_leaderboard.get((lag, 'positive'), {}).get('correlation_value', -np.inf)
         if best_pos_in_run['config_id'] is not None and best_pos_in_run['value'] > current_best_pos_val:
-            logger.info(f"New Leaderboard Record (Lag: {lag}, Type: positive): Value {best_pos_in_run['value']:.4f} > {current_best_pos_val:.4f}")
-            config_id = best_pos_in_run['config_id']
-            details = config_details_map.get(config_id)
+            # Log update here for full batch update as well
+            logger.info(f"Leaderboard UPDATE (Lag: {lag}, Pos): Val {best_pos_in_run['value']:.6f} > {current_best_pos_val:.6f} ")
+            cfg_id = best_pos_in_run['config_id']
+            details = config_details_map.get(cfg_id)
             if details:
-                 updates_to_make.append((
-                     lag, 'positive', best_pos_in_run['value'],
-                     details['indicator_name'], json.dumps(details['params'], sort_keys=True, separators=(',',':')),
-                     symbol, timeframe, data_daterange, calculation_ts,
-                     config_id, source_db_name
-                 ))
-            else: logger.warning(f"Could not find details for config_id {config_id} for positive leaderboard update at lag {lag}.")
+                 params_json = json.dumps(details.get('params', {}), sort_keys=True, separators=(',',':'))
+                 updates_to_make.append((lag, 'positive', best_pos_in_run['value'], details.get('indicator_name', 'Unknown'),
+                                         params_json, symbol, timeframe, data_daterange, calculation_ts, cfg_id, source_db_name))
+            else: logger.warning(f"Details missing for config_id {cfg_id} (pos update, lag {lag}).")
 
-        current_best_neg_val = existing_leaderboard.get((lag, 'negative'), {}).get('correlation_value', float('inf'))
+        # Compare negative
+        current_best_neg_val = existing_leaderboard.get((lag, 'negative'), {}).get('correlation_value', np.inf)
         if best_neg_in_run['config_id'] is not None and best_neg_in_run['value'] < current_best_neg_val:
-            logger.info(f"New Leaderboard Record (Lag: {lag}, Type: negative): Value {best_neg_in_run['value']:.4f} < {current_best_neg_val:.4f}")
-            config_id = best_neg_in_run['config_id']
-            details = config_details_map.get(config_id)
+            # Log update here for full batch update as well
+            logger.info(f"Leaderboard UPDATE (Lag: {lag}, Neg): Val {best_neg_in_run['value']:.6f} < {current_best_neg_val:.6f}")
+            cfg_id = best_neg_in_run['config_id']
+            details = config_details_map.get(cfg_id)
             if details:
-                 updates_to_make.append((
-                     lag, 'negative', best_neg_in_run['value'],
-                     details['indicator_name'], json.dumps(details['params'], sort_keys=True, separators=(',',':')),
-                     symbol, timeframe, data_daterange, calculation_ts,
-                     config_id, source_db_name
-                 ))
-            else: logger.warning(f"Could not find details for config_id {config_id} for negative leaderboard update at lag {lag}.")
+                 params_json = json.dumps(details.get('params', {}), sort_keys=True, separators=(',',':'))
+                 updates_to_make.append((lag, 'negative', best_neg_in_run['value'], details.get('indicator_name', 'Unknown'),
+                                         params_json, symbol, timeframe, data_daterange, calculation_ts, cfg_id, source_db_name))
+            else: logger.warning(f"Details missing for config_id {cfg_id} (neg update, lag {lag}).")
 
+    # Perform DB Update
     if updates_to_make:
         conn = _create_leaderboard_connection()
-        if conn is None:
-            logger.error("Failed to connect to leaderboard DB to save updates.")
-            return
+        if conn is None: logger.error("Failed to connect to DB to save leaderboard updates."); return
         try:
             cursor = conn.cursor()
-            query = """
-            INSERT OR REPLACE INTO leaderboard
-            (lag, correlation_type, correlation_value, indicator_name, config_json, symbol, timeframe, dataset_daterange, calculation_timestamp, config_id_source_db, source_db_name)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """
+            query = """INSERT OR REPLACE INTO leaderboard (lag, correlation_type, correlation_value, indicator_name, config_json,
+                         symbol, timeframe, dataset_daterange, calculation_timestamp, config_id_source_db, source_db_name)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"""
             cursor.executemany(query, updates_to_make)
             conn.commit()
-            logger.info(f"Successfully updated {len(updates_to_make)} leaderboard entries.")
+            logger.info(f"Successfully updated {len(updates_to_make)} leaderboard entries (FULL BATCH).")
         except sqlite3.Error as e:
-            logger.error(f"Error updating leaderboard database: {e}", exc_info=True)
+            logger.error(f"Error updating leaderboard database (FULL BATCH): {e}", exc_info=True)
             try: conn.rollback()
-            except Exception: pass
+            except Exception as rb_err: logger.error(f"Rollback failed: {rb_err}")
         finally:
             if conn: conn.close()
     else:
-        logger.info("No leaderboard updates found in this run.")
+        logger.info("No leaderboard updates found in this run (FULL BATCH).")
 
 
-# --- UPDATED FUNCTION ---
-def export_leaderboard_to_text() -> bool: # Removed file_prefix parameter
-    """Exports the current leaderboard to a fixed 'leaderboard.txt' file in the reports directory."""
+# --- Export Leaderboard to Text File ---
+def export_leaderboard_to_text() -> bool:
+    """Exports the current leaderboard to 'leaderboard.txt' in the reports directory."""
     logger.info("Exporting leaderboard to text file...")
     conn = _create_leaderboard_connection()
-    if conn is None:
-        logger.error("Cannot connect to leaderboard database for export.")
-        return False
+    if conn is None: logger.error("Cannot connect to leaderboard DB for export."); return False
+
+    output_filepath = config.REPORTS_DIR / "leaderboard.txt"
+    output_filepath.parent.mkdir(parents=True, exist_ok=True)
+    # Use millisecond precision in header
+    current_timestamp_str = datetime.now(timezone.utc).isoformat(timespec='milliseconds')
 
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='leaderboard';")
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='leaderboard';")
         if cursor.fetchone() is None:
-            logger.warning("Leaderboard table not found. Cannot export.")
+            logger.warning("Leaderboard table not found. Exporting empty file.")
+            output_filepath.write_text(f"Leaderboard Table Not Found - Checked: {current_timestamp_str}\n", encoding='utf-8')
             return True
 
         query = "SELECT * FROM leaderboard ORDER BY lag ASC, correlation_type ASC"
@@ -201,65 +286,221 @@ def export_leaderboard_to_text() -> bool: # Removed file_prefix parameter
         rows = cursor.fetchall()
 
         if not rows:
-            logger.info("Leaderboard is empty. No text file generated.")
+            logger.info("Leaderboard is empty. Exporting empty file.")
+            output_filepath.write_text(f"Leaderboard Empty - Last Checked: {current_timestamp_str}\n", encoding='utf-8')
             return True
 
-        aggregated_data = {}
+        # Aggregate data by lag
+        aggregated_data: Dict[int, Dict[str, Any]] = {}
         for row in rows:
             lag, corr_type, value, ind_name, cfg_json, sym, tf, dr, ts, cfg_id, src_db = row
-            if lag not in aggregated_data:
-                aggregated_data[lag] = {'lag': lag}
-
+            if lag not in aggregated_data: aggregated_data[lag] = {'lag': lag}
             prefix = "pos_" if corr_type == "positive" else "neg_"
-            aggregated_data[lag][f'{prefix}value'] = value
-            aggregated_data[lag][f'{prefix}indicator'] = ind_name
-            aggregated_data[lag][f'{prefix}params'] = cfg_json
-            aggregated_data[lag][f'{prefix}symbol'] = sym
-            aggregated_data[lag][f'{prefix}timeframe'] = tf
-            aggregated_data[lag][f'{prefix}dataset'] = dr
-            aggregated_data[lag][f'{prefix}timestamp'] = ts
+            aggregated_data[lag].update({
+                f'{prefix}value': value, f'{prefix}indicator': ind_name, f'{prefix}params': cfg_json,
+                f'{prefix}symbol': sym, f'{prefix}timeframe': tf, f'{prefix}dataset': dr,
+                f'{prefix}timestamp': ts, f'{prefix}config_id': cfg_id, f'{prefix}source_db': src_db
+            })
 
-        report_list = list(aggregated_data.values())
-        df = pd.DataFrame(report_list)
+        df = pd.DataFrame(list(aggregated_data.values()))
         cols = ['lag']
-        pos_cols = ['pos_value', 'pos_indicator', 'pos_params', 'pos_symbol', 'pos_timeframe', 'pos_dataset', 'pos_timestamp']
-        neg_cols = ['neg_value', 'neg_indicator', 'neg_params', 'neg_symbol', 'neg_timeframe', 'neg_dataset', 'neg_timestamp']
+        pos_cols = ['pos_value', 'pos_indicator', 'pos_params', 'pos_symbol', 'pos_timeframe', 'pos_dataset', 'pos_config_id', 'pos_source_db', 'pos_timestamp']
+        neg_cols = ['neg_value', 'neg_indicator', 'neg_params', 'neg_symbol', 'neg_timeframe', 'neg_dataset', 'neg_config_id', 'neg_source_db', 'neg_timestamp']
         all_expected_cols = cols + pos_cols + neg_cols
         for col in all_expected_cols:
             if col not in df.columns: df[col] = None
         df = df[all_expected_cols]
 
-        na_rep = 'N/A'
+        # Formatting
+        na_rep = 'N/A'; max_json_len = 50
         df['pos_value'] = df['pos_value'].map('{:.6f}'.format).fillna(na_rep)
         df['neg_value'] = df['neg_value'].map('{:.6f}'.format).fillna(na_rep)
-
-        max_json_len = 60
+        df['pos_config_id'] = df['pos_config_id'].map('{:.0f}'.format).fillna(na_rep)
+        df['neg_config_id'] = df['neg_config_id'].map('{:.0f}'.format).fillna(na_rep)
         df['pos_params'] = df['pos_params'].fillna(na_rep).apply(lambda x: x if x == na_rep or len(x) <= max_json_len else x[:max_json_len-3] + '...')
         df['neg_params'] = df['neg_params'].fillna(na_rep).apply(lambda x: x if x == na_rep or len(x) <= max_json_len else x[:max_json_len-3] + '...')
         for col in df.columns:
-             if col not in ['lag', 'pos_value', 'neg_value']: df[col] = df[col].fillna(na_rep)
+             if 'timestamp' in col:
+                  # Ensure parsing handles potential timezone info correctly and output milliseconds
+                  df[col] = pd.to_datetime(df[col], errors='coerce', utc=True).dt.strftime('%Y-%m-%d %H:%M:%S.%f').str[:-3].fillna(na_rep)
+             elif col not in ['lag', 'pos_value', 'neg_value', 'pos_config_id', 'neg_config_id']:
+                 df[col] = df[col].fillna(na_rep)
 
-        output_string = f"Correlation Leaderboard - Last Updated: {datetime.now(timezone.utc).isoformat(timespec='seconds')}\n" # Changed title
-        output_string += "=" * 200 + "\n"
-        output_string += df.to_string( index=False, justify='left', max_colwidth=None ) # Allow wider columns
-        output_string += "\n" + "=" * 200
-
-        # <<< Use fixed filename >>>
-        output_filename = "leaderboard.txt"
-        # <<< End change >>>
-        output_filepath = config.REPORTS_DIR / output_filename
-        output_filepath.parent.mkdir(parents=True, exist_ok=True)
+        output_string = f"Correlation Leaderboard - Last Updated: {current_timestamp_str}\n"
+        separator_len = 250 # Increased width for timestamp
+        output_string += "=" * separator_len + "\n"
+        with pd.option_context('display.width', separator_len + 10):
+            output_string += df.to_string( index=False, justify='left', max_colwidth=None )
+        output_string += "\n" + "=" * separator_len
 
         output_filepath.write_text(output_string, encoding='utf-8')
         logger.info(f"Leaderboard successfully exported to: {output_filepath}")
         print(f"\nLeaderboard exported to: {output_filepath}")
         return True
 
-    except sqlite3.Error as e:
-        logger.error(f"Database error exporting leaderboard: {e}", exc_info=True)
-        return False
     except Exception as e:
-        logger.error(f"Unexpected error exporting leaderboard: {e}", exc_info=True)
+        logger.error(f"Error exporting leaderboard: {e}", exc_info=True)
+        try: output_filepath.write_text(f"ERROR exporting leaderboard: {e}\n", encoding='utf-8')
+        except: pass
+        return False
+    finally:
+        if conn: conn.close()
+
+# --- Find Best Predictor for a Given Lag ---
+def find_best_predictor_for_lag(target_lag: int) -> Optional[Dict[str, Any]]:
+    """Queries the leaderboard for the best performing configuration for a specific target lag."""
+    logger.info(f"Searching leaderboard for best predictor for Lag = {target_lag}...")
+    conn = _create_leaderboard_connection()
+    if conn is None: logger.error("Cannot connect to leaderboard DB for predictor search."); return None
+
+    best_entry: Optional[Dict[str, Any]] = None; max_abs_corr = -1.0
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='leaderboard';")
+        if cursor.fetchone() is None: logger.warning("Leaderboard table not found."); return None
+
+        query = "SELECT * FROM leaderboard WHERE lag = ? ORDER BY ABS(correlation_value) DESC LIMIT 1" # Find best directly
+        cursor.execute(query, (target_lag,))
+        row = cursor.fetchone()
+
+        if not row: logger.warning(f"No entries found for Lag = {target_lag}."); return None
+
+        lag, corr_type, value, ind_name, cfg_json, sym, tf, dr, ts, cfg_id, src_db = row
+        current_corr_value = None
+        if isinstance(value, (int, float)) and pd.notna(value): current_corr_value = float(value)
+        else: logger.error(f"Non-numeric/NaN corr for Best Lag {lag}, Ind {ind_name}: {value}."); return None
+
+        try:
+            params_dict = json.loads(cfg_json) # Parse JSON params
+            best_entry = { # Store parsed params dict
+                'lag': lag, 'correlation_type': corr_type, 'correlation_value': current_corr_value,
+                'indicator_name': ind_name, 'params': params_dict, 'config_json': cfg_json,
+                'symbol': sym, 'timeframe': tf, 'dataset_daterange': dr, 'calculation_timestamp': ts,
+                'config_id_source_db': cfg_id, 'source_db_name': src_db
+            }
+            max_abs_corr = abs(current_corr_value)
+            logger.info(f"Found best predictor for Lag {target_lag}: {best_entry['indicator_name']} (ID: {best_entry['config_id_source_db']}), Abs Corr: {max_abs_corr:.6f}")
+            return best_entry
+        except json.JSONDecodeError:
+            logger.error(f"Failed parse config_json for predictor candidate (Lag {lag}, Ind {ind_name}): {cfg_json}")
+            return None # Skip if JSON is bad
+
+    except Exception as e:
+        logger.error(f"Error searching leaderboard for predictor: {e}", exc_info=True)
+        return None
+    finally:
+        if conn: conn.close()
+
+
+# --- NEW FUNCTION: Generate Leading Indicator Report ---
+def generate_leading_indicator_report() -> bool:
+    """Generates a report tallying which indicators lead most often."""
+    logger.info("Generating leading indicators report...")
+    conn = _create_leaderboard_connection()
+    if conn is None:
+        logger.error("Cannot connect to leaderboard DB for leading indicator report.")
+        return False
+
+    output_filepath = config.REPORTS_DIR / "leading_indicators.txt"
+    output_filepath.parent.mkdir(parents=True, exist_ok=True)
+    current_timestamp_str = datetime.now(timezone.utc).isoformat(timespec='milliseconds')
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='leaderboard';")
+        if cursor.fetchone() is None:
+            logger.warning("Leaderboard table not found. Cannot generate leading indicator report.")
+            output_filepath.write_text(f"Leaderboard Table Not Found - Checked: {current_timestamp_str}\n", encoding='utf-8')
+            return True
+
+        # Fetch necessary data: indicator name, config details, and type (pos/neg)
+        query = """
+        SELECT
+            indicator_name, config_json, correlation_type, config_id_source_db
+        FROM leaderboard;
+        """
+        cursor.execute(query)
+        rows = cursor.fetchall()
+
+        if not rows:
+            logger.info("Leaderboard is empty. Cannot generate leading indicator report.")
+            output_filepath.write_text(f"Leaderboard Empty - Last Checked: {current_timestamp_str}\n", encoding='utf-8')
+            return True
+
+        # Use Counter for efficient tallying
+        pos_counts = Counter()
+        neg_counts = Counter()
+
+        # Store unique config details for final report
+        config_details_map = {} # Key: (indicator_name, config_id)
+
+        for ind_name, cfg_json, corr_type, cfg_id in rows:
+            if cfg_id is None: # Should not happen with current schema, but check
+                logger.warning(f"Skipping leaderboard entry with null config_id for indicator '{ind_name}'.")
+                continue
+            key = (ind_name, cfg_id)
+            if key not in config_details_map:
+                 config_details_map[key] = {'params_json': cfg_json} # Store params for later display
+
+            if corr_type == 'positive':
+                pos_counts[key] += 1
+            elif corr_type == 'negative':
+                neg_counts[key] += 1
+
+        # Combine counts into a list for DataFrame conversion
+        report_data = []
+        all_keys = set(pos_counts.keys()) | set(neg_counts.keys())
+
+        for key in all_keys:
+            ind_name, cfg_id = key
+            pos_lead_count = pos_counts.get(key, 0)
+            neg_lead_count = neg_counts.get(key, 0)
+            total_lead_count = pos_lead_count + neg_lead_count
+            params_json = config_details_map.get(key, {}).get('params_json', '{}')
+
+            report_data.append({
+                'Indicator': ind_name,
+                'Config ID': cfg_id,
+                'Params': params_json,
+                'Positive Leads': pos_lead_count,
+                'Negative Leads': neg_lead_count,
+                'Total Leads': total_lead_count
+            })
+
+        if not report_data:
+             logger.warning("No data aggregated for leading indicators report.")
+             output_filepath.write_text(f"No valid leading indicator data found - Checked: {current_timestamp_str}\n", encoding='utf-8')
+             return True
+
+        # Create and sort DataFrame
+        df_report = pd.DataFrame(report_data)
+        df_report.sort_values(by=['Total Leads', 'Indicator', 'Config ID'], ascending=[False, True, True], inplace=True)
+
+        # Format DataFrame for output
+        max_p_len = 60
+        df_report['Params'] = df_report['Params'].apply(lambda x: x if not isinstance(x, str) or len(x) <= max_p_len else x[:max_p_len-3] + '...')
+        df_report['Config ID'] = df_report['Config ID'].astype(str) # Ensure string for display
+
+        # Generate Output String
+        output_string = f"Leading Indicators Tally (Based on Current Leaderboard)\n"
+        output_string += f"Generated: {current_timestamp_str}\n"
+        output_string += f"Counts how many lag periods each config holds the best positive or negative correlation.\n"
+        output_string += "=" * 110 + "\n"
+        with pd.option_context('display.width', 1000, 'display.max_colwidth', 70): # Adjust width/colwidth
+            output_string += df_report.to_string(index=False, justify='left')
+        output_string += "\n" + "=" * 110
+
+        output_filepath.write_text(output_string, encoding='utf-8')
+        logger.info(f"Leading indicators report saved to: {output_filepath}")
+        print(f"\nLeading indicators report saved to: {output_filepath}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Error generating leading indicators report: {e}", exc_info=True)
+        try:
+            output_filepath.write_text(f"ERROR generating leading indicators report: {e}\n", encoding='utf-8')
+        except: pass
         return False
     finally:
         if conn: conn.close()

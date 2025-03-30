@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 # --- Core Paths ---
-PROJECT_ROOT = Path(__file__).parent
+PROJECT_ROOT = Path(__file__).resolve().parent # Use resolve() for absolute path
 DB_DIR = PROJECT_ROOT / 'database'
 REPORTS_DIR = PROJECT_ROOT / 'reports'
 HEATMAPS_DIR = REPORTS_DIR / 'heatmaps'
@@ -11,36 +11,41 @@ LINE_CHARTS_DIR = REPORTS_DIR / 'line_charts'
 COMBINED_CHARTS_DIR = REPORTS_DIR / 'combined_charts'
 LOG_DIR = PROJECT_ROOT / 'logs'
 INDICATOR_PARAMS_PATH = PROJECT_ROOT / 'indicator_params.json'
-# >>> Leaderboard DB Path <<<
-LEADERBOARD_DB_PATH = PROJECT_ROOT / 'correlation_leaderboard.db'
-# >>> END <<<
+LEADERBOARD_DB_PATH = PROJECT_ROOT / 'correlation_leaderboard.db' # Now in root
 
 # --- Database ---
 DB_NAME_TEMPLATE = "{symbol}_{timeframe}.db"
 
-# --- Analysis Parameters ---
-DEFAULT_MAX_LAG = 300 # Default max lag if not specified by user
-MIN_DATA_POINTS_FOR_LAG = 51 # Minimum data points needed beyond max_lag for reliable calculation
-TARGET_MAX_CORRELATIONS = 30000
+# === Modifiable Defaults ===
+# User can change these values directly
+DEFAULTS = {
+    # --- Data Source ---
+    "symbol": "BTCUSDT",           # Default symbol for download prompt
+    "timeframe": "1d",             # Default timeframe for download prompt
 
-# --- Visualization ---
-HEATMAP_MAX_CONFIGS = 50
-PLOT_DPI = 300
+    # --- Analysis Parameters ---
+    "max_lag": 7,                 # Default max correlation lag if user doesn't specify
+    "min_data_points_for_lag": 51, # Minimum data points needed beyond max_lag for reliable calculation
+    "target_max_correlations": 50000, # Target limit for estimated correlations (triggers warning)
 
-# --- Parameter Optimization ---
-OPTIMIZER_ITERATIONS = 100 # Number of *new* evaluations to attempt
-OPTIMIZER_CANDIDATES_PER_ITERATION = 2 # How many new candidates to generate each iteration
-OPTIMIZER_RANDOM_EXPLORE_PROB = 0.15 # Probability of generating a completely random candidate vs. perturbing the best
-# >>> UPDATED OPTIONS <<<
-OPTIMIZER_SCORING_METHOD = 'max_abs' # Options: 'max_abs', 'mean_abs', 'max_positive', 'max_negative', 'mean_positive', 'mean_negative'
-# >>> END UPDATED <<<
+    # --- Visualization ---
+    "heatmap_max_configs": 50,     # Max indicators/configs to show on heatmap/combined chart
+    "plot_dpi": 300,               # DPI for saved plots
 
-# --- Ensure Directories Exist ---
-DB_DIR.mkdir(exist_ok=True)
-REPORTS_DIR.mkdir(exist_ok=True)
-HEATMAPS_DIR.mkdir(exist_ok=True)
-LINE_CHARTS_DIR.mkdir(exist_ok=True)
-COMBINED_CHARTS_DIR.mkdir(exist_ok=True)
-LOG_DIR.mkdir(exist_ok=True)
-# Leaderboard directory (project root is default, no need to create separate dir unless specified)
-# LEADERBOARD_DB_PATH.parent.mkdir(exist_ok=True)
+    # --- Parameter Optimization (Bayesian) ---
+    "optimizer_n_calls": 10,       # Total evaluations per lag per indicator
+    "optimizer_n_initial_points": 10,# Random points before fitting model per lag
+    "optimizer_acq_func": 'gp_hedge',# Acquisition function ('LCB', 'EI', 'PI', 'gp_hedge')
+}
+# ==========================
+
+
+# --- Ensure Core Directories Exist ---
+DB_DIR.mkdir(parents=True, exist_ok=True) # Added parents=True for robustness
+REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+HEATMAPS_DIR.mkdir(parents=True, exist_ok=True)
+LINE_CHARTS_DIR.mkdir(parents=True, exist_ok=True)
+COMBINED_CHARTS_DIR.mkdir(parents=True, exist_ok=True)
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+# Ensure Leaderboard directory exists (its parent, which is PROJECT_ROOT)
+LEADERBOARD_DB_PATH.parent.mkdir(parents=True, exist_ok=True)

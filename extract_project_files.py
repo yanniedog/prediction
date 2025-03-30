@@ -6,136 +6,135 @@ import logging
 from pathlib import Path
 from datetime import datetime
 
+# Import the standard backup utility
+try:
+    import backup_utils
+    BACKUP_UTIL_AVAILABLE = True
+except ImportError:
+    BACKUP_UTIL_AVAILABLE = False
+    logging.error("Could not import backup_utils. Backup step will be skipped in main().")
+
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-INPUT_FILENAME = "google.txt"
-BACKUP_FILE_PREFIX = "prediction_backup_google_"
-FILES_TO_BACKUP_PATTERNS = ['*.py', '*.json', 'requirements.txt']
+# --- Configuration ---
+INPUT_FILENAME = "google.txt" # The file containing the concatenated code from Gemini/Google
 
-def create_backup(backup_dir: Path):
-    """Finds specified files and creates a single concatenated backup file."""
-    timestamp = datetime.now().strftime('%y%m%d_%H%M%S')
-    backup_filename = backup_dir / f"{BACKUP_FILE_PREFIX}{timestamp}.bak"
-    files_backed_up_count = 0
+# --- Regex ---
+# Updated regex to be more robust with different line endings and START/END markers
+PATTERN = re.compile(
+    # Match the start block, capturing filename (group 1)
+    r"^(?:={70}\n)?(?:={3}\sSTART:\s)(.*?)(?:\s={3}\n)(?:={70}\n\n?)"
+    # Capture the content (group 2, non-greedy)
+    r"(.*?)"
+    # Match the end block, using backreference \1 for filename
+    r"(?:\n\n?^(?:={70}\n)?(?:={3}\sEND:\s)\1(?:\s={3}\n)(?:={70}\n)?)",
+    re.DOTALL | re.MULTILINE
+)
 
-    logging.info(f"Creating backup file: {backup_filename}")
-
-    try:
-        with backup_filename.open('w', encoding='utf-8') as bak_file:
-            for pattern in FILES_TO_BACKUP_PATTERNS:
-                matched_files = list(Path.cwd().glob(pattern))
-                if pattern == 'requirements.txt' and not matched_files:
-                     req_path = Path.cwd() / 'requirements.txt'
-                     if req_path.exists(): matched_files = [req_path]
-
-                for file_path in matched_files:
-                    if file_path.name == backup_filename.name or file_path.name == Path(__file__).name:
-                        continue
-
-                    if file_path.is_file():
-                        try:
-                            logging.debug(f"Backing up {file_path.name}...")
-                            content = file_path.read_text(encoding='utf-8', errors='replace')
-                            bak_file.write(f"--- START OF BACKUP FILE {file_path.relative_to(Path.cwd())} ---\n")
-                            bak_file.write(content)
-                            bak_file.write(f"\n--- END OF BACKUP FILE {file_path.relative_to(Path.cwd())} ---\n\n")
-                            files_backed_up_count += 1
-                        except Exception as e:
-                            logging.error(f"Error reading file {file_path} for backup: {e}")
-
-        if files_backed_up_count > 0:
-            logging.info(f"Successfully backed up {files_backed_up_count} files to {backup_filename}")
-        else:
-            logging.warning("No existing project files found to back up.")
-
-    except Exception as e:
-        logging.error(f"Failed to create backup file {backup_filename}: {e}")
-        return False
-    return True
 
 def clean_content(raw_content: str) -> str:
-    """Removes leading/trailing Markdown code fences if present."""
+    """
+    Cleans the extracted file content: removes markdown fences, normalizes line endings.
+    """
     lines = raw_content.splitlines()
-    if not lines:
-        return ""
+    if not lines: return "\n" # Empty file with newline
 
-    first_line_stripped = lines[0].strip()
-    last_line_stripped = lines[-1].strip()
+    # Remove Markdown Fences (``` or ```python etc.)
+    start_index = 0
+    end_index = len(lines)
+    if lines[0].strip().startswith('```'): start_index = 1
+    if lines[-1].strip() == '```': end_index = -1
 
-    has_leading_fence = first_line_stripped.startswith('```')
-    has_trailing_fence = last_line_stripped == '```'
+    cleaned_lines = lines[start_index:end_index] if start_index <= end_index else []
 
-    if has_leading_fence and has_trailing_fence and len(lines) >= 2:
-        return '\n'.join(lines[1:-1])
-    elif has_leading_fence and len(lines) == 1:
-        return ""
-    else:
-        return raw_content
+    # Normalize Line Endings and Ensure Single Trailing Newline
+    cleaned_text = '\n'.join(cleaned_lines)
+    cleaned_text = cleaned_text.replace('\r\n', '\n').replace('\r', '\n')
+    cleaned_text = cleaned_text.rstrip('\n') + '\n'
+    return cleaned_text
 
 
 def extract_files_from_source(source_filepath: Path):
-    """Extracts individual files from the concatenated source file, cleaning content."""
+    """Extracts individual files from the concatenated source file."""
     logging.info(f"Reading source file: {source_filepath}")
     if not source_filepath.exists():
         logging.error(f"Source file '{source_filepath}' not found.")
         sys.exit(1)
 
     try:
-        content = source_filepath.read_text(encoding='utf-8')
+        content = source_filepath.read_text(encoding='utf-8', errors='replace')
     except Exception as e:
         logging.error(f"Failed to read source file '{source_filepath}': {e}")
         sys.exit(1)
 
-    pattern = re.compile(
-        r"^--- START OF FILE (.*?) ---\n(.*?)\n^--- END OF FILE \1 ---",
-        re.DOTALL | re.MULTILINE
-    )
-
-    matches = pattern.finditer(content)
-    extracted_count = 0
-    error_count = 0
+    matches = PATTERN.finditer(content)
+    extracted_count = 0; error_count = 0; found_match = False; current_pos = 0
 
     logging.info("Starting file extraction...")
     for match in matches:
+        found_match = True
+        # Check for content between matches
+        if match.start() > current_pos:
+            missed_content = content[current_pos:match.start()].strip()
+            is_header = missed_content.startswith(("# Backup created on:", "# Source directory", "# Included files"))
+            if missed_content and not is_header:
+                logging.warning(f"Found content between file blocks (pos {current_pos}-{match.start()}):\n---\n{missed_content[:200]}...\n---")
+
         filename_str = ""
         try:
             filename_str = match.group(1).strip()
             raw_file_content = match.group(2)
 
-            if not filename_str:
-                logging.warning("Found a match with an empty filename. Skipping.")
-                continue
+            if not filename_str: logging.warning("Found match with empty filename. Skipping."); continue
 
             cleaned_file_content = clean_content(raw_file_content)
-            if raw_file_content != cleaned_file_content:
-                 logging.debug(f"Removed Markdown fences from {filename_str}")
+            if not cleaned_file_content.strip(): logging.warning(f"Skipping '{filename_str}' (empty after cleaning)."); continue
 
             target_path = Path(filename_str).resolve()
-
             target_path.parent.mkdir(parents=True, exist_ok=True)
-
             target_path.write_text(cleaned_file_content, encoding='utf-8', newline='\n')
 
             logging.info(f"Extracted and saved: {target_path}")
             extracted_count += 1
 
         except Exception as e:
-            logging.error(f"Error processing or writing file '{filename_str or 'Unknown'}': {e}")
+            logging.error(f"Error processing/writing file '{filename_str or 'Unknown'}': {e}", exc_info=True)
             error_count += 1
 
-    logging.info(f"Extraction complete. Successfully extracted: {extracted_count} files.")
-    if error_count > 0:
-        logging.warning(f"Encountered {error_count} errors during extraction.")
+        current_pos = match.end()
+
+    # Check for trailing content
+    if current_pos < len(content):
+         trailing_content = content[current_pos:].strip()
+         if trailing_content:
+              logging.warning(f"Found trailing content after last block:\n---\n{trailing_content[:200]}...\n---")
+
+    if not found_match:
+         logging.warning(f"No file blocks matching pattern found in '{INPUT_FILENAME}'. Check format/regex.")
+
+    logging.info(f"Extraction complete. Extracted: {extracted_count}. Errors: {error_count}.")
+    if error_count > 0: sys.exit(1) # Exit with error if issues occurred
 
 def main():
     """Main execution function."""
     current_dir = Path.cwd()
     source_file = current_dir / INPUT_FILENAME
 
-    if not create_backup(current_dir):
-        logging.error("Backup creation failed. Aborting extraction.")
-        sys.exit(1)
+    # --- Create Backup using standard utility ---
+    if BACKUP_UTIL_AVAILABLE:
+        print("\n--- Creating Backup ---")
+        try:
+            backup_utils.create_backup_flat(str(current_dir))
+            print("Backup potentially created (check output).")
+        except Exception as bk_err:
+            logging.error(f"Error running standard backup utility: {bk_err}. Aborting extraction.")
+            print(f"ERROR: Backup failed: {bk_err}")
+            sys.exit(1)
+    else:
+        print("WARNING: backup_utils not found. Skipping backup.")
 
+    print("\n--- Extracting Files ---")
     extract_files_from_source(source_file)
 
 if __name__ == "__main__":

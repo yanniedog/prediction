@@ -163,3 +163,4 @@ cython_debug/
 *.png
 *.bak
 *.csv
+/.venv_old

@@ -4,144 +4,170 @@ import pandas as pd
 import numpy as np
 from typing import List, Tuple, Optional, Dict, Any
 import logging
-import re # Import re
-import hashlib # Import hashlib
-import json # Import json
+import re
+import hashlib
+import json
+from datetime import datetime, timedelta, timezone
+import math
+
+try:
+    from dateutil.relativedelta import relativedelta
+    DATEUTIL_AVAILABLE = True
+except ImportError:
+    DATEUTIL_AVAILABLE = False
+    logging.warning("python-dateutil missing. Month timeframe calculations ('1M') may fail.")
 
 logger = logging.getLogger(__name__)
 
 def clear_screen() -> None:
     """Clears the terminal screen."""
-    # Use standard library method for cross-platform compatibility
-    # Works on Linux/macOS/Windows (in modern terminals)
     os.system('cls' if os.name == 'nt' else 'clear')
-
-def determine_time_interval(data: pd.DataFrame) -> Optional[str]:
-    """Determines the most common time interval in the data based on 'date' column."""
-    if 'date' not in data.columns:
-        logger.error("No 'date' column found for determining time interval.")
-        return None
-    if len(data) < 2:
-        logger.warning("Insufficient data (less than 2 rows) to determine time interval.")
-        return None
-
-    # Ensure date column is suitable
-    date_col = data['date']
-    if not pd.api.types.is_datetime64_any_dtype(date_col):
-        try:
-            date_col = pd.to_datetime(date_col, errors='coerce')
-        except Exception as e:
-             logger.error(f"Error converting date column to datetime: {e}")
-             return None
-
-    date_col = date_col.dropna()
-    if len(date_col) < 2:
-        logger.warning("Not enough valid dates after dropna to determine interval.")
-        return None
-
-    # Calculate time differences in seconds
-    # Sort first to ensure correct diff calculation if data wasn't pre-sorted
-    time_diffs = date_col.sort_values().diff().dt.total_seconds().dropna()
-
-    if time_diffs.empty:
-        logger.warning("No time differences found after processing.")
-        return None
-
-    try:
-        # Use median for robustness against outliers
-        median_diff = time_diffs.median()
-        logger.debug(f"Median time difference: {median_diff} seconds.")
-
-        if median_diff <= 0:
-            logger.warning(f"Median time difference is not positive ({median_diff}). Cannot determine interval.")
-            return None
-
-        # Define thresholds (adjust slightly for edge cases, e.g., 59.9s)
-        # Using common intervals
-        if median_diff < 60: return 'seconds'          # Less than 1 min
-        if median_diff < 3570: return 'minutes'        # Less than 59.5 min
-        if median_diff < 86100: return 'hours'         # Less than 23.9 hours
-        if median_diff < 603000: return 'days'         # Less than 6.98 days (handle weekly slightly off)
-        if median_diff < 2580000: return 'weeks'       # Less than ~29.8 days
-        if median_diff < 31500000: return 'months'     # Less than ~364 days
-        return 'years'
-
-    except Exception as e:
-        logger.error(f"Error determining time interval median: {e}", exc_info=True)
-        return None
 
 def parse_indicator_column_name(col_name: str) -> Optional[Tuple[str, int, Optional[str]]]:
     """
-    Parses indicator column names like 'MACD_10_0', 'AD_29', 'KC_50_LOWER', 'VORTEX_70_PLUS'.
-    Handles base names that might contain underscores.
-
-    Returns: Tuple(base_indicator_name, config_id, output_suffix|None)
-             Returns None if parsing fails.
-             output_suffix can be numeric ('0', '1') or string ('LOWER', 'PLUS').
+    Parses indicator column names like 'MACD_10_0', 'AD_29', 'KC_50_LOWER'.
+    Assumes Config ID is the LAST numeric part preceded by '_'.
     """
-    # Regex tries to capture the pattern: (Anything)_(Digits)(Optional_[AnythingElse])
-    # It assumes the config_id is the *last* group of digits preceded by an underscore.
-    # (.*?)       Group 1: Base Name (non-greedy)
-    # _           Literal underscore
-    # (\d+)       Group 2: Config ID (digits)
-    # (?:         Optional non-capturing group for suffix
-    #   _         Literal underscore
-    #   (.*)      Group 3: Suffix (anything following the underscore after config_id)
-    # )?          End optional group
-    # $           End of string
-    match = re.match(r'^(.*?)_(\d+)(?:_(.*))?$', col_name)
-
+    match = re.match(r'^(.*?)_(\d+)(?:_(.+))?$', col_name)
     if match:
-        base_name = match.group(1)
-        config_id_str = match.group(2)
-        output_suffix = match.group(3) # This could be None, a number string, or a text suffix
-
+        base_name, config_id_str, output_suffix = match.groups()
         try:
-            config_id = int(config_id_str)
-            # Check if base_name itself ends with _<digits> which might be part of the *actual* indicator name
-            # e.g., if an indicator was genuinely named 'MY_INDICATOR_10' and config ID is 5 -> 'MY_INDICATOR_10_5'
-            # This is tricky. For now, assume the last _<digits> is the config ID. Refine if needed.
-            return base_name, config_id, output_suffix # output_suffix can be None
+            return base_name, int(config_id_str), output_suffix
         except ValueError:
-            # This case should be rare if the regex matched digits for config_id
-            logger.error(f"Could not convert supposed config_id '{config_id_str}' to int for column '{col_name}'")
+            logger.error(f"Internal Error: Regex matched digits, but conversion failed for '{col_name}'")
             return None
     else:
-        # If the primary pattern fails, log and return None
-        # logger.debug(f"Could not parse indicator column name format: {col_name}") # Reduce noise
+        logger.debug(f"Column name '{col_name}' did not match pattern `base_name_configID[_suffix]`.")
         return None
 
 def get_config_identifier(indicator_name: str, config_id: int, output_index_or_suffix: Optional[Any]) -> str:
-    """
-    Creates a consistent identifier string for an indicator configuration output.
-    Handles numeric index or string suffix.
-    """
-    name = f"{indicator_name}_{config_id}"
+    """Creates a consistent identifier string for an indicator output column."""
+    clean_name = str(indicator_name).strip()
+    name = f"{clean_name}_{config_id}"
     if output_index_or_suffix is not None:
-        # Append the index or suffix directly
-        name += f"_{output_index_or_suffix}"
+        clean_suffix = str(output_index_or_suffix).strip()
+        if clean_suffix:
+            name += f"_{clean_suffix}"
     return name
 
 def get_config_hash(params: Dict[str, Any]) -> str:
     """Generates a stable SHA256 hash for a parameter dictionary."""
-    # Convert params to a canonical JSON string (sorted keys, no whitespace)
-    config_str = json.dumps(params, sort_keys=True, separators=(',', ':'))
-    # Encode to bytes and hash
-    return hashlib.sha256(config_str.encode('utf-8')).hexdigest()
+    try:
+        config_str = json.dumps(params, sort_keys=True, separators=(',', ':'))
+        return hashlib.sha256(config_str.encode('utf-8')).hexdigest()
+    except TypeError as e:
+        logger.error(f"Error creating JSON for hashing parameters: {params}. Error: {e}")
+        try:
+            # Fallback hashing (less reliable)
+            fallback_str = str(sorted(params.items()))
+            logger.warning(f"Using fallback hashing method for params: {params}")
+            return hashlib.sha256(fallback_str.encode('utf-8')).hexdigest()
+        except Exception as fallback_e:
+            logger.critical(f"CRITICAL: Failed fallback hashing for params {params}: {fallback_e}")
+            raise TypeError(f"Cannot hash parameters: {params}") from e
 
-def compare_param_dicts(dict1: Dict, dict2: Dict) -> bool:
-    """Compares two parameter dictionaries, handling float precision."""
-    if dict1.keys() != dict2.keys():
-        return False
+def compare_param_dicts(dict1: Optional[Dict], dict2: Optional[Dict]) -> bool:
+    """Compares two parameter dictionaries for equality, handling float precision."""
+    if dict1 is None and dict2 is None: return True
+    if dict1 is None or dict2 is None: return False
+    if not isinstance(dict1, dict) or not isinstance(dict2, dict): return False
+    if dict1.keys() != dict2.keys(): return False
+
     for key in dict1:
-        val1 = dict1[key]
-        val2 = dict2[key]
+        val1, val2 = dict1[key], dict2[key]
         if isinstance(val1, float) and isinstance(val2, float):
-            # Use numpy's isclose for robust float comparison
-            if not np.isclose(val1, val2, rtol=1e-5, atol=1e-8):
-                return False
-        elif type(val1) != type(val2): # Check types if not float
-             return False
-        elif val1 != val2: # Direct comparison for non-float types
-            return False
+            if not np.isclose(val1, val2, rtol=1e-5, atol=1e-8): return False
+        elif type(val1) != type(val2):
+             # Allow None comparisons specifically
+            if (val1 is None and val2 is not None) or (val1 is not None and val2 is None): return False
+            if val1 is None and val2 is None: continue # Both None is equal
+            return False # Different types otherwise
+        elif val1 != val2: return False # Direct comparison for non-floats
     return True
+
+# --- Timeframe Calculation Helper Functions ---
+def _get_seconds_per_period(timeframe: str) -> Optional[float]:
+    """Helper to get approximate seconds per period for common Binance timeframes."""
+    match = re.match(r'(\d+)([mhdw])$', timeframe.lower())
+    if match:
+        try:
+            value = int(match.group(1)); unit = match.group(2)
+            if value <= 0: raise ValueError("Timeframe value must be positive")
+            multipliers = {'m': 60, 'h': 3600, 'd': 86400, 'w': 604800}
+            return float(value * multipliers[unit])
+        except (ValueError, KeyError):
+             logger.error(f"Invalid value/unit in timeframe '{timeframe}'")
+             return None
+    elif timeframe == '1M': return None # Month handled separately
+    else: logger.error(f"Unrecognized timeframe format: {timeframe}"); return None
+
+def calculate_periods_between_dates(start_date: datetime, end_date: datetime, timeframe: str) -> Optional[int]:
+    """Estimates the number of periods between two dates based on the timeframe."""
+    if not isinstance(start_date, datetime) or not isinstance(end_date, datetime):
+        logger.error("Invalid date types for period calculation."); return None
+    if start_date.tzinfo is None: start_date = start_date.replace(tzinfo=timezone.utc)
+    if end_date.tzinfo is None: end_date = end_date.replace(tzinfo=timezone.utc)
+    if end_date <= start_date: return 0
+
+    if timeframe == '1M': # Handle Month ('1M')
+        if not DATEUTIL_AVAILABLE: logger.error("Cannot calc month periods: python-dateutil missing."); return None
+        try:
+            delta = relativedelta(end_date, start_date)
+            total_months = delta.years * 12 + delta.months
+            # If any remaining time, count as next period
+            has_remainder = delta.days > 0 or delta.hours > 0 or delta.minutes > 0 or delta.seconds > 0 or delta.microseconds > 0
+            periods = total_months + 1 if has_remainder else total_months
+            # Handle case where difference is less than a month but non-zero
+            if periods == 0 and total_months == 0 and has_remainder: periods = 1
+            logger.debug(f"Calculated {periods} month periods between {start_date} and {end_date}.")
+            return max(1, periods) if end_date > start_date else 0
+        except Exception as e: logger.error(f"Error calc month periods: {e}", exc_info=True); return None
+
+    # Handle other timeframes using seconds
+    period_seconds = _get_seconds_per_period(timeframe)
+    if period_seconds is None: logger.error(f"Cannot get seconds/period for '{timeframe}'."); return None
+    total_seconds = (end_date - start_date).total_seconds()
+    if total_seconds <= 0: return 0
+    periods = math.ceil(total_seconds / period_seconds) # Use ceiling division
+    logger.debug(f"Calculated {periods} periods for '{timeframe}' ({total_seconds:.2f}s / {period_seconds}s/prd).")
+    return periods
+
+def estimate_days_in_periods(periods: int, timeframe: str) -> Optional[float]:
+    """Estimates approximate calendar days covered by N periods."""
+    if not isinstance(periods, int) or periods < 0: logger.error(f"Invalid periods ({periods})"); return None
+    if periods == 0: return 0.0
+
+    if timeframe == '1M':
+        avg_days_month = 365.2425 / 12.0; est_days = periods * avg_days_month
+        logger.debug(f"Estimated {est_days:.2f} days for {periods} months.")
+        return est_days
+
+    period_seconds = _get_seconds_per_period(timeframe)
+    if period_seconds is None: logger.error(f"Cannot get seconds/period for '{timeframe}'."); return None
+    est_days = (periods * period_seconds) / 86400.0
+    logger.debug(f"Estimated {est_days:.2f} days for {periods} periods of '{timeframe}'.")
+    return est_days
+
+def estimate_future_date(start_date: datetime, periods: int, timeframe: str) -> Optional[datetime]:
+    """Estimates the future date after N periods."""
+    if not isinstance(start_date, datetime): logger.error("Invalid start_date."); return None
+    if not isinstance(periods, int) or periods < 0: logger.error(f"Invalid periods ({periods})."); return None
+    if periods == 0: return start_date
+
+    tz_info = start_date.tzinfo if start_date.tzinfo else timezone.utc
+    start_date_aware = start_date.replace(tzinfo=tz_info)
+
+    try:
+        if timeframe == '1M': # Use relativedelta for months
+            if not DATEUTIL_AVAILABLE: logger.error("Cannot estimate future month date: dateutil missing."); return None
+            future_date = start_date_aware + relativedelta(months=periods)
+            logger.debug(f"Estimated future date for {periods} months: {future_date}"); return future_date
+
+        # Other timeframes use seconds
+        period_seconds = _get_seconds_per_period(timeframe)
+        if period_seconds is None: logger.error(f"Cannot get seconds/period for '{timeframe}'."); return None
+        future_date = start_date_aware + timedelta(seconds=periods * period_seconds)
+        logger.debug(f"Estimated future date for {periods} periods of '{timeframe}': {future_date}")
+        return future_date
+    except OverflowError: logger.error(f"Date calculation overflow: {periods} periods of {timeframe} from {start_date}."); return None
+    except Exception as e: logger.error(f"Error calculating future date: {e}", exc_info=True); return None
