@@ -58,15 +58,34 @@ def _setup_and_select_mode(timestamp_str: str) -> Optional[str]:
         sys.exit(1)
 
     try:
-        cleanup_choice = input("Delete previous analysis content? [Y/n]: ").strip().lower()
+        cleanup_choice = input("Delete previous analysis content? (Reports, Logs, Leaderboard DB) [Y/n]: ").strip().lower() # Clarified prompt
         if cleanup_choice == '' or cleanup_choice == 'y':
-            print("Proceeding with cleanup...");
+            print("Proceeding with cleanup (Reports, Logs, Leaderboard DB)...");
             handlers = logging.getLogger().handlers[:]
             for handler in handlers: handler.close(); logging.getLogger().removeHandler(handler)
             logging.shutdown()
-            utils.cleanup_previous_content()
+
+            # --- Define files to KEEP during cleanup ---
+            # Exclude only essential config/source files, NOT the leaderboard DB
+            files_to_keep_during_cleanup = [
+                config.INDICATOR_PARAMS_PATH.name,
+                '.gitignore',
+                # Add any other critical config files here if needed
+            ]
+            logger.info(f"Cleanup selected. Keeping: {files_to_keep_during_cleanup}")
+            # Call cleanup, explicitly passing the files to keep (overriding the default)
+            # clean_db=False ensures user data DBs aren't touched unless explicitly requested later
+            utils.cleanup_previous_content(
+                clean_reports=True,
+                clean_logs=True,
+                clean_db=False, # Keep user data DBs safe by default
+                exclude_files=files_to_keep_during_cleanup
+            )
+            # ---------------------------------------------
+
             logging_setup.setup_logging(); logger = logging.getLogger(__name__)
             logger.info(f"Re-initialized logging after cleanup: {timestamp_str}")
+            # Re-initialize leaderboard DB (it was just deleted)
             if not leaderboard_manager.initialize_leaderboard_db():
                 logger.critical("Failed re-initialize leaderboard DB after cleanup!")
                 print("\nCRITICAL ERROR: Could not re-initialize leaderboard DB. Exiting.")
@@ -797,7 +816,7 @@ def run_analysis():
     _display_progress("Indicator/Correlation Complete", current_analysis_step, TOTAL_ANALYSIS_STEPS)
 
     # Pass global timing args here (though less critical for ETA in final phase)
-    # --- ***** FIX: Pass the updated current_analysis_step ***** ---
+    # --- Pass the updated current_analysis_step ---
     _generate_final_reports_and_predict(
         _display_progress, current_analysis_step, db_path, symbol, timeframe, max_lag, symbol_id, timeframe_id,
         data_daterange_str, timestamp_str, is_bayesian_path,
@@ -805,8 +824,7 @@ def run_analysis():
         analysis_start_time_global=_confirmed_analysis_start_time,
         total_analysis_steps_global=TOTAL_ANALYSIS_STEPS
     )
-    # --- ***** END FIX ***** ---
-    # Progress display handled within the function
+    # --- Progress display handled within the function ---
 
     # Ensure final progress shows 100%
     _display_progress("Run Finished", TOTAL_ANALYSIS_STEPS, TOTAL_ANALYSIS_STEPS)
