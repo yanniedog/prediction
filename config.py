@@ -25,8 +25,8 @@ DEFAULTS = {
     "timeframe": "1d",
 
     # --- Analysis Parameters ---
-    "max_lag": 2,                   # Default max correlation lag if user doesn't specify
-    "min_data_points_for_lag": 51,  # Min points needed beyond max_lag (e.g., for indicators)
+    "max_lag": 30,                   # Default max correlation lag if user doesn't specify
+    "min_data_points_for_lag": 220,  # Min points needed beyond max_lag (e.g., for indicators)
     "target_max_correlations": 75000,# Target limit for estimated correlations (triggers warning)
     "default_analysis_path": 'tweak', # 'tweak' (Bayesian) or 'classical' (Default+Range)
     "total_analysis_steps_estimate": 10, # Rough estimate for overall progress bar
@@ -35,7 +35,7 @@ DEFAULTS = {
     "classical_path_range_steps": 5,# +/- steps around default for Classical Path param generation
 
     # --- Bayesian Optimization Path (Tweak) ---
-    "optimizer_n_calls": 20,        # Total evaluations per lag per indicator (Incl. initial)
+    "optimizer_n_calls": 50,        # Total evaluations per lag per indicator (Incl. initial)
     "optimizer_n_initial_points": 10,# Random points before fitting model per lag
     "optimizer_acq_func": 'gp_hedge',# Acquisition function ('LCB', 'EI', 'PI', 'gp_hedge')
     "weak_corr_threshold_skip_opt": 0.25, # Abs corr threshold below which initial points skip opt for a lag

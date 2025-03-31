@@ -52,39 +52,96 @@ def _setup_and_select_mode(timestamp_str: str) -> Optional[str]:
     """Handles initial setup, cleanup prompt, and mode selection."""
     logger = logging.getLogger(__name__)
     logger.info("Initializing leaderboard database (pre-cleanup)...")
+    # Initialize early to ensure the path is valid, even if we delete it momentarily
     if not leaderboard_manager.initialize_leaderboard_db():
         logger.error("Failed initialize leaderboard DB.")
         print("\nERROR: Could not initialize leaderboard database. Exiting.")
         sys.exit(1)
 
     try:
-        cleanup_choice = input("Delete previous analysis content? (Reports, Logs, Leaderboard DB) [Y/n]: ").strip().lower() # Clarified prompt
+        # Prompt Clarification: Mention specific deletions
+        prompt_text = (
+            "Delete previous analysis content? "
+            "(Reports Dir, Logs Dir, Leaderboard DB, Reports/*.txt) [Y/n]: "
+        )
+        cleanup_choice = input(prompt_text).strip().lower()
         if cleanup_choice == '' or cleanup_choice == 'y':
-            print("Proceeding with cleanup (Reports, Logs, Leaderboard DB)...");
+            print("Proceeding with cleanup (Reports, Logs, Leaderboard DB, Reports/*.txt)...")
+            logger = logging.getLogger(__name__) # Ensure logger is accessible
+
+            # --- Specific Cleanup Logic (BEFORE general cleanup & log shutdown) ---
+            # 1. Delete correlation_leaderboard.db using configured path
+            leaderboard_db_path = config.LEADERBOARD_DB_PATH
+            if leaderboard_db_path.exists():
+                try:
+                    leaderboard_db_path.unlink()
+                    logger.info(f"Deleted specific file: {leaderboard_db_path}")
+                    print(f"Deleted: {leaderboard_db_path.name}")
+                except OSError as e:
+                    logger.error(f"Error deleting {leaderboard_db_path}: {e}", exc_info=True)
+                    print(f"WARNING: Could not delete {leaderboard_db_path.name}. Check permissions.")
+            else:
+                 logger.info(f"Leaderboard DB '{leaderboard_db_path}' not found, skipping deletion.")
+
+
+            # 2. Delete all .txt files from the reports subdirectory
+            reports_dir = config.REPORTS_DIR
+            if reports_dir.is_dir():
+                deleted_count = 0
+                errors_count = 0
+                try:
+                    for txt_file in reports_dir.glob("*.txt"):
+                        if txt_file.is_file(): # Ensure it's a file before trying to delete
+                            try:
+                                txt_file.unlink()
+                                deleted_count += 1
+                            except OSError as e:
+                                logger.error(f"Error deleting report file {txt_file}: {e}", exc_info=True)
+                                errors_count += 1
+                    if deleted_count > 0:
+                        logger.info(f"Deleted {deleted_count} .txt files from {reports_dir}")
+                        print(f"Deleted {deleted_count} .txt files from {reports_dir}")
+                    if errors_count > 0:
+                        logger.warning(f"Encountered {errors_count} errors deleting .txt files from {reports_dir}")
+                        print(f"WARNING: Could not delete {errors_count} .txt files from {reports_dir}. Check logs/permissions.")
+                except Exception as e:
+                    # Catch potential errors during glob or iteration itself
+                    logger.error(f"Error processing text files in {reports_dir}: {e}", exc_info=True)
+                    print(f"ERROR: Could not process text files in {reports_dir}.")
+            else:
+                logger.info(f"Reports directory '{reports_dir}' not found or is not a directory, skipping .txt file deletion.")
+            # --- END Specific Cleanup Logic ---
+
+            # Close logging handlers BEFORE general cleanup attempts to delete log files
+            print("Closing log handlers for cleanup...")
             handlers = logging.getLogger().handlers[:]
             for handler in handlers: handler.close(); logging.getLogger().removeHandler(handler)
-            logging.shutdown()
+            logging.shutdown() # Ensure logs are flushed and files closed
 
-            # --- Define files to KEEP during cleanup ---
-            # Exclude only essential config/source files, NOT the leaderboard DB
+            # --- Define files to KEEP during standard cleanup ---
+            # Leaderboard DB is already deleted above, no need to exclude here
+            # TXT files in reports dir are already deleted above
             files_to_keep_during_cleanup = [
                 config.INDICATOR_PARAMS_PATH.name,
                 '.gitignore',
                 # Add any other critical config files here if needed
             ]
-            logger.info(f"Cleanup selected. Keeping: {files_to_keep_during_cleanup}")
-            # Call cleanup, explicitly passing the files to keep (overriding the default)
-            # clean_db=False ensures user data DBs aren't touched unless explicitly requested later
+            # No logger available here until re-initialized below
+
+            # Call standard cleanup (handles directory structures like logs/, reports/)
             utils.cleanup_previous_content(
-                clean_reports=True,
-                clean_logs=True,
-                clean_db=False, # Keep user data DBs safe by default
+                clean_reports=True, # Clean the reports dir structure (empties it)
+                clean_logs=True,    # Clean the logs dir structure (empties it)
+                clean_db=False,     # Keep user data DBs safe by default
                 exclude_files=files_to_keep_during_cleanup
             )
             # ---------------------------------------------
 
-            logging_setup.setup_logging(); logger = logging.getLogger(__name__)
-            logger.info(f"Re-initialized logging after cleanup: {timestamp_str}")
+            # Re-initialize logging AFTER cleanup
+            logging_setup.setup_logging()
+            logger = logging.getLogger(__name__) # Re-assign logger variable
+            logger.info(f"Re-initialized logging after full cleanup: {timestamp_str}")
+
             # Re-initialize leaderboard DB (it was just deleted)
             if not leaderboard_manager.initialize_leaderboard_db():
                 logger.critical("Failed re-initialize leaderboard DB after cleanup!")
@@ -92,13 +149,20 @@ def _setup_and_select_mode(timestamp_str: str) -> Optional[str]:
                 sys.exit(1)
             logger.info("Leaderboard DB re-initialized after cleanup.")
         else:
-            print("Skipping cleanup."); logger.info("Skipping cleanup.")
+            print("Skipping cleanup.")
+            logger.info("Skipping cleanup.") # Logger is still available here
     except Exception as e:
-        logger.error(f"Cleanup error: {e}", exc_info=True)
-        print("\nERROR during cleanup process. Exiting.")
+        # Use print here as logger might be in an inconsistent state if error occurred during shutdown/reinit
+        print(f"\nERROR during cleanup process: {e}")
+        try:
+            # Attempt to log the error if logger is still functional
+            logger.error(f"Cleanup process error: {e}", exc_info=True)
+        except Exception:
+             pass # Ignore logging errors during cleanup error handling
+        print("Exiting due to cleanup error.")
         sys.exit(1)
 
-    # Mode Selection
+    # Mode Selection (remains the same)
     while True:
         print("\n--- Mode Selection ---")
         print("[A]nalysis: Run full analysis (Bayesian/Classical Path)")
