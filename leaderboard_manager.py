@@ -23,9 +23,9 @@ def _create_leaderboard_connection() -> Optional[sqlite3.Connection]:
         config.LEADERBOARD_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         logger.debug(f"Connecting to leaderboard database: {config.LEADERBOARD_DB_PATH}")
         # Use autocommit mode off, increased timeout, add busy timeout
-        conn = sqlite3.connect(config.LEADERBOARD_DB_PATH, timeout=15.0, isolation_level=None)
+        conn = sqlite3.connect(str(config.LEADERBOARD_DB_PATH), timeout=15.0, isolation_level=None) # isolation_level=None enables autocommit unless BEGIN is used
         conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA foreign_keys = OFF;") # Leaderboard is standalone
+        conn.execute("PRAGMA foreign_keys = OFF;") # Leaderboard is standalone, FKs not critical here
         conn.execute("PRAGMA busy_timeout = 10000;") # Wait 10s if DB is locked
         conn.row_factory = sqlite3.Row # Return rows as dict-like objects
         logger.debug("Successfully connected to leaderboard database.")
@@ -45,8 +45,9 @@ def initialize_leaderboard_db() -> bool:
     if conn is None: return False
     try:
         cursor = conn.cursor()
-        conn.execute("BEGIN DEFERRED;") # Use deferred for schema init
-        # Use millisecond precision for timestamp storage (TEXT ISO8601)
+        # Use DEFERRED transaction for schema init (less locking)
+        conn.execute("BEGIN DEFERRED;")
+        # Use millisecond precision for timestamp storage (TEXT ISO8601 'YYYY-MM-DDTHH:MM:SS.sssZ')
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS leaderboard (
             lag INTEGER NOT NULL,
@@ -57,16 +58,14 @@ def initialize_leaderboard_db() -> bool:
             symbol TEXT NOT NULL,
             timeframe TEXT NOT NULL,
             dataset_daterange TEXT NOT NULL,
-            calculation_timestamp TEXT NOT NULL, -- Store as ISO 8601 text
+            calculation_timestamp TEXT NOT NULL, -- Store as ISO 8601 text with Z
             config_id_source_db INTEGER, -- Store the ID from the source symbol DB
             source_db_name TEXT, -- Store the name of the source symbol DB
             PRIMARY KEY (lag, correlation_type)
         );""")
-        # Add index if it doesn't exist
+        # Add indices if they don't exist for faster lookups
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_lag ON leaderboard(lag);")
-        # Add index for faster predictor lookup per lag
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_lag_val ON leaderboard(lag, correlation_value);")
-        # Index for finding specific predictor entries if needed later
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_indicator_config ON leaderboard(indicator_name, config_id_source_db);")
 
         conn.commit()
@@ -94,6 +93,7 @@ def load_leaderboard() -> Dict[Tuple[int, str], Dict[str, Any]]:
             logger.warning("Leaderboard table does not exist. Returning empty.")
             return {}
 
+        # Select all columns
         cursor.execute("""
             SELECT lag, correlation_type, correlation_value, indicator_name, config_json,
                    symbol, timeframe, dataset_daterange, calculation_timestamp,
@@ -106,7 +106,7 @@ def load_leaderboard() -> Dict[Tuple[int, str], Dict[str, Any]]:
             # Ensure essential keys are present before adding
             if row['lag'] is not None and row['correlation_type'] is not None:
                 key = (row['lag'], row['correlation_type'])
-                # Convert Row object to a standard dictionary
+                # Convert Row object to a standard dictionary for external use
                 leaderboard_data[key] = dict(row)
                 loaded_count += 1
             else:
@@ -137,11 +137,12 @@ def check_and_update_single_lag(
     and updates the leaderboard DB immediately if it is. Also triggers
     leaderboard.txt export on update. Returns True if an update occurred.
     """
+    # Validate input correlation value
     if not pd.notna(correlation_value) or not isinstance(correlation_value, (float, int)):
         logger.debug(f"Skipping leaderboard check: Non-numeric correlation {correlation_value} (Lag {lag}, ID {config_id})")
-        return False # Cannot compare NaN or non-numeric
-    if config_id is None: # Ensure we have the source config ID
-         logger.error(f"Skipping leaderboard check: Missing source config_id (Lag {lag}, Indicator {indicator_name})")
+        return False
+    if config_id is None or not isinstance(config_id, int): # Ensure we have a valid source config ID
+         logger.error(f"Skipping leaderboard check: Invalid/missing source config_id ({config_id}) (Lag {lag}, Ind {indicator_name})")
          return False
 
     conn = _create_leaderboard_connection()
@@ -152,16 +153,16 @@ def check_and_update_single_lag(
     updated = False
     try:
         cursor = conn.cursor()
-        # Use IMMEDIATE transaction for better concurrency handling during updates
+        # Use IMMEDIATE transaction for potentially better concurrency during updates
         cursor.execute("BEGIN IMMEDIATE;")
         current_best_pos = -np.inf
         current_best_neg = np.inf
 
-        # Get current bests for this lag
+        # Get current bests for this lag from the database
         cursor.execute("SELECT correlation_type, correlation_value FROM leaderboard WHERE lag = ?", (lag,))
         rows = cursor.fetchall()
         for row in rows:
-            # Ensure value is not NULL and is numeric before comparison
+            # Ensure value from DB is not NULL and is numeric before comparison
             if row['correlation_value'] is not None:
                 try:
                     db_val = float(row['correlation_value'])
@@ -170,36 +171,35 @@ def check_and_update_single_lag(
                     elif row['correlation_type'] == 'negative':
                         current_best_neg = min(current_best_neg, db_val)
                 except (ValueError, TypeError):
-                     logger.warning(f"Non-numeric value found in leaderboard DB for lag {lag}: {row['correlation_value']}. Skipping comparison.")
+                     logger.warning(f"Non-numeric value found in leaderboard DB for lag {lag}: {row['correlation_value']}. Skipping comparison for this row.")
 
-        # Determine correlation type and check if it's a new best
+        # Determine correlation type and check if the current value is a new best
         is_new_best = False
         new_corr_type = None
         current_val_float = float(correlation_value) # Ensure float for comparison
 
-        # Define a small tolerance for floating point comparisons? Maybe not needed if storing precisely.
-        # tolerance = 1e-9
-        if current_val_float > 0 and current_val_float > current_best_pos: # + tolerance:
+        # Using direct comparison (tolerance likely not needed with REAL type in SQLite)
+        if current_val_float > 0 and current_val_float > current_best_pos:
             is_new_best = True
             new_corr_type = 'positive'
-        elif current_val_float < 0 and current_val_float < current_best_neg: # - tolerance:
+        elif current_val_float < 0 and current_val_float < current_best_neg:
             is_new_best = True
             new_corr_type = 'negative'
 
+        # If it's a new best, update the database
         if is_new_best:
             old_best_val_str = f"{current_best_pos:.6f}" if new_corr_type == 'positive' else f"{current_best_neg:.6f}"
-            # Changed to INFO level for visibility
             logger.info(f"LEADERBOARD UPDATE (Lag {lag}, Type {new_corr_type}): New Best Corr={current_val_float:.6f} (beats {old_best_val_str}) by Ind '{indicator_name}' (SrcID: {config_id})")
             try:
-                 # Use utils hasher for consistency (including float rounding)
-                 hasher_params = params.copy() # Don't modify original
-                 config_json = json.dumps({k: round(v, 8) if isinstance(v, float) else v for k, v in hasher_params.items()}, sort_keys=True, separators=(',', ':'))
+                 # Serialize params using the consistent utils hasher method
+                 config_json = json.dumps(utils.round_floats_for_hashing(params), sort_keys=True, separators=(',', ':'))
             except TypeError as json_err:
                  logger.error(f"Cannot serialize params to JSON for leaderboard update (Lag {lag}, ID {config_id}): {params}. Error: {json_err}")
                  conn.rollback()
                  return False # Cannot store invalid JSON
 
-            calculation_ts = datetime.now(timezone.utc).isoformat(timespec='milliseconds') + 'Z' # Add Z for UTC explicitly
+            # Get current UTC time in ISO format with Z
+            calculation_ts = datetime.now(timezone.utc).isoformat(timespec='milliseconds') + 'Z'
             query = """INSERT OR REPLACE INTO leaderboard (lag, correlation_type, correlation_value, indicator_name, config_json,
                          symbol, timeframe, dataset_daterange, calculation_timestamp, config_id_source_db, source_db_name)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"""
@@ -207,8 +207,8 @@ def check_and_update_single_lag(
                                   symbol, timeframe, data_daterange, calculation_ts, config_id, source_db_name))
             conn.commit() # Commit the single update
             updated = True
-        # else: # Reduce noise, only log if it IS a new best
-        #     logger.debug(f"Leaderboard check (Lag: {lag}): Corr {current_val_float:.4f} not better than current bests (Pos: {current_best_pos:.4f}, Neg: {current_best_neg:.4f}).")
+        # else: # Reduce log noise, only log if it IS a new best
+        #     pass
 
     except sqlite3.Error as e:
         logger.error(f"DB Error checking/updating leaderboard for lag {lag}: {e}", exc_info=True)
@@ -224,9 +224,8 @@ def check_and_update_single_lag(
     # Trigger export AFTER closing DB connection if an update happened
     if updated:
         try:
-            export_success = export_leaderboard_to_text()
-            if not export_success:
-                logger.error("Failed to export leaderboard.txt after real-time update.")
+            # This function now logs success/failure internally and doesn't print to console
+            export_leaderboard_to_text()
         except Exception as export_err:
             logger.error(f"Error triggering leaderboard export after update: {export_err}", exc_info=True)
 
@@ -245,32 +244,29 @@ def update_leaderboard(
 ) -> None:
     """
     Compares current run's results against the leaderboard and updates if better correlation found.
-    Uses the `check_and_update_single_lag` function internally.
+    Uses the `check_and_update_single_lag` function internally, which handles DB updates and exports.
     """
     logger.info(f"Starting leaderboard update comparison (Batch Mode) for {symbol}_{timeframe} (Max Lag: {max_lag})...")
 
     config_details_map = {cfg['config_id']: cfg for cfg in indicator_configs if 'config_id' in cfg}
     updates_triggered_in_batch = 0
     total_checks = 0
-
     num_configs_to_check = len(current_run_correlations)
     configs_checked = 0
 
     # Iterate through results and call the single-lag update function
     for config_id, correlations in current_run_correlations.items():
         configs_checked += 1
-        print(f"\rChecking leaderboard for Config {configs_checked}/{num_configs_to_check}...", end="")
+        # No print statement needed here, progress is handled by the calling function (main.py)
 
         if not isinstance(correlations, list):
             logger.warning(f"Invalid correlation data type for ID {config_id}. Skipping.")
             continue
 
         config_info = config_details_map.get(config_id)
-        if not config_info:
-            logger.warning(f"Config details missing for ID {config_id} during batch update loop. Skipping.")
-            continue
-        if config_info.get('config_id') is None: # Double check ID exists
-            logger.warning(f"Config info missing 'config_id' key for data with key {config_id}. Skipping.")
+        # Ensure config info and ID are valid
+        if not config_info or config_info.get('config_id') is None or not isinstance(config_info['config_id'], int):
+            logger.warning(f"Config details missing or invalid for ID {config_id}. Skipping batch update.")
             continue
 
         indicator_name = config_info.get('indicator_name', 'Unknown')
@@ -282,13 +278,14 @@ def update_leaderboard(
             if lag > max_lag: break # Don't process beyond the target max_lag
             total_checks += 1
 
+            # Call the single update function which handles validation, DB write, and export
             if pd.notna(value) and isinstance(value, (float, int)):
                 updated = check_and_update_single_lag(
                     lag=lag,
                     correlation_value=float(value),
                     indicator_name=indicator_name,
                     params=params,
-                    config_id=config_info['config_id'], # Pass the actual config_id
+                    config_id=config_info['config_id'], # Pass the validated config_id
                     symbol=symbol,
                     timeframe=timeframe,
                     data_daterange=data_daterange,
@@ -296,14 +293,13 @@ def update_leaderboard(
                 )
                 if updated:
                     updates_triggered_in_batch += 1
-            # else: # NaN or invalid value - check_and_update_single_lag logs if needed
-            #    pass
+            # else: NaN or invalid value - check_and_update_single_lag handles logging if needed
 
-    print() # Newline after loop
+    # Log summary without printing to console
     if updates_triggered_in_batch > 0:
         logger.info(f"Leaderboard batch comparison finished. Triggered {updates_triggered_in_batch} real-time updates/exports during {total_checks} checks.")
     else:
-        logger.info(f"Leaderboard batch comparison finished. No updates triggered during {total_checks} checks (already optimal or real-time updates handled it).")
+        logger.info(f"Leaderboard batch comparison finished. No updates triggered during {total_checks} checks (already optimal or updates handled earlier).")
 
 
 # --- Export Leaderboard to Text File ---
@@ -313,8 +309,9 @@ def export_leaderboard_to_text() -> bool:
     conn = _create_leaderboard_connection()
     if conn is None: logger.error("Cannot connect to leaderboard DB for export."); return False
 
+    # Use config variable for output path
     output_filepath = config.REPORTS_DIR / "leaderboard.txt"
-    output_filepath.parent.mkdir(parents=True, exist_ok=True)
+    output_filepath.parent.mkdir(parents=True, exist_ok=True) # Ensure directory exists
     current_timestamp_str = datetime.now(timezone.utc).isoformat(timespec='milliseconds') + 'Z'
 
     try:
@@ -325,7 +322,7 @@ def export_leaderboard_to_text() -> bool:
             output_filepath.write_text(f"Leaderboard Table Not Found - Checked: {current_timestamp_str}\n", encoding='utf-8')
             return True
 
-        # Fetch all current entries
+        # Fetch all current entries, ordered for consistency
         query = "SELECT * FROM leaderboard ORDER BY lag ASC, correlation_type ASC"
         cursor.execute(query)
         rows = cursor.fetchall()
@@ -335,17 +332,21 @@ def export_leaderboard_to_text() -> bool:
             output_filepath.write_text(f"Leaderboard Empty - Last Checked: {current_timestamp_str}\n", encoding='utf-8')
             return True
 
-        # Determine the maximum lag present in the data
+        # Determine the maximum lag present in the data to structure the output DataFrame
         max_lag_db = 0
         try: max_lag_db = max(row['lag'] for row in rows if row['lag'] is not None)
-        except ValueError: max_lag_db = 0 # Handle empty sequence
+        except ValueError: max_lag_db = 0 # Handle empty sequence if all lags were None
 
         # Aggregate data by lag, ensuring all lags up to max_lag_db are represented
         aggregated_data: Dict[int, Dict[str, Any]] = {lag: {'lag': lag} for lag in range(1, max_lag_db + 1)}
         for row in rows:
             lag = row['lag']
+            # Skip rows with invalid lag somehow missed earlier
+            if lag is None or lag <= 0: continue
             if lag not in aggregated_data: aggregated_data[lag] = {'lag': lag} # Should not happen, but safe
+
             prefix = "pos_" if row['correlation_type'] == "positive" else "neg_"
+            # Update the dictionary for the specific lag
             aggregated_data[lag].update({
                 f'{prefix}value': row['correlation_value'],
                 f'{prefix}indicator': row['indicator_name'],
@@ -353,49 +354,57 @@ def export_leaderboard_to_text() -> bool:
                 f'{prefix}symbol': row['symbol'],
                 f'{prefix}timeframe': row['timeframe'],
                 f'{prefix}dataset': row['dataset_daterange'],
-                f'{prefix}timestamp': row['calculation_timestamp'],
+                f'{prefix}timestamp': row['calculation_timestamp'], # Store raw timestamp string
                 f'{prefix}config_id': row['config_id_source_db'],
                 f'{prefix}source_db': row['source_db_name']
             })
 
         df = pd.DataFrame(list(aggregated_data.values()))
-        # Ensure consistent column order
+        # Ensure consistent column order for the output text file
         cols = ['lag']
         pos_cols = ['pos_value', 'pos_indicator', 'pos_params', 'pos_symbol', 'pos_timeframe', 'pos_dataset', 'pos_config_id', 'pos_source_db', 'pos_timestamp']
         neg_cols = ['neg_value', 'neg_indicator', 'neg_params', 'neg_symbol', 'neg_timeframe', 'neg_dataset', 'neg_config_id', 'neg_source_db', 'neg_timestamp']
         all_expected_cols = cols + pos_cols + neg_cols
-        # Add missing columns with None before formatting
+        # Add missing columns with None before formatting (handles cases where only pos or neg exists for a lag)
         for col in all_expected_cols:
             if col not in df.columns: df[col] = None
         df = df[all_expected_cols] # Reorder
 
-        # Formatting
+        # Formatting for readability
         na_rep = 'N/A'; max_json_len = 50
         float_cols = ['pos_value', 'neg_value']
         id_cols = ['pos_config_id', 'neg_config_id']
         param_cols = ['pos_params', 'neg_params']
         ts_cols = ['pos_timestamp', 'neg_timestamp']
 
-        for col in float_cols: df[col] = df[col].apply(lambda x: f"{x:.6f}" if pd.notna(x) and isinstance(x, (float, int)) else na_rep)
-        for col in id_cols: df[col] = df[col].apply(lambda x: f"{int(x)}" if pd.notna(x) and isinstance(x, (float, int)) else na_rep)
-        for col in param_cols: df[col] = df[col].fillna(na_rep).apply(lambda x: x if x == na_rep or len(x) <= max_json_len else x[:max_json_len-3] + '...')
-        for col in ts_cols: df[col] = pd.to_datetime(df[col], errors='coerce', utc=True).dt.strftime('%Y-%m-%d %H:%M:%S.%f').str[:-3].fillna(na_rep)
-        # Fill NA for remaining object columns
+        # Apply formatting safely
+        for col in float_cols: df[col] = df[col].apply(lambda x: f"{x:.6f}" if pd.notna(x) and isinstance(x, (float, int, np.number)) else na_rep)
+        for col in id_cols: df[col] = df[col].apply(lambda x: f"{int(x)}" if pd.notna(x) and isinstance(x, (float, int, np.number)) else na_rep)
+        for col in param_cols: df[col] = df[col].fillna(na_rep).apply(lambda x: x if x == na_rep or len(str(x)) <= max_json_len else str(x)[:max_json_len-3] + '...')
+        for col in ts_cols:
+            # Convert ISO string timestamps to a more readable format for the report
+            try:
+                df[col] = pd.to_datetime(df[col], errors='coerce', utc=True).dt.strftime('%Y-%m-%d %H:%M:%S').fillna(na_rep)
+            except Exception: # Fallback if conversion fails
+                 df[col] = df[col].fillna(na_rep)
+
+        # Fill NA for remaining object columns (like text fields)
         for col in df.select_dtypes(include=['object']).columns:
             if col not in float_cols + id_cols + param_cols + ts_cols:
                 df[col] = df[col].fillna(na_rep)
 
+        # Generate Output String
         output_string = f"Correlation Leaderboard - Last Updated: {current_timestamp_str}\n"
-        separator_len = 250 # Increased width for timestamp
+        separator_len = 250 # Ensure enough width
         output_string += "=" * separator_len + "\n"
-        with pd.option_context('display.width', separator_len + 10):
-            output_string += df.to_string( index=False, justify='left', max_colwidth=None, na_rep=na_rep )
+        with pd.option_context('display.width', separator_len + 10, 'display.max_colwidth', 60): # Adjust max_colwidth
+            output_string += df.to_string( index=False, justify='left', na_rep=na_rep )
         output_string += "\n" + "=" * separator_len
 
+        # Write to file
         output_filepath.write_text(output_string, encoding='utf-8')
         logger.info(f"Leaderboard successfully exported to: {output_filepath}")
-        # Avoid printing to console during background updates
-        # print(f"\nLeaderboard exported to: {output_filepath}")
+        # ** Removed print statement **
         return True
 
     except Exception as e:
@@ -426,11 +435,14 @@ def find_best_predictor_for_lag(target_lag: int) -> Optional[Dict[str, Any]]:
         cursor.execute(query, (target_lag,))
         row = cursor.fetchone()
 
-        if not row: logger.warning(f"No valid entries found for Lag = {target_lag}."); return None
+        if not row:
+            logger.warning(f"No valid entries found for Lag = {target_lag}.")
+            return None
 
         # Convert row to dict
         best_entry = dict(row)
-        current_corr_value = float(best_entry['correlation_value']) # Already checked for NOT NULL
+        # Ensure correlation value is float
+        current_corr_value = float(best_entry['correlation_value'])
 
         try:
             # Parse JSON params, handle potential errors gracefully
@@ -462,8 +474,9 @@ def generate_leading_indicator_report() -> bool:
         logger.error("Cannot connect to leaderboard DB for leading indicator report.")
         return False
 
-    output_filepath = config.REPORTS_DIR / "leading_indicators_tally.txt" # Renamed file
-    output_filepath.parent.mkdir(parents=True, exist_ok=True)
+    # Use config variable for output path
+    output_filepath = config.REPORTS_DIR / "leading_indicators_tally.txt"
+    output_filepath.parent.mkdir(parents=True, exist_ok=True) # Ensure directory exists
     current_timestamp_str = datetime.now(timezone.utc).isoformat(timespec='milliseconds') + 'Z'
 
     try:
@@ -474,7 +487,7 @@ def generate_leading_indicator_report() -> bool:
             output_filepath.write_text(f"Leaderboard Table Not Found - Checked: {current_timestamp_str}\n", encoding='utf-8')
             return True
 
-        # Fetch necessary data: indicator name, config details, type (pos/neg)
+        # Fetch necessary data: indicator name, config details, type (pos/neg), source config ID
         query = """
         SELECT
             indicator_name, config_json, correlation_type, config_id_source_db
@@ -489,10 +502,10 @@ def generate_leading_indicator_report() -> bool:
             return True
 
         pos_counts = Counter(); neg_counts = Counter()
-        config_details_map = {} # Key: (indicator_name, config_id)
+        config_details_map = {} # Key: (indicator_name, config_id) -> stores params_json
 
         for row in rows:
-            # Ensure necessary fields are present
+            # Ensure necessary fields are present and valid
             ind_name = row['indicator_name']
             cfg_json = row['config_json']
             corr_type = row['correlation_type']
@@ -503,17 +516,21 @@ def generate_leading_indicator_report() -> bool:
                 continue
             # Ensure config_id is int
             try: cfg_id_int = int(cfg_id)
-            except (ValueError, TypeError): logger.warning(f"Skipping entry with non-integer config_id {cfg_id}."); continue
+            except (ValueError, TypeError):
+                logger.warning(f"Skipping entry with non-integer config_id {cfg_id}.")
+                continue
 
             key = (ind_name, cfg_id_int)
+            # Store config details only once per unique key
             if key not in config_details_map:
-                 # Only store JSON string for display efficiency
                  config_details_map[key] = {'params_json': cfg_json}
 
+            # Increment counts based on correlation type
             if corr_type == 'positive': pos_counts[key] += 1
             elif corr_type == 'negative': neg_counts[key] += 1
 
         report_data = []
+        # Get all unique keys from both positive and negative counts
         all_keys = set(pos_counts.keys()) | set(neg_counts.keys())
 
         for key in all_keys:
@@ -521,12 +538,13 @@ def generate_leading_indicator_report() -> bool:
             pos_lead_count = pos_counts.get(key, 0)
             neg_lead_count = neg_counts.get(key, 0)
             total_lead_count = pos_lead_count + neg_lead_count
+            # Get params string from the map
             params_json = config_details_map.get(key, {}).get('params_json', '{}')
 
             report_data.append({
                 'Indicator': ind_name,
                 'Config ID': cfg_id,
-                'Params': params_json,
+                'Params': params_json, # Keep as JSON string for report
                 'Positive Leads': pos_lead_count,
                 'Negative Leads': neg_lead_count,
                 'Total Leads': total_lead_count
@@ -555,10 +573,10 @@ def generate_leading_indicator_report() -> bool:
             output_string += df_report.to_string(index=False, justify='left')
         output_string += "\n" + "=" * 110
 
+        # Write to file
         output_filepath.write_text(output_string, encoding='utf-8')
         logger.info(f"Leading indicators tally report saved to: {output_filepath}")
-        # Avoid console print during interim updates from main.py
-        # print(f"\nLeading indicators tally report saved to: {output_filepath}")
+        # ** Removed print statement **
         return True
 
     except Exception as e:
@@ -608,13 +626,14 @@ def generate_consistency_report(
         indicator_name = config_info.get('indicator_name', 'Unknown')
         params = config_info.get('params', {})
         try:
-            params_str = json.dumps(params, separators=(',',':'))
+            # Use consistent hashing/serialization method
+            params_str = json.dumps(utils.round_floats_for_hashing(params), sort_keys=True, separators=(',',':'))
         except Exception:
             params_str = str(params) # Fallback
 
         # Validate correlation list structure and length
         if corrs_full is None or not isinstance(corrs_full, list) or len(corrs_full) < max_lag:
-            logger.debug(f"Consistency Report: Short/invalid corr data for {indicator_name} (ID {cfg_id}). Skipping.")
+            # logger.debug(f"Consistency Report: Short/invalid corr data for {indicator_name} (ID {cfg_id}). Skipping.")
             continue
 
         corrs = corrs_full[:max_lag]
@@ -625,8 +644,7 @@ def generate_consistency_report(
         valid_lags = lags_array[valid_mask]
 
         if len(valid_corrs) < 2: # Need at least 2 points for std dev, slope etc.
-            logger.debug(f"Consistency Report: Insufficient valid points (<2) for {indicator_name} (ID {cfg_id}). Skipping.")
-            # Add entry with NaNs for completeness? Or just skip? Let's skip for now.
+            # logger.debug(f"Consistency Report: Insufficient valid points (<2) for {indicator_name} (ID {cfg_id}). Skipping.")
             continue
 
         # Calculate stats on valid points
@@ -649,8 +667,10 @@ def generate_consistency_report(
 
         # Calculate sign flips on valid, non-zero points
         sign_flips = 0
+        # Get signs, filter out zeros
         signs = np.sign(valid_corrs)
         non_zero_signs = signs[signs != 0]
+        # Calculate diff only if at least 2 non-zero signs exist
         if len(non_zero_signs) >= 2:
              sign_changes = np.diff(non_zero_signs) != 0
              sign_flips = np.sum(sign_changes)
@@ -709,10 +729,8 @@ def generate_consistency_report(
         output_filepath.parent.mkdir(parents=True, exist_ok=True)
         output_filepath.write_text(output_string, encoding='utf-8')
         logger.info(f"Consistency report saved to: {output_filepath}")
-        # Avoid console print during interim updates
-        # print(f"\nConsistency report saved to: {output_filepath}")
+        # ** Removed print statement **
         return True
     except Exception as e:
         logger.error(f"Error saving consistency report: {e}", exc_info=True)
-        # print("\nError saving consistency report file.")
         return False

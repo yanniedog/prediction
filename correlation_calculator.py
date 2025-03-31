@@ -1,8 +1,9 @@
 # correlation_calculator.py
+
 import logging
 import pandas as pd
 import numpy as np
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Callable # Added Callable
 import sqlite3 # For specific error handling if needed
 import time
 import concurrent.futures
@@ -12,15 +13,16 @@ from datetime import timedelta # For ETA calculation
 import config
 import sqlite_manager
 import utils # For ETA formatting
+import leaderboard_manager # For periodic reporting function type hint
 
 logger = logging.getLogger(__name__)
 
 # --- Constants ---
-ETA_UPDATE_INTERVAL_SECONDS_CORR = config.DEFAULTS.get("eta_update_interval_seconds", 15) # Use global config
+ETA_UPDATE_INTERVAL_SECONDS_CORR = config.DEFAULTS.get("eta_update_interval_seconds", 15)
+_periodic_report_interval_seconds_corr: int = config.DEFAULTS.get("periodic_report_interval_seconds", 30) # Use config
 
 # --- Core Correlation Calculation Function ---
 # Calculates Corr(Indicator[t], Close[t+lag]) by shifting Close backward.
-# (No changes needed in this specific function)
 def calculate_correlation_indicator_vs_future_price(
     data: pd.DataFrame, indicator_col: str, lag: int
 ) -> Optional[float]:
@@ -84,7 +86,6 @@ def _calculate_correlations_for_single_indicator(
     # Basic check before loop
     if indicator_series.isnull().all() or indicator_series.nunique(dropna=True) <= 1:
         is_all_nan = indicator_series.isnull().all()
-        # Changed to DEBUG as this is common/expected for some indicators
         logger.debug(f"Worker: Skipping {indicator_col_name} (ConfigID: {config_id}) - {'All NaN' if is_all_nan else 'Constant Value'}.")
         # Return Nones (for DB) for all lags
         return [(symbol_id, timeframe_id, config_id, lag, None) for lag in range(1, max_lag + 1)]
@@ -122,25 +123,31 @@ def _calculate_correlations_for_single_indicator(
         results_for_indicator.append((symbol_id, timeframe_id, config_id, lag, db_value))
 
     if nan_count > 0 or error_count > 0:
-         # Changed to DEBUG
          logger.debug(f"Worker ({indicator_col_name}, ConfigID: {config_id}): Completed with {nan_count} NaN results, {error_count} errors.")
 
     return results_for_indicator
 
 
-# --- Process Correlations (Parallelized Version) ---
+# --- Process Correlations (Accepts global timing info) ---
 def process_correlations(
     data: pd.DataFrame,
     db_path: str,
     symbol_id: int,
     timeframe_id: int,
     indicator_configs_processed: List[Dict[str, Any]],
-    max_lag: int
+    max_lag: int,
+    # --- New Args for global timing and periodic reports ---
+    analysis_start_time_global: float,
+    total_analysis_steps_global: int,
+    current_step_base: float,
+    total_steps_in_phase: float,
+    display_progress_func: Callable,
+    periodic_report_func: Callable # Function to call for periodic reports (e.g., tally)
 ) -> bool:
     """
-    Calculates correlations using parallel processing across indicators, with progress reporting.
+    Calculates correlations using parallel processing, updating GLOBAL progress.
     """
-    start_time_total = time.time() # Absolute start time for this function
+    start_time_internal = time.time() # Internal start for logging duration of this phase only
     num_configs = len(indicator_configs_processed)
     logger.info(f"Starting PARALLELIZED correlation calculation for {num_configs} configurations up to lag {max_lag}...")
 
@@ -151,28 +158,28 @@ def process_correlations(
     if max_lag <= 0:
         logger.error(f"Max lag must be positive, got {max_lag}.")
         return False
-    # Ensure sufficient data length *after* NaN drop (as done in main.py)
     min_required_len = max_lag + config.DEFAULTS.get("min_data_points_for_lag", 1) # Use default, min 1 point after lag
     if len(data) < min_required_len:
          logger.error(f"Input data has insufficient rows ({len(data)}) for max_lag={max_lag} after NaN drop. Need {min_required_len}.");
          return False
-    # Find valid indicator columns *after* main data checks
     indicator_columns_present = [col for col in data.columns if utils.parse_indicator_column_name(col) is not None]
     if not indicator_columns_present:
         logger.error("No valid indicator columns found in input data for correlation.")
         return False
-    num_indicator_cols = len(indicator_columns_present) # Number of columns to process
+    num_indicator_cols = len(indicator_columns_present)
 
     # --- Database Connection ---
     conn = sqlite_manager.create_connection(db_path)
     if not conn: return False
+
+    # --- Local timer for periodic reports within this phase ---
+    last_periodic_report_time_corr = time.time()
 
     try:
         # --- Pre-shift close prices ---
         logger.info(f"Pre-calculating {max_lag} shifted 'close' price series...")
         start_shift_time = time.time()
         close_series = data['close'].astype(float)
-        # Reindex shifted series to match the main data index for robust alignment
         shifted_closes_future = {lag: close_series.shift(-lag).reindex(data.index) for lag in range(1, max_lag + 1)}
         logger.info(f"Pre-calculation of shifted closes complete. Time: {time.time() - start_shift_time:.2f}s.")
 
@@ -187,14 +194,11 @@ def process_correlations(
             if parsed_info is None:
                 logger.warning(f"Could not parse '{indicator_col_name}'. Skipping."); skipped_task_configs += 1; continue
             base_name, config_id, output_suffix = parsed_info
-            # Ensure config_id is int
             if not isinstance(config_id, int):
                 logger.warning(f"Parsed non-integer config_id {config_id} from '{indicator_col_name}'. Skipping."); skipped_task_configs += 1; continue
-            # Only add tasks for configs we actually processed and have details for
             if config_id not in config_details_map:
                 logger.debug(f"ConfigID {config_id} ('{indicator_col_name}') not in processed list map. Skipping task."); skipped_task_configs += 1; continue
 
-            # Pass the actual indicator series to the task
             indicator_series = data[indicator_col_name].astype(float) # Ensure float
 
             tasks.append((
@@ -206,17 +210,16 @@ def process_correlations(
         logger.info(f"Prepared {valid_tasks_count} correlation tasks for {num_indicator_cols} indicator columns. Skipped {skipped_task_configs} columns.")
         if not tasks: logger.error("No valid tasks generated."); return False
 
-        # --- Execute in Parallel with Progress Reporting ---
+        # --- Execute in Parallel with GLOBAL Progress Reporting ---
         all_correlation_results: List[Tuple[int, int, int, int, Optional[float]]] = []
         num_cores = os.cpu_count() or 4 # Default to 4 if cannot detect
         max_workers = max(1, num_cores - 1) if num_cores > 1 else 1 # Use N-1 cores, minimum 1
         logger.info(f"Starting parallel execution with up to {max_workers} workers...")
-        start_parallel_time = time.time()
-        last_progress_update_time = start_parallel_time
+        # start_parallel_time = time.time() # Removed local timer for ETA calculation
+        last_progress_update_time = time.time() # Use for throttling print updates
         processed_tasks = 0
 
         with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-            # Submit tasks and store future-to-task mapping
             future_to_task = {executor.submit(_calculate_correlations_for_single_indicator, *task_args): task_args for task_args in tasks}
 
             for future in concurrent.futures.as_completed(future_to_task):
@@ -225,38 +228,39 @@ def process_correlations(
                 try:
                     result_list = future.result()
                     if result_list: all_correlation_results.extend(result_list)
-                    else: logger.warning(f"Worker for '{indicator_name_done}' returned no results.")
+                    # else: logger.warning(f"Worker for '{indicator_name_done}' returned no results.") # Can be noisy
                 except Exception as exc:
                     logger.error(f"Worker for '{indicator_name_done}' generated exception: {exc}", exc_info=True)
 
                 processed_tasks += 1
                 current_time = time.time()
 
-                # --- Update Progress & ETA ---
+                # --- Update GLOBAL Progress & ETA ---
+                # Update progress display periodically or on completion
                 if current_time - last_progress_update_time > ETA_UPDATE_INTERVAL_SECONDS_CORR or processed_tasks == valid_tasks_count:
-                    elapsed_td = timedelta(seconds=current_time - start_parallel_time)
-                    elapsed_str = utils.format_duration(elapsed_td)
-                    percent = (processed_tasks / valid_tasks_count * 100) if valid_tasks_count > 0 else 0
-                    eta_str = "Calculating..."
-                    if percent > 1 and processed_tasks < valid_tasks_count : # Estimate after some progress
-                        rate = processed_tasks / elapsed_td.total_seconds() if elapsed_td.total_seconds() > 1 else 0
-                        if rate > 0:
-                            remaining_tasks = valid_tasks_count - processed_tasks
-                            eta_td = timedelta(seconds=remaining_tasks / rate)
-                            eta_str = utils.format_duration(eta_td)
-                        # else: eta_str remains "Calculating..."
-                    elif processed_tasks == valid_tasks_count:
-                        eta_str = "Done"
-
-                    print(f"\rCorrelation Progress: {processed_tasks}/{valid_tasks_count} tasks ({percent:.1f}%) | Elapsed: {elapsed_str} | ETA: {eta_str}   ", end="")
+                    # --- Calculate OVERALL Progress Step ---
+                    frac_corr_done = processed_tasks / valid_tasks_count if valid_tasks_count > 0 else 1.0
+                    current_overall_step = current_step_base + total_steps_in_phase * frac_corr_done
+                    # --- Call the main display function ---
+                    stage_desc = f"Corr Calc ({processed_tasks}/{valid_tasks_count})"
+                    display_progress_func(stage_desc, current_overall_step, total_analysis_steps_global)
+                    # --------------------------------------
                     last_progress_update_time = current_time
-                    # Log less frequently to file
-                    if processed_tasks % 50 == 0 or processed_tasks == valid_tasks_count:
-                        logger.info(f"Parallel Correlation Progress: {processed_tasks}/{valid_tasks_count} tasks ({percent:.1f}%) | Elapsed: {elapsed_str} | ETA: {eta_str}")
+                    # Log less frequently to file to avoid spamming
+                    if processed_tasks % 100 == 0 or processed_tasks == valid_tasks_count:
+                        logger.info(f"Parallel Correlation Progress: {processed_tasks}/{valid_tasks_count} tasks ({frac_corr_done*100:.1f}%) complete.")
 
-        print() # Newline after progress updates finish
-        parallel_duration = time.time() - start_parallel_time
-        logger.info(f"Parallel execution finished. Time: {parallel_duration:.2f}s.")
+                # --- Periodic Report Generation ---
+                if current_time - last_periodic_report_time_corr > _periodic_report_interval_seconds_corr:
+                    try:
+                         logger.info("Generating periodic tally report during correlation...")
+                         periodic_report_func() # Call the passed function (e.g., leaderboard_manager.generate_leading_indicator_report)
+                         last_periodic_report_time_corr = current_time
+                    except Exception as report_err:
+                         logger.error(f"Error generating periodic report during correlation: {report_err}", exc_info=True)
+
+        # Display function handles the final newline after loop completion
+        logger.info(f"Parallel execution finished.")
         logger.info(f"Total correlation records collected: {len(all_correlation_results)}")
 
         # --- Batch Insert Results ---
@@ -278,8 +282,8 @@ def process_correlations(
             # Connection is closed in finally block
             return False
 
-        total_duration = time.time() - start_time_total
-        logger.info(f"Parallel correlation processing finished. Total time: {total_duration:.2f}s.")
+        total_phase_duration = time.time() - start_time_internal
+        logger.info(f"Correlation processing phase finished. Duration: {total_phase_duration:.2f}s.")
         return True
 
     except Exception as e:
