@@ -647,10 +647,17 @@ def plot_predicted_path(
         ax.plot(plot_aware_dates[-1], plot_prices[-1], marker='*', markersize=10, color='red', linestyle='None', label=f'Final Prediction ({target_date.strftime("%Y-%m-%d %H:%M")})') # Added linestyle='None'
         # Annotate final point
         price_prec = utils.estimate_price_precision(start_price) # Use dynamic precision
-        # --- ***** FIX: Use prediction_results list length ***** ---
-        final_actual_lag = len(prediction_results) # Get length from the passed list
-        ax.text(plot_aware_dates[-1], plot_prices[-1], f' Lag {final_actual_lag}\n ${plot_prices[-1]:.{price_prec}f}', va='bottom', ha='left', fontsize=9, color='red')
-        # --- ***** END FIX ***** ---
+        # Annotate using the actual lag of the final prediction
+        final_actual_lag = prediction_results[-1]['lag'] if prediction_results else len(plot_prices) - 1
+        ax.text(
+            plot_aware_dates[-1],
+            plot_prices[-1],
+            f' Lag {final_actual_lag}\n ${plot_prices[-1]:.{price_prec}f}',
+            va='bottom',
+            ha='left',
+            fontsize=9,
+            color='red',
+        )
 
     # Always plot start point
     ax.plot(plot_aware_dates[0], plot_prices[0], marker='o', markersize=8, color='black', linestyle='None', label=f'Start ({start_date.strftime("%Y-%m-%d %H:%M")})') # Added linestyle='None'
