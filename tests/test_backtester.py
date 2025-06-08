@@ -572,13 +572,24 @@ def test_run_backtest(mock_indicator_factory, mock_data_manager, mock_sqlite_man
          patch('backtester.sqlite_manager.create_connection'), \
          patch('backtester.sqlite_manager._get_or_create_id', return_value=1):
         try:
-            run_backtest(
+            result = run_backtest(
                 db_path=db_path,
                 symbol='BTCUSDT',
                 timeframe='1h',
                 max_lag_backtest=1,
                 num_backtest_points=1
             )
+            assert isinstance(result, dict)
+            assert 'positions_by_lag' in result
+            assert 'results_df' in result
+            positions_by_lag = result['positions_by_lag']
+            assert isinstance(positions_by_lag, dict)
+            for lag, series in positions_by_lag.items():
+                assert isinstance(series, pd.Series)
+                # Should only contain -1, 0, or 1
+                assert set(series.unique()).issubset({-1, 0, 1})
+                # Index should not be empty
+                assert len(series.index) > 0
         except Exception as e:
             pytest.fail(f"run_backtest raised an exception: {e}")
 

@@ -522,9 +522,8 @@ def run_backtest(
 
     # --- Historical Check Loop ---
     backtest_results = []
-    # Cache indicators calculated during this check (local scope)
+    positions_by_lag = {}
     indicator_series_cache_local: Dict[int, pd.DataFrame] = {}
-
     total_iterations = max_lag_backtest * num_backtest_points
     completed_iterations = 0
 
@@ -576,6 +575,9 @@ def run_backtest(
 
         logger.info(f"Historical Check Lag {lag}: Using Predictor CfgID {cfg_id} ('{ind_name}') from FINAL leaderboard.")
 
+        # Prepare a list to collect positions for this lag
+        lag_positions = []
+        lag_indices = []
         for i in range(num_backtest_points):
             # t = index for predictor calculation
             # target_idx = index for actual price verification
@@ -659,6 +661,16 @@ def run_backtest(
                 error = predicted_price - actual_price
                 pct_error = (error / actual_price) * 100 if actual_price != 0 else np.inf
 
+                # Determine position: 1 if predicted > actual, -1 if predicted < actual, 0 if equal
+                if predicted_price > actual_price:
+                    position = 1
+                elif predicted_price < actual_price:
+                    position = -1
+                else:
+                    position = 0
+                lag_positions.append(position)
+                lag_indices.append(full_historical_data.index[target_idx])
+
                 backtest_results.append({
                     'Lag': lag,
                     'Test Point Index (i)': i,
@@ -679,13 +691,17 @@ def run_backtest(
             finally:
                 completed_iterations += 1 # Ensure progress increments even on error within loop
 
+        # After loop, create a Series for this lag's positions
+        if lag_positions and lag_indices:
+            positions_by_lag[lag] = pd.Series(lag_positions, index=lag_indices, name=f'positions_lag_{lag}')
+
     print("\nHistorical check iterations complete.") # Final newline after progress indicator
 
     # 4. Analyze and Report Results
     if not backtest_results:
         print("\nHistorical check finished with no results.")
         logger.warning("Historical check completed but no results were generated.")
-        return
+        return {"positions_by_lag": positions_by_lag, "results_df": None}
 
     results_df = pd.DataFrame(backtest_results)
 
@@ -738,6 +754,8 @@ def run_backtest(
     except Exception as e:
         print(f"\nError saving detailed historical check results: {e}")
         logger.error(f"Failed to save historical check CSV: {e}", exc_info=True)
+    # Return positions_by_lag and results_df for further analysis
+    return {"positions_by_lag": positions_by_lag, "results_df": results_df}
 
 # Example of how to potentially call it (e.g., from main.py prompt)
 # if __name__ == '__main__':

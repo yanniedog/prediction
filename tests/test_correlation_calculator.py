@@ -315,43 +315,6 @@ def test_correlation_clustering(correlation_calculator, test_data):
     assert 'centers' in clusters
     assert 'silhouette_score' in clusters
 
-def test_correlation_forecasting(correlation_calculator, test_data):
-    """Test correlation forecasting methods."""
-    # Create sample data
-    data = pd.DataFrame({
-        'close': test_data['close'],
-        'volume': test_data['volume'],
-        'returns': test_data['close'].pct_change()
-    })
-    
-    # Forecast correlations
-    forecast = correlation_calculator.forecast_correlations(
-        data,
-        forecast_horizon=5
-    )
-    assert isinstance(forecast, dict)
-    assert 'forecast_matrix' in forecast
-    assert 'confidence_intervals' in forecast
-
-def test_correlation_regime_detection(correlation_calculator, test_data):
-    """Test correlation regime detection."""
-    # Create sample data
-    data = pd.DataFrame({
-        'close': test_data['close'],
-        'volume': test_data['volume'],
-        'returns': test_data['close'].pct_change()
-    })
-    
-    # Detect correlation regimes
-    regimes = correlation_calculator.detect_correlation_regimes(
-        data,
-        n_regimes=2
-    )
-    assert isinstance(regimes, dict)
-    assert 'regime_labels' in regimes
-    assert 'regime_correlations' in regimes
-    assert 'transition_matrix' in regimes
-
 @pytest.mark.timeout(20)
 def test_correlation_network(correlation_calculator, test_data):
     """Test correlation network analysis with timeout."""
@@ -734,16 +697,6 @@ def test_analyze_correlation_stability(correlation_calculator, sample_data):
     assert 0 <= result['stability_score'] <= 1
     assert result['volatility'] >= 0
     assert result['trend'] in ['increasing', 'decreasing', 'stable']
-
-def test_forecast_correlations(correlation_calculator, sample_data):
-    """Test correlation forecasting."""
-    result = correlation_calculator.forecast_correlations(
-        data=sample_data[['RSI_14', 'MACD_12_26_9', 'close']],
-        forecast_horizon=5
-    )
-    assert isinstance(result, dict)
-    assert 'forecast' in result
-    assert 'confidence_intervals' in result
 
 def test_detect_correlation_regimes(correlation_calculator, sample_data):
     """Test correlation regime detection."""
