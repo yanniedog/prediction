@@ -33,7 +33,7 @@ def temp_dir() -> Generator[Path, None, None]:
 @pytest.fixture(scope="function")
 def sample_data() -> pd.DataFrame:
     """Create sample price data for testing."""
-    dates = pd.date_range(start='2024-01-01', periods=100, freq='H')
+    dates = pd.date_range(start='2024-01-01', periods=100, freq='h')
     data = pd.DataFrame({
         'date': dates,
         'open': np.random.uniform(100, 200, 100),
@@ -265,7 +265,7 @@ def test_calculate_indicators_and_correlations(
 
     # Create mock data with sufficient rows for correlation
     mock_data = pd.DataFrame({
-        'date': pd.date_range(start='2024-01-01', periods=250, freq='H'),
+        'date': pd.date_range(start='2024-01-01', periods=250, freq='h'),
         'close': np.random.randn(250).cumsum() + 100,  # Random walk
         'RSI_1': np.random.uniform(0, 100, 250),  # Random RSI values, column name matches config_id
         'MACD_2': np.random.randn(250)  # Random MACD values, column name matches config_id

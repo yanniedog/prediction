@@ -17,7 +17,7 @@ def factory():
 @pytest.fixture(scope="function")
 def test_data():
     """Create sample price data for testing."""
-    dates = pd.date_range(start='2024-01-01', periods=100, freq='H')
+    dates = pd.date_range(start='2024-01-01', periods=100, freq='h')
     data = pd.DataFrame({
         'date': dates,
         'open': np.random.uniform(100, 200, 100),

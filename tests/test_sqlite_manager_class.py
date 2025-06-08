@@ -27,7 +27,7 @@ def db_manager(temp_db_dir: Path) -> SQLiteManager:
 @pytest.fixture(scope="function")
 def sample_data() -> pd.DataFrame:
     """Create sample data for testing."""
-    dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+    dates = pd.date_range(start="2023-01-01", periods=100, freq="h")
     np.random.seed(42)
     data = pd.DataFrame({
         "timestamp": dates,

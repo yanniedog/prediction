@@ -430,3 +430,168 @@ def generate_charts(
     if not chart_paths:
         raise ValueError("No data provided for chart generation.")
     return chart_paths
+
+def plot_correlation_matrix(
+    correlation_data: pd.DataFrame,
+    output_dir: Path,
+    file_prefix: str = "correlation_matrix"
+) -> Optional[Path]:
+    """Generate a correlation matrix heatmap from the correlation data.
+    
+    Args:
+        correlation_data: DataFrame containing correlation values
+        output_dir: Directory to save the output file
+        file_prefix: Prefix for the output filename
+        
+    Returns:
+        Optional[Path]: Path to the generated file if successful, None otherwise
+    """
+    try:
+        if correlation_data.empty:
+            logger.warning("Empty correlation data provided for matrix plot")
+            return None
+            
+        # Create figure and axis
+        plt.figure(figsize=(12, 10), dpi=config.DEFAULTS.get("plot_dpi", 150))
+        
+        # Generate correlation matrix
+        corr_matrix = correlation_data.corr()
+        
+        # Create heatmap
+        mask = np.triu(np.ones_like(corr_matrix, dtype=bool))
+        sns.heatmap(
+            corr_matrix,
+            mask=mask,
+            cmap='coolwarm',
+            center=0,
+            annot=True,
+            fmt='.2f',
+            square=True,
+            linewidths=.5,
+            cbar_kws={'shrink': .8}
+        )
+        
+        # Customize plot
+        plt.title('Correlation Matrix', pad=20)
+        plt.xticks(rotation=45, ha='right')
+        plt.yticks(rotation=0)
+        
+        # Adjust layout and save
+        plt.tight_layout()
+        output_file = _prepare_filenames(output_dir, file_prefix, "matrix", "heatmap")
+        plt.savefig(output_file, bbox_inches='tight')
+        plt.close()
+        
+        logger.info(f"Generated correlation matrix plot: {output_file}")
+        return output_file
+        
+    except Exception as e:
+        logger.error(f"Error generating correlation matrix: {e}", exc_info=True)
+        plt.close()
+        return None
+
+def plot_optimization_results(optimization_data: dict, output_path: Path) -> None:
+    """Plot optimization results (supports 1D and 2D parameter sweeps)."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+    if not optimization_data or not isinstance(optimization_data, dict):
+        raise ValueError("No optimization data provided.")
+    # Only support 1D or 2D for simplicity
+    for indicator, results in optimization_data.items():
+        if not isinstance(results, dict) or 'params' not in results or 'score' not in results:
+            # Try to handle grid format: {param_name: [...], 'score': [...]}
+            param_keys = [k for k in results.keys() if k != 'score']
+            if len(param_keys) == 1:
+                # 1D
+                x = results[param_keys[0]]
+                y = results['score']
+                plt.figure(figsize=(8, 5))
+                plt.plot(x, y, marker='o')
+                plt.xlabel(param_keys[0])
+                plt.ylabel('Score')
+                plt.title(f'Optimization Results: {indicator}')
+                plt.tight_layout()
+                plt.savefig(output_path)
+                plt.close()
+                return
+            elif len(param_keys) == 2:
+                # 2D
+                x = results[param_keys[0]]
+                y = results[param_keys[1]]
+                z = results['score']
+                X, Y = np.meshgrid(np.unique(x), np.unique(y))
+                Z = np.full_like(X, np.nan, dtype=float)
+                for xi, yi, zi in zip(x, y, z):
+                    x_idx = np.where(X[0] == xi)[0][0]
+                    y_idx = np.where(Y[:,0] == yi)[0][0]
+                    Z[y_idx, x_idx] = zi
+                plt.figure(figsize=(8, 6))
+                cp = plt.contourf(X, Y, Z, cmap='viridis')
+                plt.colorbar(cp)
+                plt.xlabel(param_keys[0])
+                plt.ylabel(param_keys[1])
+                plt.title(f'Optimization Results: {indicator}')
+                plt.tight_layout()
+                plt.savefig(output_path)
+                plt.close()
+                return
+            else:
+                raise ValueError("Unsupported optimization data format.")
+        else:
+            # Single best result
+            params = results['params']
+            score = results['score']
+            plt.figure(figsize=(6, 4))
+            plt.bar(list(params.keys()), list(params.values()))
+            plt.title(f'Best Params (Score: {score:.4f})')
+            plt.tight_layout()
+            plt.savefig(output_path)
+            plt.close()
+            return
+    raise ValueError("No valid optimization results to plot.")
+
+def plot_prediction_accuracy(actual: pd.Series, predicted: pd.Series, output_path: Path) -> None:
+    """Plot actual vs predicted values and save to output_path."""
+    import matplotlib.pyplot as plt
+    if actual is None or predicted is None or len(actual) != len(predicted):
+        raise ValueError("Actual and predicted series must be the same length and not None.")
+    plt.figure(figsize=(8, 5))
+    plt.plot(actual.index, actual.values, label='Actual', marker='o')
+    plt.plot(predicted.index, predicted.values, label='Predicted', marker='x')
+    plt.xlabel('Index')
+    plt.ylabel('Value')
+    plt.title('Prediction Accuracy')
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.close()
+
+def _format_chart_data(data):
+    """Format chart data for plotting. Accepts DataFrame or dict."""
+    if isinstance(data, pd.DataFrame):
+        return data.values, data.columns.tolist(), data.index.tolist()
+    elif isinstance(data, dict):
+        # Assume dict of lists or dict of dicts
+        keys = list(data.keys())
+        if all(isinstance(v, list) for v in data.values()):
+            # Dict of lists
+            max_len = max(len(v) for v in data.values())
+            values = [v + [None]*(max_len-len(v)) for v in data.values()]
+            return values, keys, list(range(max_len))
+        elif all(isinstance(v, dict) for v in data.values()):
+            # Dict of dicts
+            inner_keys = sorted({k for d in data.values() for k in d.keys()})
+            values = [[d.get(k, None) for k in inner_keys] for d in data.values()]
+            return values, keys, inner_keys
+        else:
+            raise ValueError("Unsupported dict format for chart data.")
+    else:
+        raise ValueError("Unsupported data type for chart formatting.")
+
+def _save_chart(fig, output_path: Path) -> None:
+    """Save a matplotlib figure to the specified output path."""
+    fig.tight_layout()
+    fig.savefig(output_path)
+    fig.clf()
+    import matplotlib.pyplot as plt
+    plt.close(fig)

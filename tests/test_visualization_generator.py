@@ -242,7 +242,7 @@ def test_performance_with_large_data(temp_dir: Path) -> None:
 @pytest.fixture(scope="function")
 def sample_data() -> pd.DataFrame:
     """Create sample price data for testing."""
-    dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+    dates = pd.date_range(start="2023-01-01", periods=100, freq="h")
     np.random.seed(42)
     data = pd.DataFrame({
         "timestamp": dates,
@@ -259,7 +259,7 @@ def sample_data() -> pd.DataFrame:
 @pytest.fixture(scope="function")
 def sample_indicator_data() -> pd.DataFrame:
     """Create sample indicator data for testing."""
-    dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+    dates = pd.date_range(start="2023-01-01", periods=100, freq="h")
     np.random.seed(42)
     data = pd.DataFrame({
         "timestamp": dates,

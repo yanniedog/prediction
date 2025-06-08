@@ -317,7 +317,7 @@ def test_benchmark_comparison(backtester, test_data):
 @pytest.fixture(scope="function")
 def sample_data() -> pd.DataFrame:
     """Create sample price data for testing."""
-    dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+    dates = pd.date_range(start="2023-01-01", periods=100, freq="h")
     np.random.seed(42)
     data = pd.DataFrame({
         "timestamp": dates,
@@ -598,9 +598,9 @@ def test_run_backtest(mock_indicator_factory, mock_data_manager, mock_sqlite_man
     db_path = tmp_path / "test.db"
     # Create a DataFrame with required columns
     df = pd.DataFrame({
-        'date': pd.date_range(start='2024-01-01', periods=100, freq='H'),
+        'date': pd.date_range(start='2024-01-01', periods=100, freq='h'),
         'close': np.random.uniform(100, 200, 100),
-        'open_time': pd.date_range(start='2024-01-01', periods=100, freq='H'),
+        'open_time': pd.date_range(start='2024-01-01', periods=100, freq='h'),
         'open': np.random.uniform(100, 200, 100),
         'high': np.random.uniform(200, 300, 100),
         'low': np.random.uniform(50, 100, 100),

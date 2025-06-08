@@ -43,7 +43,7 @@ def temp_dir() -> Generator[Path, None, None]:
 @pytest.fixture
 def sample_data() -> pd.DataFrame:
     """Create a sample DataFrame with OHLCV data."""
-    dates = pd.date_range(start='2024-01-01', periods=100, freq='H')
+    dates = pd.date_range(start='2024-01-01', periods=100, freq='h')
     data = pd.DataFrame({
         'timestamp': dates,
         'open': np.random.uniform(100, 200, 100),

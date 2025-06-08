@@ -47,7 +47,7 @@ def test_db_path(tmp_path):
 @pytest.fixture(scope="function")
 def sample_data() -> pd.DataFrame:
     """Create sample price data for testing."""
-    dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+    dates = pd.date_range(start="2023-01-01", periods=100, freq="h")
     np.random.seed(42)
     data = pd.DataFrame({
         "open": np.random.normal(100, 1, 100),

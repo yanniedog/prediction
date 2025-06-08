@@ -48,7 +48,7 @@ def sample_indicator_definition() -> Dict[str, Any]:
 
 @pytest.fixture
 def sample_base_data() -> pd.DataFrame:
-    dates = pd.date_range(start='2024-01-01', periods=100, freq='H')
+    dates = pd.date_range(start='2024-01-01', periods=100, freq='h')
     data = pd.DataFrame({
         'timestamp': dates,
         'open': np.random.uniform(100, 200, 100),
@@ -71,7 +71,7 @@ def sample_progress_info() -> Dict[str, Any]:
 
 @pytest.fixture
 def sample_shifted_closes() -> Dict[int, pd.Series]:
-    dates = pd.date_range(start='2024-01-01', periods=100, freq='H')
+    dates = pd.date_range(start='2024-01-01', periods=100, freq='h')
     base_series = pd.Series(np.random.uniform(100, 200, 100), index=dates)
     return {
         1: base_series.shift(-1),
@@ -82,7 +82,7 @@ def sample_shifted_closes() -> Dict[int, pd.Series]:
 @pytest.fixture(scope="function")
 def sample_data() -> pd.DataFrame:
     """Create sample price data for testing."""
-    dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+    dates = pd.date_range(start="2023-01-01", periods=100, freq="h")
     np.random.seed(42)
     data = pd.DataFrame({
         "open": np.random.normal(100, 1, 100),

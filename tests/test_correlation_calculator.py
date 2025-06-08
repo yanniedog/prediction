@@ -70,7 +70,7 @@ def correlation_calculator():
 @pytest.fixture
 def test_data() -> pd.DataFrame:
     """Create test data for correlation calculations."""
-    dates = pd.date_range(start='2024-01-01', periods=100, freq='H')
+    dates = pd.date_range(start='2024-01-01', periods=100, freq='h')
     data = pd.DataFrame({
         'timestamp': dates,
         'open': np.random.uniform(100, 200, 100),
@@ -420,7 +420,7 @@ def test_correlation_regimes(correlation_calculator, test_data):
 @pytest.fixture(scope="function")
 def sample_data() -> pd.DataFrame:
     """Create sample data for testing."""
-    dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+    dates = pd.date_range(start="2023-01-01", periods=100, freq="h")
     np.random.seed(42)
     data = pd.DataFrame({
         "timestamp": dates,
@@ -832,7 +832,7 @@ def test_process_correlations_valid(
     """Test processing correlations with valid data."""
     # Generate larger sample data (at least 223 rows)
     n_rows = 250
-    dates = pd.date_range(start='2024-01-01', periods=n_rows, freq='H')
+    dates = pd.date_range(start='2024-01-01', periods=n_rows, freq='h')
     sample_data = pd.DataFrame({
         'timestamp': dates,
         'open': np.random.uniform(100, 200, n_rows),

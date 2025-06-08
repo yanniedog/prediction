@@ -23,7 +23,7 @@ from extract_project_files import extract_files
 
 @pytest.fixture(scope="function")
 def sample_data():
-    dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+    dates = pd.date_range(start="2023-01-01", periods=100, freq="h")
     np.random.seed(42)
     data = pd.DataFrame({
         "timestamp": dates,
