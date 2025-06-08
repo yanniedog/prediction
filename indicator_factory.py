@@ -85,21 +85,35 @@ class IndicatorFactory:
                     else:
                         # If the param is not a column, use as-is (for timeperiod, etc.)
                         inputs[param_name] = col_name
+                logger.debug(f"Calling TA-Lib function {func_name} with inputs: {inputs}")
                 # Get output names
                 output_names = self._get_ta_lib_output_suffixes(func_name)
                 # Compute indicator
                 results = ta_func(**inputs)
+                logger.debug(f"TA-Lib function {func_name} returned: {results}")
                 if results is None:
                     logger.error(f"TA-Lib function {func_name} returned None for {name}")
                     return None
-                # Handle single output
-                if not isinstance(results, tuple):
-                    results = (results,)
+                
                 # Create result DataFrame
                 result_df = pd.DataFrame(index=data.index)
-                for i, output_name in enumerate(output_names):
-                    if i < len(results):
-                        result_df[f"{name}_{output_name}"] = results[i]
+                
+                # Handle different return types
+                if isinstance(results, (np.ndarray, list)):
+                    # Single array result
+                    if len(output_names) > 0:
+                        result_df[f"{name}_{output_names[0]}"] = results
+                    else:
+                        result_df[name] = results
+                elif isinstance(results, tuple):
+                    # Multiple array results
+                    for i, output_name in enumerate(output_names):
+                        if i < len(results):
+                            result_df[f"{name}_{output_name}"] = results[i]
+                else:
+                    # Single value result
+                    result_df[name] = results
+                
                 if result_df.empty:
                     logger.error(f"Result DataFrame is empty for {name}")
                     return None
