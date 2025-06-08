@@ -351,6 +351,7 @@ class SQLiteManager:
             
     def backup_database(self, backup_path: str) -> bool:
         """Create a backup of the database."""
+        import time
         try:
             if not self.connection:
                 raise ValueError("No active database connection")
@@ -359,6 +360,12 @@ class SQLiteManager:
                 self.connection.commit()
             except Exception:
                 pass
+            # Ensure WAL is checkpointed and database is vacuumed
+            try:
+                self.connection.execute("PRAGMA wal_checkpoint(FULL);")
+                self.connection.execute("VACUUM;")
+            except Exception as e:
+                logger.warning(f"Could not checkpoint or vacuum before backup: {e}")
             backup_dir = Path(backup_path).parent
             backup_dir.mkdir(parents=True, exist_ok=True)
             max_retries = 5
