@@ -26,23 +26,18 @@ DateTimeArray: TypeAlias = ArrayLike
 FloatArray: TypeAlias = ArrayLike
 
 # Import statsmodels conditionally
-if TYPE_CHECKING:
+try:
+    import statsmodels.api as sm
     from statsmodels.api import add_constant, OLS
     from statsmodels.regression.linear_model import RegressionResultsWrapper
     STATSMODELS_AVAILABLE = True
-else:
-    try:
-        from statsmodels.api import add_constant, OLS
-        from statsmodels.regression.linear_model import RegressionResultsWrapper
-        STATSMODELS_AVAILABLE = True
-    except ImportError:
-        add_constant = OLS = None
-        RegressionResultsWrapper = Any
-        STATSMODELS_AVAILABLE = False
-        logging.getLogger(__name__).error(
-            "Predictor requires 'statsmodels'. Please install it "
-            "(`pip install statsmodels`). Prediction functionality will be disabled."
-        )
+except ImportError:
+    sm = None
+    add_constant = OLS = RegressionResultsWrapper = None  # type: ignore
+    STATSMODELS_AVAILABLE = False
+    logging.getLogger(__name__).error(
+        "Predictor requires 'statsmodels'. Please install it (`pip install statsmodels`). Prediction functionality will be disabled."
+    )
 
 # Import project modules
 import config # Import config for constants
@@ -61,7 +56,7 @@ MIN_REGRESSION_POINTS = config.DEFAULTS.get("min_regression_points", 30) # Fallb
 _indicator_factory = indicator_factory.IndicatorFactory()
 
 # Type aliases for better readability
-IndicatorCache: TypeAlias = Mapping[str, pd.DataFrame]
+IndicatorCache: TypeAlias = Dict[str, pd.DataFrame]
 PriceSequence: TypeAlias = Sequence[float]
 DateSequence: TypeAlias = Sequence[datetime]
 
@@ -217,7 +212,7 @@ def _calculate_or_get_cached_indicator(
     indicator_name: str,
     params: Dict[str, Any],
     config_id: int,
-    indicator_series_cache: IndicatorCache
+    indicator_series_cache: Dict[str, pd.DataFrame]
 ) -> Optional[pd.DataFrame]:
     """Calculate indicator values or retrieve from cache.
     
@@ -252,11 +247,7 @@ def _calculate_or_get_cached_indicator(
         )
         
         if indicator_df is not None:
-            # Create a new dict with the updated cache
-            cache_dict = dict(indicator_series_cache)
-            cache_dict[cache_key] = indicator_df
-            # Update the original cache
-            indicator_series_cache.update(cache_dict)
+            indicator_series_cache[cache_key] = indicator_df
             
         return indicator_df
         
@@ -775,7 +766,7 @@ class Predictor:
         indicator_config: Dict[str, Any],
         lag: int,
         full_historical_data: pd.DataFrame,
-        indicator_series_cache: Dict[int, pd.DataFrame]
+        indicator_series_cache: Dict[str, pd.DataFrame]
     ) -> Optional[pd.DataFrame]:
         """Get historical indicator and price pairs for prediction."""
         return _get_historical_indicator_price_pairs(
