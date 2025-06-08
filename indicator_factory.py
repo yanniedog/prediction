@@ -198,6 +198,51 @@ class IndicatorFactory:
         """Get list of available indicators."""
         return list(self.indicator_params.keys())
 
+    def get_all_indicator_names(self) -> List[str]:
+        """Return all indicator names (alias for get_available_indicators)."""
+        return self.get_available_indicators()
+
+    def validate_params(self, indicator_name: str, params: Dict[str, Any]) -> None:
+        """Validate indicator parameters against their definitions.
+        
+        Args:
+            indicator_name: Name of the indicator to validate
+            params: Dictionary of parameter values to validate
+            
+        Raises:
+            ValueError: If indicator name is invalid or parameters don't match definition
+        """
+        if indicator_name not in self.indicator_params:
+            raise ValueError(f"Unknown indicator: {indicator_name}")
+            
+        definition = self.indicator_params[indicator_name]
+        param_defs = definition.get('params', {})
+        # Parameters that are actually required data columns, not user-supplied
+        data_columns = {'real', 'close', 'open', 'high', 'low', 'volume', 'input', 'price'}
+        
+        # Check for required parameters (skip data columns)
+        for param_name, param_def in param_defs.items():
+            if param_name in data_columns:
+                continue  # skip validation for data columns
+            if param_name not in params:
+                raise ValueError(f"Missing required parameter '{param_name}' for indicator '{indicator_name}'")
+            # Validate parameter value is within range if min/max defined
+            if isinstance(param_def, dict):
+                value = params[param_name]
+                if 'min' in param_def and value < param_def['min']:
+                    raise ValueError(f"Parameter '{param_name}' value {value} below minimum {param_def['min']} for indicator '{indicator_name}'")
+                if 'max' in param_def and value > param_def['max']:
+                    raise ValueError(f"Parameter '{param_name}' value {value} above maximum {param_def['max']} for indicator '{indicator_name}'")
+                # Validate type if specified
+                if 'type' in param_def:
+                    expected_type = param_def['type']
+                    if expected_type == 'int' and not isinstance(value, int):
+                        raise ValueError(f"Parameter '{param_name}' must be integer for indicator '{indicator_name}'")
+                    elif expected_type == 'float' and not isinstance(value, (int, float)):
+                        raise ValueError(f"Parameter '{param_name}' must be numeric for indicator '{indicator_name}'")
+                    elif expected_type == 'str' and not isinstance(value, str):
+                        raise ValueError(f"Parameter '{param_name}' must be string for indicator '{indicator_name}'")
+
     def get_indicator_params(self, name: str) -> Optional[Dict[str, Any]]:
         """Get parameters for a specific indicator."""
         indicator_def = self.indicator_params.get(name)

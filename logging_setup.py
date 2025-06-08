@@ -30,12 +30,13 @@ def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_m
     if logger.hasHandlers():
         # Close existing handlers before removing to release file locks etc.
         for handler in logger.handlers[:]:
-            try:
-                handler.close()
-            except Exception as e:
-                # Use basic print for errors during logging setup itself
-                print(f"Error closing handler {handler}: {e}", file=sys.stderr)
-            logger.removeHandler(handler)
+            if isinstance(handler, logging.FileHandler) or isinstance(handler, logging.StreamHandler):
+                try:
+                    handler.close()
+                except Exception as e:
+                    # Use basic print for errors during logging setup itself
+                    print(f"Error closing handler {handler}: {e}", file=sys.stderr)
+                logger.removeHandler(handler)
         # Reset logging system state if necessary
         # logging.shutdown() # Can be too aggressive, only use if handlers persist strangely
 

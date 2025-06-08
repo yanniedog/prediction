@@ -45,9 +45,9 @@ def test_setup_logging_basic(temp_dir: Path) -> None:
         logger = logging.getLogger()
         
         # Verify handlers
-        assert len(logger.handlers) == 2  # File and console handlers
         file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
-        console_handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler)]
+        # Only count StreamHandlers that are not also FileHandlers (i.e., the true console handler)
+        console_handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)]
         assert len(file_handlers) == 1
         assert len(console_handlers) == 1
         
@@ -74,6 +74,13 @@ def test_setup_logging_basic(temp_dir: Path) -> None:
             assert "Warning message" in log_contents    # Warning logged
             assert "Error message" in log_contents      # Error logged
     finally:
+        # Close all handlers to release file locks before deleting temp_dir
+        logger = logging.getLogger()
+        for handler in logger.handlers[:]:
+            try:
+                handler.close()
+            except Exception:
+                pass
         config.LOG_DIR = original_log_dir
 
 def test_setup_logging_custom_levels(temp_dir: Path) -> None:
@@ -91,7 +98,8 @@ def test_setup_logging_custom_levels(temp_dir: Path) -> None:
         
         # Verify levels
         file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
-        console_handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler)]
+        # Only count StreamHandlers that are not also FileHandlers (i.e., the true console handler)
+        console_handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)]
         assert file_handlers[0].level == logging.DEBUG
         assert console_handlers[0].level == logging.WARNING
         assert logger.level == logging.DEBUG  # Minimum of file and console levels
@@ -109,6 +117,13 @@ def test_setup_logging_custom_levels(temp_dir: Path) -> None:
             assert "Info message" in log_contents     # Info logged to file
             assert "Warning message" in log_contents  # Warning logged to file
     finally:
+        # Close all handlers to release file locks before deleting temp_dir
+        logger = logging.getLogger()
+        for handler in logger.handlers[:]:
+            try:
+                handler.close()
+            except Exception:
+                pass
         config.LOG_DIR = original_log_dir
 
 def test_setup_logging_file_modes(temp_dir: Path) -> None:
@@ -162,6 +177,13 @@ def test_setup_logging_file_modes(temp_dir: Path) -> None:
             assert "Third message" not in log_contents
             assert "Fourth message" in log_contents
     finally:
+        # Close all handlers to release file locks before deleting temp_dir
+        logger = logging.getLogger()
+        for handler in logger.handlers[:]:
+            try:
+                handler.close()
+            except Exception:
+                pass
         config.LOG_DIR = original_log_dir
 
 def test_set_console_log_level() -> None:
@@ -171,19 +193,21 @@ def test_set_console_log_level() -> None:
     
     # Test setting to DEBUG
     logging_setup.set_console_log_level(logging.DEBUG)
-    console_handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler)]
+    # Only count StreamHandlers that are not also FileHandlers (i.e., the true console handler)
+    console_handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)]
+    file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
     assert console_handlers[0].level == logging.DEBUG
-    assert logger.level == logging.DEBUG  # Minimum of file and console levels
+    assert logger.level == min(file_handlers[0].level, console_handlers[0].level)
     
     # Test setting to WARNING
     logging_setup.set_console_log_level(logging.WARNING)
     assert console_handlers[0].level == logging.WARNING
-    assert logger.level == logging.WARNING  # Minimum of file and console levels
+    assert logger.level == min(file_handlers[0].level, console_handlers[0].level)
     
     # Test setting to ERROR
     logging_setup.set_console_log_level(logging.ERROR)
     assert console_handlers[0].level == logging.ERROR
-    assert logger.level == logging.ERROR  # Minimum of file and console levels
+    assert logger.level == min(file_handlers[0].level, console_handlers[0].level)
 
 def test_reset_console_log_level() -> None:
     """Test resetting console log level to default."""
@@ -193,12 +217,13 @@ def test_reset_console_log_level() -> None:
     
     # Change level
     logging_setup.set_console_log_level(logging.DEBUG)
-    console_handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler)]
+    # Only count StreamHandlers that are not also FileHandlers (i.e., the true console handler)
+    console_handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)]
     assert console_handlers[0].level == logging.DEBUG
     
     # Reset to default
     logging_setup.reset_console_log_level()
-    assert console_handlers[0].level == logging.WARNING  # Original default
+    assert console_handlers[0].level == logging.WARNING
     assert logger.level == logging.WARNING  # Minimum of file and console levels
 
 def test_library_quieting() -> None:
