@@ -103,6 +103,9 @@ class Backtester:
 
     def calculate_returns(self, data: pd.DataFrame, positions: pd.Series, transaction_cost: float = 0.0) -> pd.Series:
         """Calculate strategy returns including transaction costs."""
+        # Handle empty data or missing 'close' column
+        if data is None or data.empty or 'close' not in data.columns or positions is None or positions.empty:
+            return pd.Series(dtype=float)
         # Calculate price returns
         price_returns = data['close'].pct_change()
         
@@ -221,6 +224,11 @@ class Backtester:
                             params: Dict[str, Any], train_size: float = 0.7, 
                             step_size: float = 0.1) -> Dict[str, Any]:
         """Perform walk-forward analysis."""
+        # Validate train_size and step_size
+        if not (0 < train_size < 1):
+            raise ValueError("train_size must be between 0 and 1 (exclusive)")
+        if not (0 < step_size < 1):
+            raise ValueError("step_size must be between 0 and 1 (exclusive)")
         n_points = len(data)
         train_size_points = int(n_points * train_size)
         step_size_points = int(n_points * step_size)
@@ -271,7 +279,9 @@ class Backtester:
         """Run Monte Carlo simulation of strategy returns."""
         if not self.SCIPY_AVAILABLE:
             raise ImportError("scipy required for Monte Carlo simulation")
-        
+        # Validate parameters
+        if n_simulations <= 0 or time_steps <= 0:
+            raise ValueError("n_simulations and time_steps must be positive integers")
         # Calculate mean and standard deviation of returns
         mean_return = returns.mean()
         std_return = returns.std()
@@ -382,6 +392,10 @@ class Backtester:
     def compare_with_benchmark(self, strategy_returns: pd.Series, 
                              benchmark_returns: pd.Series) -> Dict[str, Any]:
         """Compare strategy performance with a benchmark."""
+        # Validate input series lengths
+        if len(strategy_returns) != len(benchmark_returns):
+            raise ValueError("Strategy returns and benchmark returns must have the same length")
+            
         # Calculate metrics for both strategy and benchmark
         strategy_metrics = self.calculate_performance_metrics(strategy_returns)
         benchmark_metrics = self.calculate_performance_metrics(benchmark_returns)

@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 import numpy as np
-from correlation_calculator import CorrelationCalculator
+from correlation_calculator import CorrelationCalculator, calculate_correlation_indicator_vs_future_price, _calculate_correlations_for_single_indicator, process_correlations
 from datetime import datetime, timedelta
 import time
 from functools import wraps
@@ -552,20 +552,29 @@ def test_calculate_correlations_all_nan(sample_data):
     assert all(result[4] is None for result in results)
 
 def test_process_correlations_valid(
-    sample_data,
     sample_indicator_configs,
     tmp_path
 ):
     """Test processing correlations with valid data."""
+    # Generate larger sample data (at least 223 rows)
+    n_rows = 250
+    dates = pd.date_range(start='2024-01-01', periods=n_rows, freq='H')
+    sample_data = pd.DataFrame({
+        'timestamp': dates,
+        'open': np.random.uniform(100, 200, n_rows),
+        'high': np.random.uniform(200, 300, n_rows),
+        'low': np.random.uniform(50, 100, n_rows),
+        'close': np.random.uniform(100, 200, n_rows),
+        'volume': np.random.uniform(1000, 5000, n_rows),
+        'RSI_14': np.random.uniform(0, 100, n_rows),
+        'MACD_12_26_9': np.random.uniform(-10, 10, n_rows)
+    })
     # Create test database
     db_path = str(tmp_path / "test.db")
-    
     # Mock display progress function
     mock_display = lambda *args, **kwargs: None
-    
     # Mock periodic report function
     mock_periodic_report = lambda *args, **kwargs: None
-    
     result = process_correlations(
         data=sample_data,
         db_path=db_path,
@@ -580,7 +589,6 @@ def test_process_correlations_valid(
         display_progress_func=mock_display,
         periodic_report_func=mock_periodic_report
     )
-    
     assert isinstance(result, bool)
     assert result is True
 
