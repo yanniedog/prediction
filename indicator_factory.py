@@ -58,7 +58,9 @@ class IndicatorFactory:
     def _compute_single_indicator(self, data: pd.DataFrame, name: str, config: Dict[str, Any]) -> Optional[pd.DataFrame]:
         """Compute a single indicator based on its configuration."""
         try:
+            result_df = None
             if config['type'] == 'talib':
+                result_df = pd.DataFrame(index=data.index)
                 func_name = config['name']
                 params = config['params']
                 # Get required input columns
@@ -72,9 +74,9 @@ class IndicatorFactory:
                 missing_cols = [col for col in required_cols if col not in data.columns]
                 if missing_cols:
                     logger.error(f"Missing required columns for {name}: {missing_cols}")
-                    return None
+                    return result_df
                 # Get TA-Lib function
-                ta_func = getattr(ta, func_name, None)
+                ta_func = getattr(ta, func_name.upper(), None)
                 if not ta_func:
                     raise ValueError(f"Unknown TA-Lib function: {func_name}")
                 # Prepare input arrays
@@ -93,11 +95,7 @@ class IndicatorFactory:
                 logger.debug(f"TA-Lib function {func_name} returned: {results}")
                 if results is None:
                     logger.error(f"TA-Lib function {func_name} returned None for {name}")
-                    return None
-                
-                # Create result DataFrame
-                result_df = pd.DataFrame(index=data.index)
-                
+                    return result_df
                 # Handle different return types
                 if isinstance(results, (np.ndarray, list)):
                     # Single array result
@@ -113,14 +111,64 @@ class IndicatorFactory:
                 else:
                     # Single value result
                     result_df[name] = results
-                
                 if result_df.empty:
                     logger.error(f"Result DataFrame is empty for {name}")
-                    return None
                 return result_df
 
             elif config['type'] == 'ta-lib':
-                # ... existing code ...
+                func_name = config['name']
+                params = config['params']
+                required_cols = []
+                # Map parameter names to required columns
+                if 'high' in params: required_cols.append('high')
+                if 'low' in params: required_cols.append('low')
+                if 'close' in params: required_cols.append('close')
+                if 'volume' in params: required_cols.append('volume')
+                if 'open' in params: required_cols.append('open')
+                # Validate required columns
+                missing_cols = [col for col in required_cols if col not in data.columns]
+                if missing_cols:
+                    logger.error(f"Missing required columns for {name}: {missing_cols}")
+                    return pd.DataFrame(index=data.index)
+                # Get TA-Lib function
+                ta_func = getattr(ta, func_name.upper(), None)
+                if not ta_func:
+                    raise ValueError(f"Unknown TA-Lib function: {func_name}")
+                # Prepare input arrays
+                inputs = {}
+                for param_name, col_name in params.items():
+                    if col_name in data.columns:
+                        inputs[param_name] = data[col_name].values
+                    else:
+                        # If the param is not a column, use as-is (for timeperiod, etc.)
+                        inputs[param_name] = col_name
+                logger.debug(f"Calling TA-Lib function {func_name} with inputs: {inputs}")
+                # Get output names
+                output_names = self._get_ta_lib_output_suffixes(func_name)
+                # Compute indicator
+                results = ta_func(**inputs)
+                logger.debug(f"TA-Lib function {func_name} returned: {results}")
+                if results is None:
+                    logger.error(f"TA-Lib function {func_name} returned None for {name}")
+                    return pd.DataFrame(index=data.index)
+                # Handle different return types
+                result_df = pd.DataFrame(index=data.index)
+                if isinstance(results, (np.ndarray, list)):
+                    # Single array result
+                    if len(output_names) > 0:
+                        result_df[f"{name}_{output_names[0]}"] = results
+                    else:
+                        result_df[name] = results
+                elif isinstance(results, tuple):
+                    # Multiple array results
+                    for i, output_name in enumerate(output_names):
+                        if i < len(results):
+                            result_df[f"{name}_{output_name}"] = results[i]
+                else:
+                    # Single value result
+                    result_df[name] = results
+                if result_df.empty:
+                    logger.error(f"Result DataFrame is empty for {name}")
                 return result_df
 
             elif config['type'] == 'pandas-ta':
@@ -168,7 +216,7 @@ class IndicatorFactory:
 
         except Exception as e:
             logger.error(f"Error computing indicator {name}: {e}", exc_info=True)
-            return None
+            return pd.DataFrame(index=data.index)
 
     def compute_indicators(self, data: pd.DataFrame, indicators: Optional[List[str]] = None) -> pd.DataFrame:
         """Compute all or specified indicators for the given data."""

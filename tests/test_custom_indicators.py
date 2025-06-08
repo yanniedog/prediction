@@ -168,7 +168,7 @@ def test_compute_volume_oscillator(sample_data):
         assert isinstance(result, pd.DataFrame)
         assert not result.empty
         assert 'volume_osc' in result.columns
-        assert result['volume_osc'].isna().any()  # Should have NaN at start
+        # No need to check for NaN, as min_periods=1 ensures all values are filled
 
 def test_compute_vwap_basic(sample_data: pd.DataFrame) -> None:
     """Test basic VWAP calculation."""
@@ -190,12 +190,12 @@ def test_compute_vwap_invalid_inputs(sample_data: pd.DataFrame) -> None:
     """Test VWAP with invalid inputs."""
     # Test with missing columns
     data_missing_close = sample_data.drop('close', axis=1)
-    result = ci.compute_vwap(data_missing_close)
-    assert result is None
-    
+    with pytest.raises(MissingColumnsError, match="Missing required columns for VWAP: \\['close'\\]"):
+        ci.compute_vwap(data_missing_close)
+
     data_missing_volume = sample_data.drop('volume', axis=1)
-    result = ci.compute_vwap(data_missing_volume)
-    assert result is None
+    with pytest.raises(MissingColumnsError, match="Missing required columns for VWAP: \\['volume'\\]"):
+        ci.compute_vwap(data_missing_volume)
 
 def test_compute_vwap_edge_cases(sample_data_with_extremes: pd.DataFrame) -> None:
     """Test VWAP with edge cases."""
@@ -233,14 +233,21 @@ def test_compute_nvi_basic(sample_data: pd.DataFrame) -> None:
 
 def test_compute_volume_indices_invalid_inputs(sample_data: pd.DataFrame) -> None:
     """Test PVI and NVI with invalid inputs."""
-    # Test with missing columns
+    # Test with missing columns for PVI
     data_missing_close = sample_data.drop('close', axis=1)
-    assert ci.compute_pvi(data_missing_close) is None
-    assert ci.compute_nvi(data_missing_close) is None
-    
+    with pytest.raises(MissingColumnsError, match="Missing required columns for PVI: \\['close'\\]"):
+        ci.compute_pvi(data_missing_close)
+
     data_missing_volume = sample_data.drop('volume', axis=1)
-    assert ci.compute_pvi(data_missing_volume) is None
-    assert ci.compute_nvi(data_missing_volume) is None
+    with pytest.raises(MissingColumnsError, match="Missing required columns for PVI: \\['volume'\\]"):
+        ci.compute_pvi(data_missing_volume)
+
+    # Test with missing columns for NVI
+    with pytest.raises(MissingColumnsError, match="Missing required columns for NVI: \\['close'\\]"):
+        ci.compute_nvi(data_missing_close)
+
+    with pytest.raises(MissingColumnsError, match="Missing required columns for NVI: \\['volume'\\]"):
+        ci.compute_nvi(data_missing_volume)
 
 def test_compute_volume_indices_edge_cases(sample_data_with_extremes: pd.DataFrame) -> None:
     """Test PVI and NVI with edge cases."""

@@ -190,14 +190,23 @@ def compute_volume_oscillator(data: pd.DataFrame, window: int = 20) -> pd.DataFr
         raise IndicatorError(f"Failed to calculate Volume Oscillator: {e}")
 
 
-def compute_vwap(data: pd.DataFrame) -> Optional[pd.DataFrame]:
-    """Calculates Volume Weighted Average Price (VWAP) cumulatively. Returns a DataFrame with the result or None."""
-    col_name = VWAP
-    if not _check_required_cols(data, ['high', 'low', 'close', 'volume'], col_name):
-        return None
+def compute_vwap(data: pd.DataFrame) -> pd.DataFrame:
+    """Calculates Volume Weighted Average Price (VWAP) cumulatively.
+    Returns a DataFrame with the result.
 
-    logger.debug(f"Computing {col_name}")
-    result_df = pd.DataFrame(index=data.index) # Create new DataFrame
+    Args:
+        data: DataFrame with OHLCV data
+    Returns:
+        DataFrame with VWAP column
+    Raises:
+        MissingColumnsError: If required columns are missing
+        IndicatorError: For other calculation errors
+    """
+    required_cols = ['high', 'low', 'close', 'volume']
+    _check_required_cols(data, required_cols, 'VWAP')
+
+    logger.debug(f"Computing VWAP")
+    result_df = pd.DataFrame(index=data.index)
     try:
         # Use typical price for VWAP
         typical_price = (data['high'] + data['low'] + data['close']) / 3
@@ -206,19 +215,28 @@ def compute_vwap(data: pd.DataFrame) -> Optional[pd.DataFrame]:
         cum_vol = safe_volume.cumsum()
         cum_vol_price = (typical_price * safe_volume).cumsum()
         # Avoid division by zero
-        vwap = cum_vol_price.divide(cum_vol.replace(0, np.nan)).replace([np.inf, -np.inf], np.nan)
+        vwap = cum_vol_price.divide(cum_vol).replace([np.inf, -np.inf], np.nan)
         # Set VWAP to NaN where current volume is zero
         vwap[data['volume'] == 0] = np.nan
-        result_df[col_name] = vwap
+        result_df[VWAP] = vwap
         return result_df
-
     except Exception as e:
-        logger.error(f"Error calculating {col_name}: {e}", exc_info=True)
-        return None
-
+        if isinstance(e, MissingColumnsError):
+            raise
+        logger.error(f"Error calculating VWAP: {e}", exc_info=True)
+        raise IndicatorError(f"Failed to calculate VWAP: {e}")
 
 def _compute_volume_index(data: pd.DataFrame, col_name: str, volume_condition: callable) -> Optional[pd.DataFrame]:
-    """Helper for PVI and NVI calculation. Returns a DataFrame with the result or None."""
+    """Helper for PVI and NVI calculation. Returns a DataFrame with the result or None.
+    
+    Args:
+        data: DataFrame with OHLCV data
+        col_name: Name of the column to store the result
+        volume_condition: Callable that takes volume difference and returns bool
+        
+    Returns:
+        DataFrame with the calculated index or None if calculation fails
+    """
     if not _check_required_cols(data, ['close', 'volume'], col_name):
         return None
 
@@ -268,13 +286,73 @@ def _compute_volume_index(data: pd.DataFrame, col_name: str, volume_condition: c
         logger.error(f"Error calculating {col_name}: {e}", exc_info=True)
         return None
 
-def compute_pvi(data: pd.DataFrame) -> Optional[pd.DataFrame]:
-    """Calculates Positive Volume Index (PVI)."""
-    return _compute_volume_index(data, PVI, lambda vol_diff: vol_diff > 0)
+def compute_pvi(data: pd.DataFrame) -> pd.DataFrame:
+    """Calculates Positive Volume Index (PVI) cumulatively.
+    Returns a DataFrame with the result.
 
-def compute_nvi(data: pd.DataFrame) -> Optional[pd.DataFrame]:
-    """Calculates Negative Volume Index (NVI)."""
-    return _compute_volume_index(data, NVI, lambda vol_diff: vol_diff < 0)
+    Args:
+        data: DataFrame with OHLCV data
+    Returns:
+        DataFrame with PVI column
+    Raises:
+        MissingColumnsError: If required columns are missing
+        IndicatorError: For other calculation errors
+    """
+    required_cols = ['close', 'volume']
+    _check_required_cols(data, required_cols, 'PVI')
+
+    logger.debug(f"Computing PVI")
+    result_df = pd.DataFrame(index=data.index)
+    try:
+        close = data['close']
+        volume = data['volume']
+        pvi = pd.Series(1000.0, index=data.index)
+        for i in range(1, len(data)):
+            if volume.iloc[i] > volume.iloc[i - 1]:
+                pvi.iloc[i] = pvi.iloc[i - 1] * (1 + (close.iloc[i] - close.iloc[i - 1]) / close.iloc[i - 1])
+            else:
+                pvi.iloc[i] = pvi.iloc[i - 1]
+        result_df[PVI] = pvi
+        return result_df
+    except Exception as e:
+        if isinstance(e, MissingColumnsError):
+            raise
+        logger.error(f"Error calculating PVI: {e}", exc_info=True)
+        raise IndicatorError(f"Failed to calculate PVI: {e}")
+
+def compute_nvi(data: pd.DataFrame) -> pd.DataFrame:
+    """Calculates Negative Volume Index (NVI) cumulatively.
+    Returns a DataFrame with the result.
+
+    Args:
+        data: DataFrame with OHLCV data
+    Returns:
+        DataFrame with NVI column
+    Raises:
+        MissingColumnsError: If required columns are missing
+        IndicatorError: For other calculation errors
+    """
+    required_cols = ['close', 'volume']
+    _check_required_cols(data, required_cols, 'NVI')
+
+    logger.debug(f"Computing NVI")
+    result_df = pd.DataFrame(index=data.index)
+    try:
+        close = data['close']
+        volume = data['volume']
+        nvi = pd.Series(1000.0, index=data.index)
+        for i in range(1, len(data)):
+            if volume.iloc[i] < volume.iloc[i - 1]:
+                nvi.iloc[i] = nvi.iloc[i - 1] * (1 + (close.iloc[i] - close.iloc[i - 1]) / close.iloc[i - 1])
+            else:
+                nvi.iloc[i] = nvi.iloc[i - 1]
+        result_df[NVI] = nvi
+        return result_df
+    except Exception as e:
+        if isinstance(e, MissingColumnsError):
+            raise
+        logger.error(f"Error calculating NVI: {e}", exc_info=True)
+        raise IndicatorError(f"Failed to calculate NVI: {e}")
 
 # --- Removed apply_all_custom_indicators function ---
 # This function is no longer needed as main.py ensures custom indicator
