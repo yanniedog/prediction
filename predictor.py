@@ -21,10 +21,6 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-# Type aliases for better type hints
-DateTimeArray: TypeAlias = ArrayLike
-FloatArray: TypeAlias = ArrayLike
-
 # Import statsmodels conditionally
 try:
     import statsmodels.api as sm
@@ -477,7 +473,7 @@ def predict_price(db_path: Path, symbol: str, timeframe: str, final_target_lag: 
     # --- Prediction Loop ---
     prediction_results: List[Dict] = []
     # Cache computed indicators within this prediction run (local scope)
-    indicator_series_cache_predict: Dict[int, pd.DataFrame] = {}
+    indicator_series_cache_predict: Dict[str, pd.DataFrame] = {}
 
     print("\nCalculating predictions for each lag...")
     skipped_lags = 0
@@ -505,7 +501,8 @@ def predict_price(db_path: Path, symbol: str, timeframe: str, final_target_lag: 
 
         # 5. Calculate current indicator value (using cached indicator if possible)
         current_ind_val = None
-        indicator_df_full = indicator_series_cache_predict.get(cfg_id)
+        cache_key = f"{ind_name}_{cfg_id}"
+        indicator_df_full = indicator_series_cache_predict.get(cache_key)
         is_cached_failure_pred = False
 
         if indicator_df_full is None: # Not cached
@@ -517,11 +514,11 @@ def predict_price(db_path: Path, symbol: str, timeframe: str, final_target_lag: 
                 config=indicator_config
             )
             if temp_df is not None and not temp_df.empty:
-                indicator_series_cache_predict[cfg_id] = temp_df # Cache result
+                indicator_series_cache_predict[cache_key] = temp_df # Cache result
                 indicator_df_full = temp_df
             else:
                 logger.error(f"Failed compute indicator {ind_name} Cfg {cfg_id} for current value. Skipping lag {current_lag}.")
-                indicator_series_cache_predict[cfg_id] = pd.DataFrame() # Cache failure
+                indicator_series_cache_predict[cache_key] = pd.DataFrame() # Cache failure
                 skipped_lags+=1; continue
         elif indicator_df_full.empty: # Cached failure
             logger.warning(f"Skipping lag {current_lag}: Indicator Cfg {cfg_id} previously failed calculation.")
@@ -531,7 +528,9 @@ def predict_price(db_path: Path, symbol: str, timeframe: str, final_target_lag: 
         if is_cached_failure_pred: continue # Skip if marked as failure
 
         # Extract the current value from the potentially multi-output DataFrame
-        pattern = re.compile(rf"^{re.escape(ind_name)}_{cfg_id}(_.*)?$")
+        if ind_name is None or cfg_id is None:
+            logger.error("ind_name or cfg_id is None. Skipping lag {current_lag}."); skipped_lags+=1; continue
+        pattern = re.compile(rf"^{re.escape(str(ind_name))}_{cfg_id}(_.*)?$")
         potential_cols = [col for col in indicator_df_full.columns if pattern.match(col)]
         if not potential_cols:
             logger.error(f"Could not find output col for CfgID {cfg_id} in cached/calculated DF. Cols: {list(indicator_df_full.columns)}"); skipped_lags+=1; continue
@@ -693,10 +692,16 @@ def plot_predicted_path(
         ax.plot(plot_aware_dates[-1], plot_prices[-1], marker='*', markersize=10, color='red', linestyle='None', label=f'Final Prediction ({target_date.strftime("%Y-%m-%d %H:%M")})') # Added linestyle='None'
         # Annotate final point
         price_prec = utils.estimate_price_precision(start_price) # Use dynamic precision
+        # Ensure we pass a scalar datetime, not an array
+        final_date = plot_aware_dates[-1]
+        if isinstance(final_date, np.ndarray):
+            final_date = final_date.tolist()[0] if final_date.size == 1 else final_date
+            if hasattr(final_date, 'item'):
+                final_date = final_date.item()
         # Annotate using the actual lag of the final prediction
         final_actual_lag = prediction_results[-1]['lag'] if prediction_results else len(plot_prices) - 1
         ax.text(
-            plot_aware_dates[-1],
+            mdates.date2num(final_date),
             plot_prices[-1],
             f' Lag {final_actual_lag}\n ${plot_prices[-1]:.{price_prec}f}',
             va='bottom',
@@ -709,7 +714,21 @@ def plot_predicted_path(
     ax.plot(plot_aware_dates[0], plot_prices[0], marker='o', markersize=8, color='black', linestyle='None', label=f'Start ({start_date.strftime("%Y-%m-%d %H:%M")})') # Added linestyle='None'
     # Annotate start point
     price_prec = utils.estimate_price_precision(start_price)
-    ax.text(plot_aware_dates[0], plot_prices[0], f' Start\n ${plot_prices[0]:.{price_prec}f}', va='bottom', ha='right', fontsize=9, color='black')
+    # Ensure we pass a scalar datetime, not an array
+    start_date_ = plot_aware_dates[0]
+    if isinstance(start_date_, np.ndarray):
+        start_date_ = start_date_.tolist()[0] if start_date_.size == 1 else start_date_
+        if hasattr(start_date_, 'item'):
+            start_date_ = start_date_.item()
+    ax.text(
+        mdates.date2num(start_date_),
+        plot_prices[0],
+        f' Start\n ${plot_prices[0]:.{price_prec}f}',
+        va='bottom',
+        ha='right',
+        fontsize=9,
+        color='black',
+    )
 
 
     ax.set_title(f"Predicted Price Path: {symbol} ({timeframe}) - Up to {final_target_lag} Periods Attempted")

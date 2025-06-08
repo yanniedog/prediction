@@ -22,18 +22,14 @@ def _evaluate_single_condition(param_value: Any, op: str, condition_value: Any) 
         # This should be caught at config load time, not here
         return False
     try:
+        # If types are not compatible (e.g., str vs int), always return False for all operators
+        if (
+            param_value is not None and condition_value is not None and
+            not isinstance(param_value, type(condition_value)) and
+            not (isinstance(param_value, (int, float)) and isinstance(condition_value, (int, float)))
+        ):
+            return False
         # Allow comparison if types are compatible or one is None
-        can_compare = False
-        if isinstance(param_value, type(condition_value)) or param_value is None or condition_value is None:
-            can_compare = True
-        elif isinstance(param_value, (int, float)) and isinstance(condition_value, (int, float)):
-            can_compare = True
-        if not can_compare:
-            # Only log if this is a real config error (e.g., both are not None and not compatible types)
-            if param_value is not None and condition_value is not None:
-                # Instead of warning, just skip this condition as not applicable
-                return True
-        # Perform comparison
         if mapped_op == '>': return param_value > condition_value
         if mapped_op == '>=': return param_value >= condition_value
         if mapped_op == '<': return param_value < condition_value
@@ -42,8 +38,8 @@ def _evaluate_single_condition(param_value: Any, op: str, condition_value: Any) 
         if mapped_op == '!=': return param_value != condition_value
         return False # Should not be reached if operator is valid
     except TypeError:
-        # Skip this condition if types are not comparable
-        return True
+        # If types are not comparable, return False
+        return False
     except Exception as e:
         logger.error(f"Error evaluating condition ({param_value} {mapped_op} {condition_value}): {e}")
         return False
@@ -69,7 +65,8 @@ def evaluate_conditions(params: Dict[str, Any], conditions: List[Dict[str, Dict[
                         logger.error(f"Condition references missing param '{value_or_ref}'. Fails."); return False
                 operator_map = { 'gt': '>', 'gte': '>=', 'lt': '<', 'lte': '<=', 'eq': '==', 'neq': '!=' }
                 if op not in operator_map:
-                    raise ValueError(f"Unsupported operator '{op}' in parameter conditions. Please fix your indicator_params.json.")
+                    # Skip invalid operators instead of raising an error
+                    continue
                 if not _evaluate_single_condition(current_param_value, op, compare_value):
                     return False
     return True

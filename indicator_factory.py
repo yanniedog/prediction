@@ -51,7 +51,12 @@ class IndicatorFactory:
     def _compute_single_indicator(self, data: pd.DataFrame, name: str, config: Dict[str, Any]) -> Optional[pd.DataFrame]:
         """Compute a single indicator based on its configuration."""
         try:
-            result_df = pd.DataFrame(index=data.index)
+            # Create empty DataFrame with same index as input data
+            result_df = pd.DataFrame(index=data.index, columns=[])
+            
+            # Validate input data for NaN values
+            if data.isnull().any().any():
+                logger.warning(f"Input data contains NaN values for indicator {name}. These will be handled appropriately.")
             
             if config['type'] in ['talib', 'ta-lib']:  # Handle both types the same way
                 func_name = config['name']
@@ -86,6 +91,10 @@ class IndicatorFactory:
                     else:
                         # Use as-is (for timeperiod, float, int, etc.)
                         inputs[param_name] = value
+                # Handle NaN values in input arrays
+                for param_name, values in inputs.items():
+                    if isinstance(values, np.ndarray):
+                        inputs[param_name] = np.nan_to_num(values, nan=np.nan)
                 logger.debug(f"Calling TA-Lib function {func_name.upper()} with inputs: {inputs}")
                 # Get output names
                 output_names = self._get_ta_lib_output_suffixes(func_name.upper())
@@ -112,6 +121,9 @@ class IndicatorFactory:
                     result_df[name] = results
                 if result_df.empty:
                     logger.error(f"Result DataFrame is empty for {name}")
+                # Handle NaN values in result
+                if isinstance(result_df, pd.DataFrame):
+                    result_df = result_df.fillna(method='ffill', axis=0).fillna(method='bfill', axis=0)
                 return result_df
 
             elif config['type'] == 'pandas-ta':
@@ -128,6 +140,8 @@ class IndicatorFactory:
                     raise ValueError(f"Unknown pandas-ta function: {func_name}")
                 # Prepare input arguments
                 func_args = {k: v['default'] if isinstance(v, dict) and 'default' in v else v for k, v in params.items()}
+                # Handle NaN values in input data
+                data = data.fillna(method='ffill', axis=0).fillna(method='bfill', axis=0)
                 # Call the function
                 result = ta_func(data, **func_args) if 'self' not in ta_func.__code__.co_varnames else ta_func(**{k: data[k] for k in required_cols}, **func_args)
                 # result can be a Series or DataFrame
@@ -135,6 +149,9 @@ class IndicatorFactory:
                     result_df = pd.DataFrame({f"{name}": result})
                 else:
                     result_df = result.add_prefix(f"{name}_")
+                # Handle NaN values in result
+                if isinstance(result_df, pd.DataFrame):
+                    result_df = result_df.fillna(method='ffill', axis=0).fillna(method='bfill', axis=0)
                 return result_df
 
             elif config['type'] == 'custom':
@@ -153,6 +170,9 @@ class IndicatorFactory:
                 if not func:
                     raise ValueError(f"Unknown custom indicator: {name}")
                 
+                # Handle NaN values in input data for custom indicators
+                data = data.fillna(method='ffill', axis=0).fillna(method='bfill', axis=0)
+                
                 # Compute custom indicator
                 return func(data, **config['params'])
 
@@ -161,7 +181,7 @@ class IndicatorFactory:
 
         except Exception as e:
             logger.error(f"Error computing indicator {name}: {e}", exc_info=True)
-            return pd.DataFrame(index=data.index)
+            return pd.DataFrame(index=data.index, columns=[])
 
     def compute_indicators(self, data: pd.DataFrame, indicators: Optional[List[str]] = None) -> pd.DataFrame:
         """Compute all or specified indicators for the given data."""
@@ -177,20 +197,21 @@ class IndicatorFactory:
         result_df = data.copy()
         for name in indicators:
             if name not in self.indicator_params:
-                logger.warning(f"Unknown indicator: {name}")
                 raise ValueError(f"Unknown indicator: {name}")
                 
             config = self.indicator_params[name]
             indicator_df = self._compute_single_indicator(data, name, config)
             
             if indicator_df is not None:
-                # Add new columns to result
+                # Add new columns to result, handling duplicates by appending _new
                 for col in indicator_df.columns:
                     if col in result_df.columns:
-                        logger.warning(f"Column {col} already exists, overwriting")
-                    result_df[col] = indicator_df[col]
+                        new_col = f"{col}_new"
+                        result_df[new_col] = indicator_df[col]
+                    else:
+                        result_df[col] = indicator_df[col]
             else:
-                logger.warning(f"Failed to compute indicator: {name}")
+                logger.error(f"Failed to compute indicator: {name}")
         
         return result_df
 
@@ -355,11 +376,49 @@ class IndicatorFactory:
             params: Parameters for the indicator
             output_path: Optional path to save the plot
         """
-        logger = logging.getLogger(__name__)
-        logger.info(f"Plotting indicator {indicator_name} with params {params}")
-        # TODO: Implement actual plotting logic
-        # For now, just log that plotting is not yet implemented
-        logger.warning("Plotting functionality not yet implemented")
+        try:
+            import matplotlib.pyplot as plt
+            
+            # Compute the indicator
+            indicator_values = self.create_indicator(indicator_name, data, **params)
+            if indicator_values is None:
+                raise ValueError(f"Failed to compute indicator {indicator_name}")
+            
+            # Create the plot
+            fig, ax1 = plt.subplots(figsize=(12, 6))
+            
+            # Plot price on primary y-axis
+            ax1.plot(data.index, data['close'], 'b-', label='Price')
+            ax1.set_xlabel('Date')
+            ax1.set_ylabel('Price', color='b')
+            ax1.tick_params(axis='y', labelcolor='b')
+            
+            # Plot indicator on secondary y-axis
+            ax2 = ax1.twinx()
+            ax2.plot(data.index, indicator_values, 'r-', label=indicator_name)
+            ax2.set_ylabel(indicator_name, color='r')
+            ax2.tick_params(axis='y', labelcolor='r')
+            
+            # Add legend
+            lines1, labels1 = ax1.get_legend_handles_labels()
+            lines2, labels2 = ax2.get_legend_handles_labels()
+            ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
+            
+            plt.title(f'{indicator_name} vs Price')
+            plt.grid(True)
+            
+            if output_path:
+                plt.savefig(output_path)
+                plt.close()
+            else:
+                plt.show()
+            
+        except ImportError:
+            logger.error("Matplotlib not installed. Cannot plot indicator.")
+            raise
+        except Exception as e:
+            logger.error(f"Error plotting indicator {indicator_name}: {e}", exc_info=True)
+            raise
 
 def compute_configured_indicators(data: pd.DataFrame, indicator_configs: List[Dict[str, Any]]) -> Tuple[pd.DataFrame, Set[int]]:
     """
@@ -415,11 +474,13 @@ def compute_configured_indicators(data: pd.DataFrame, indicator_configs: List[Di
                     failed_config_ids.add(config_id)
                 continue
                 
-            # Add computed columns to result
+            # Add computed columns to result, handling duplicates by appending _new
             for col in indicator_df.columns:
                 if col in result_df.columns:
-                    logger.warning(f"Column {col} already exists, overwriting")
-                result_df[col] = indicator_df[col]
+                    new_col = f"{col}_new"
+                    result_df[new_col] = indicator_df[col]
+                else:
+                    result_df[col] = indicator_df[col]
                 
         except Exception as e:
             logger.error(f"Error computing indicator config {config.get('config_id', 'unknown')}: {e}", exc_info=True)
