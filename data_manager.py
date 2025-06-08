@@ -658,3 +658,83 @@ def load_data(db_path: Path) -> Optional[pd.DataFrame]:
         return None
     finally:
         if conn: conn.close()
+
+class DataManager:
+    def __init__(self, config):
+        self.config = config
+
+    def load_data(self, data_source):
+        import pandas as pd
+        if isinstance(data_source, pd.DataFrame):
+            return data_source.copy()
+        elif isinstance(data_source, str) and data_source.endswith('.csv'):
+            return pd.read_csv(data_source, index_col=0, parse_dates=True)
+        else:
+            raise ValueError('Unsupported data source')
+
+    def validate_data(self, data):
+        import pandas as pd
+        if not isinstance(data, pd.DataFrame):
+            return False
+        required_cols = ['open', 'high', 'low', 'close', 'volume']
+        for col in required_cols:
+            if col not in data.columns or data[col].isnull().any():
+                return False
+        return True
+
+    def preprocess_data(self, data):
+        import pandas as pd
+        df = data.copy()
+        df = df.fillna(method='ffill').fillna(method='bfill')
+        return df
+
+    def split_data(self, data, test_size=0.2):
+        import pandas as pd
+        n = int(len(data) * (1 - test_size))
+        return data.iloc[:n], data.iloc[n:]
+
+    def engineer_features(self, data):
+        import pandas as pd
+        df = data.copy()
+        df['returns'] = df['close'].pct_change().fillna(0)
+        return df
+
+    def normalize_data(self, data):
+        import pandas as pd
+        import numpy as np
+        df = data.copy()
+        numeric = df.select_dtypes(include=[np.number])
+        df[numeric.columns] = (numeric - numeric.mean()) / (numeric.std() + 1e-9)
+        df[numeric.columns] = df[numeric.columns].clip(-1, 1)
+        return df
+
+    def aggregate_data(self, data, freq):
+        import pandas as pd
+        df = data.copy()
+        return df.resample(freq).agg({
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last',
+            'volume': 'sum'
+        }).dropna()
+
+    def clean_data(self, data):
+        import pandas as pd
+        df = data.copy()
+        # Remove outliers in 'close'
+        q_low = df['close'].quantile(0.01)
+        q_high = df['close'].quantile(0.99)
+        df['close'] = df['close'].clip(q_low, q_high)
+        df = df.fillna(method='ffill').fillna(method='bfill')
+        return df
+
+    def sample_data(self, data, n_samples=None, method='random', step=None):
+        import pandas as pd
+        df = data.copy()
+        if method == 'random' and n_samples is not None:
+            return df.sample(n=n_samples)
+        elif method == 'systematic' and step is not None:
+            return df.iloc[::step]
+        else:
+            raise ValueError('Unsupported sampling method')

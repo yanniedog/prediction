@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import talib as ta
 import logging
-from typing import List, Optional # Added Optional import
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -27,8 +27,8 @@ def _check_required_cols(data: pd.DataFrame, required: List[str], indicator_name
 # These functions now return a DataFrame with ONLY the new column(s) or None on failure.
 
 def compute_obv_price_divergence(data: pd.DataFrame, method: str ="Difference", obv_method: str ="SMA", obv_period: int =14,
-                                 price_input_type: str ="OHLC/4", price_method: str ="SMA", price_period: int =14,
-                                 smoothing: float =0.01) -> Optional[pd.DataFrame]:
+                                price_input_type: str ="OHLC/4", price_method: str ="SMA", price_period: int =14,
+                                smoothing: float =0.01) -> Optional[pd.DataFrame]:
     """Calculates OBV/Price divergence. Returns a DataFrame with the result or None."""
     col_name = OBV_PRICE_DIVERGENCE
     required_cols = ['open', 'high', 'low', 'close', 'volume']
@@ -71,20 +71,21 @@ def compute_obv_price_divergence(data: pd.DataFrame, method: str ="Difference", 
         # Calculate Divergence Metric
         metric = pd.Series(np.nan, index=data.index)
         safe_method = str(method).capitalize() if method else ""
+        
         if safe_method == "Difference":
             metric = obv_change_percent - price_change_percent
         elif safe_method == "Ratio":
-             # Add epsilon to denominator to avoid division by zero
-             denominator = price_change_percent.abs().add(max(1e-9, smoothing))
-             metric = obv_change_percent.divide(denominator)
+            # Add epsilon to denominator to avoid division by zero
+            denominator = price_change_percent.abs().add(max(1e-9, smoothing))
+            metric = obv_change_percent.divide(denominator)
         elif safe_method == "Log Ratio":
-             # Clip ratios to avoid log(0) or log(negative) issues
-             obv_shifted = obv_ma.shift(1).replace(0, np.nan)
-             price_shifted = price_ma.shift(1).replace(0, np.nan)
-             obv_ratio = obv_ma.divide(obv_shifted).clip(lower=1e-9)
-             price_ratio = price_ma.divide(price_shifted).clip(lower=1e-9)
-             # Use np.log1p on (ratio - 1) for better precision near 1? No, simple log is fine.
-             metric = np.log(obv_ratio.divide(price_ratio.replace(0, np.nan))) # Avoid div by zero in final step too
+            # Clip ratios to avoid log(0) or log(negative) issues
+            obv_shifted = obv_ma.shift(1).replace(0, np.nan)
+            price_shifted = price_ma.shift(1).replace(0, np.nan)
+            obv_ratio = obv_ma.divide(obv_shifted).clip(lower=1e-9)
+            price_ratio = price_ma.divide(price_shifted).clip(lower=1e-9)
+            # Use np.log1p on (ratio - 1) for better precision near 1? No, simple log is fine.
+            metric = np.log(obv_ratio.divide(price_ratio.replace(0, np.nan))) # Avoid div by zero in final step too
         else: raise ValueError(f"Unsupported divergence method: {method}")
 
         result_df[col_name] = metric.replace([np.inf, -np.inf], np.nan) # Add to new DF
@@ -93,7 +94,6 @@ def compute_obv_price_divergence(data: pd.DataFrame, method: str ="Difference", 
     except Exception as e:
         logger.error(f"Error calculating {col_name}: {e}", exc_info=True)
         return None # Return None on failure
-
 
 def compute_volume_oscillator(data: pd.DataFrame, window: int = 20) -> Optional[pd.DataFrame]:
     """Calculates Volume Oscillator. Returns a DataFrame with the result or None."""
@@ -109,10 +109,22 @@ def compute_volume_oscillator(data: pd.DataFrame, window: int = 20) -> Optional[
     try:
         # Use min_periods=1 to avoid NaN at the start if window > length
         vol_ma = data['volume'].rolling(window=window, min_periods=1).mean()
-        # Avoid division by zero or near-zero
-        denominator = vol_ma.replace(0, np.nan)
-        result_df[col_name] = (data['volume'] - vol_ma).divide(denominator).replace([np.inf, -np.inf], np.nan) # Add to new DF
+        
+        # Create mask for zero volumes (either current or MA)
+        zero_mask = (data['volume'] == 0) | (vol_ma == 0)
+        
+        # Calculate oscillator only for non-zero volumes
+        result_df[col_name] = pd.Series(np.nan, index=data.index)  # Initialize with NaN
+        non_zero_mask = ~zero_mask
+        if non_zero_mask.any():
+            result_df.loc[non_zero_mask, col_name] = (
+                (data.loc[non_zero_mask, 'volume'] - vol_ma[non_zero_mask])
+                .divide(vol_ma[non_zero_mask])
+                .replace([np.inf, -np.inf], np.nan)
+            )
+        
         return result_df
+
     except Exception as e:
         logger.error(f"Error calculating {col_name}: {e}", exc_info=True)
         return None
@@ -121,20 +133,22 @@ def compute_volume_oscillator(data: pd.DataFrame, window: int = 20) -> Optional[
 def compute_vwap(data: pd.DataFrame) -> Optional[pd.DataFrame]:
     """Calculates Volume Weighted Average Price (VWAP) cumulatively. Returns a DataFrame with the result or None."""
     col_name = VWAP
-    if not _check_required_cols(data, ['close', 'volume'], col_name):
+    if not _check_required_cols(data, ['high', 'low', 'close', 'volume'], col_name):
         return None
 
     logger.debug(f"Computing {col_name}")
     result_df = pd.DataFrame(index=data.index) # Create new DataFrame
     try:
-        # Ensure volume is non-negative
+        # Use typical price for VWAP
+        typical_price = (data['high'] + data['low'] + data['close']) / 3
         safe_volume = data['volume'].clip(lower=0)
         # Calculate cumulative terms
         cum_vol = safe_volume.cumsum()
-        cum_vol_price = (data['close'] * safe_volume).cumsum()
+        cum_vol_price = (typical_price * safe_volume).cumsum()
         # Avoid division by zero
         result_df[col_name] = cum_vol_price.divide(cum_vol.replace(0, np.nan)).replace([np.inf, -np.inf], np.nan) # Add to new DF
         return result_df
+
     except Exception as e:
         logger.error(f"Error calculating {col_name}: {e}", exc_info=True)
         return None
@@ -198,7 +212,6 @@ def compute_pvi(data: pd.DataFrame) -> Optional[pd.DataFrame]:
 def compute_nvi(data: pd.DataFrame) -> Optional[pd.DataFrame]:
     """Calculates Negative Volume Index (NVI)."""
     return _compute_volume_index(data, NVI, lambda vol_diff: vol_diff < 0)
-
 
 # --- Removed apply_all_custom_indicators function ---
 # This function is no longer needed as main.py ensures custom indicator

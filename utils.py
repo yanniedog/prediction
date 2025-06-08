@@ -3,87 +3,100 @@
 import os
 import pandas as pd
 import numpy as np
-from typing import List, Tuple, Optional, Dict, Any, Set # Added Set
+from typing import (
+    List, Tuple, Optional, Dict, Any, Set, Protocol, Union, cast,
+    Callable, TypeVar, Sequence
+)
 import logging
 import re
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 import math
-from pathlib import Path # Added Path
-import shutil # Import shutil for file operations
+from pathlib import Path
+import shutil
 
 # Added imports for potentially needed modules if functions were moved here
 # (Adjust based on actual function locations if refactored)
 import sqlite_manager
 import leaderboard_manager
 import visualization_generator
-import config as app_config # Use app_config alias to avoid conflict
+import config as app_config
 
 try:
     from dateutil.relativedelta import relativedelta
     DATEUTIL_AVAILABLE = True
 except ImportError:
     DATEUTIL_AVAILABLE = False
-    logging.getLogger(__name__).info("python-dateutil missing. Month timeframe calculations ('1M') may fail.")
+    logging.getLogger(__name__).info(
+        "python-dateutil missing. Month timeframe calculations ('1M') may fail."
+    )
 
 logger = logging.getLogger(__name__)
 
-# --- Function: cleanup_previous_content ---
+T = TypeVar('T')
+
+class ProgressDisplayFunc(Protocol):
+    """Protocol for progress display function."""
+    def __call__(self, stage_name: str, current_step: float, total_steps: int) -> None: ...
+
 def cleanup_previous_content(
     clean_reports: bool = True,
     clean_logs: bool = True,
-    clean_db: bool = False, # Default to NOT cleaning database files
-    # Add exclusions if needed, e.g., leaderboard DB, params file
-    exclude_files: List[str] = [app_config.LEADERBOARD_DB_PATH.name, app_config.INDICATOR_PARAMS_PATH.name, '.gitignore']
+    clean_db: bool = False,
+    exclude_files: Optional[List[str]] = None
 ) -> None:
-    """Deletes generated content from previous runs."""
-    logger.info("--- Starting Cleanup ---")
+    """Clean up previous content from specified directories.
+    
+    Args:
+        clean_reports: Whether to clean the reports directory
+        clean_logs: Whether to clean the logs directory
+        clean_db: Whether to clean the database directory
+        exclude_files: List of files to exclude from cleanup
+    """
+    if exclude_files is None:
+        exclude_files = [
+            app_config.LEADERBOARD_DB_PATH.name,
+            app_config.INDICATOR_PARAMS_PATH.name,
+            '.gitignore'
+        ]
 
-    dirs_to_clean = []
+    dirs_to_clean: List[Path] = []
     if clean_reports:
-        # Ensure all report subdirectories are included
-        dirs_to_clean.extend([
-            app_config.REPORTS_DIR, # Clean root reports dir first
-            app_config.HEATMAPS_DIR,
-            app_config.LINE_CHARTS_DIR,
-            app_config.COMBINED_CHARTS_DIR
-        ])
-        # Remove duplicates just in case config paths overlap
-        dirs_to_clean = list(set(dirs_to_clean))
-
+        dirs_to_clean.append(app_config.REPORTS_DIR)
     if clean_logs:
         dirs_to_clean.append(app_config.LOG_DIR)
     if clean_db:
-        logger.warning("Database cleanup enabled. THIS WILL DELETE DOWNLOADED DATA FILES.")
         dirs_to_clean.append(app_config.DB_DIR)
 
     for target_dir in dirs_to_clean:
         if not target_dir.exists():
             logger.info(f"Cleanup: Directory '{target_dir}' not found, skipping.")
             continue
-        # Skip cleaning if it's the project root itself (safety check)
+            
         if target_dir.resolve() == app_config.PROJECT_ROOT.resolve():
-             logger.warning(f"Cleanup: Skipping attempt to clean project root directory: {target_dir}")
-             continue
+            logger.warning(
+                f"Cleanup: Skipping attempt to clean project root directory: {target_dir}"
+            )
+            continue
 
         logger.info(f"Cleaning directory: {target_dir}")
         cleaned_count = 0
         skipped_count = 0
+        
         try:
-            # Ensure we only iterate if it's actually a directory
             if not target_dir.is_dir():
                 logger.warning(f"Cleanup: Target '{target_dir}' is not a directory. Skipping.")
                 continue
 
             for item_path in target_dir.iterdir():
                 item_name = item_path.name
-                # Check exclusions relative to the base DB_DIR or PROJECT_ROOT if necessary
                 is_excluded = item_name in exclude_files
-                # Special check for leaderboard DB if cleaning DB_DIR
-                if clean_db and target_dir == app_config.DB_DIR and item_path == app_config.LEADERBOARD_DB_PATH:
-                     is_excluded = True
-                # Special check for params file if somehow in a cleaned dir (unlikely but safe)
+                
+                if clean_db and target_dir == app_config.DB_DIR:
+                    if item_path == app_config.LEADERBOARD_DB_PATH:
+                        is_excluded = True
+                        
                 if item_path == app_config.INDICATOR_PARAMS_PATH:
                     is_excluded = True
 
@@ -98,24 +111,28 @@ def cleanup_previous_content(
                         logger.debug(f"Deleted file: {item_path}")
                         cleaned_count += 1
                     elif item_path.is_dir():
-                        # Double-check before deleting directory (safety)
                         if item_path.resolve() != app_config.PROJECT_ROOT.resolve():
-                             shutil.rmtree(item_path)
-                             logger.debug(f"Deleted directory: {item_path}")
-                             cleaned_count += 1
+                            shutil.rmtree(item_path)
+                            logger.debug(f"Deleted directory: {item_path}")
+                            cleaned_count += 1
                         else:
-                             logger.warning(f"Cleanup: Safety prevented deletion of project root via subdirectory reference: {item_path}")
-                             skipped_count +=1
+                            logger.warning(
+                                "Cleanup: Safety prevented deletion of project root via "
+                                f"subdirectory reference: {item_path}"
+                            )
+                            skipped_count += 1
 
                 except Exception as e:
                     logger.error(f"Error deleting item {item_path}: {e}", exc_info=True)
-            logger.info(f"Finished cleaning '{target_dir}'. Deleted: {cleaned_count}, Skipped: {skipped_count}.")
+                    
+            logger.info(
+                f"Finished cleaning '{target_dir}'. "
+                f"Deleted: {cleaned_count}, Skipped: {skipped_count}."
+            )
         except Exception as e:
             logger.error(f"Error iterating through directory {target_dir}: {e}", exc_info=True)
 
     logger.info("--- Cleanup Finished ---")
-# --- End of Cleanup Function ---
-
 
 # --- Existing Utils ---
 
@@ -127,7 +144,7 @@ def clear_screen() -> None:
 def parse_indicator_column_name(col_name: str) -> Optional[Tuple[str, int, Optional[str]]]:
     """Parses indicator column names like 'RSI_123_FASTK' or 'ADX_456'."""
     # Regex to match: BaseName_ConfigID OR BaseName_ConfigID_Suffix
-    match = re.match(r'^(.*?)_(\d+)(?:_([^_].*|_+))?$', col_name) # Adjusted suffix capture
+    match = re.match(r'^(.+?)_(\d+)(?:_([^_].*|_+))?$', col_name) # Require at least one char for name
     if match:
         base_name, config_id_str, output_suffix = match.groups()
         try:
@@ -137,7 +154,7 @@ def parse_indicator_column_name(col_name: str) -> Optional[Tuple[str, int, Optio
             logger.error(f"Internal Error parsing config ID from column '{col_name}'")
             return None
     else:
-        match_simple = re.match(r'^(.*?)_(\d+)$', col_name)
+        match_simple = re.match(r'^(.+?)_(\d+)$', col_name) # Require at least one char for name
         if match_simple:
             base_name, config_id_str = match_simple.groups()
             try:
@@ -164,8 +181,10 @@ def round_floats_for_hashing(obj):
         return round(obj, 8) # Use a fixed precision
     if isinstance(obj, dict):
         return {k: round_floats_for_hashing(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
+    if isinstance(obj, list):
         return [round_floats_for_hashing(elem) for elem in obj]
+    if isinstance(obj, tuple):
+        return tuple(round_floats_for_hashing(elem) for elem in obj)
     return obj
 
 def get_config_hash(params: Dict[str, Any]) -> str:
@@ -199,13 +218,14 @@ def compare_param_dicts(dict1: Optional[Dict], dict2: Optional[Dict]) -> bool:
             if not np.isclose(val1, val2, rtol=1e-6, atol=1e-9): return False
         elif isinstance(val1, (np.floating, np.integer)) or isinstance(val2, (np.floating, np.integer)):
              try:
-                 py_val1 = val1.item() if hasattr(val1, 'item') else val1
-                 py_val2 = val2.item() if hasattr(val2, 'item') else val2
+                 # Convert numpy types to Python types
+                 py_val1 = float(val1) if isinstance(val1, (np.floating, np.integer)) else val1
+                 py_val2 = float(val2) if isinstance(val2, (np.floating, np.integer)) else val2
                  if isinstance(py_val1, float) and isinstance(py_val2, float):
                       if not np.isclose(py_val1, py_val2, rtol=1e-6, atol=1e-9): return False
                  elif py_val1 != py_val2:
                       return False
-             except (AttributeError, TypeError):
+             except (ValueError, TypeError):
                  if val1 != val2: return False
         elif type(val1) != type(val2):
              try:
@@ -258,10 +278,17 @@ def estimate_price_precision(price: float) -> int:
 
 # --- Timeframe Calculation Helpers ---
 def _get_seconds_per_period(timeframe: str) -> Optional[float]:
-    """Converts a timeframe string (e.g., '1h', '3d') to seconds."""
-    tf_lower = str(timeframe).lower()
+    """Converts a timeframe string (e.g., '1h', '3d') to seconds. Returns None for variable-length months ('1M')."""
+    tf_str = str(timeframe)
+    tf_lower = tf_str.lower()
+    # Special case: '1M' (month, variable length)
+    if tf_str == '1M' or tf_str == '1m' and timeframe.isupper():
+        return None
     if tf_lower == '1m': return 60.0
     if tf_lower.endswith('m') and not tf_lower.endswith('mo'):
+        # Exclude '1M' (month) which is handled above
+        if tf_str == '1M':
+            return None
         match = re.match(r'(\d+)m$', tf_lower)
         if match:
             try: value = int(match.group(1)); return float(value * 60) if value > 0 else None
@@ -281,7 +308,6 @@ def _get_seconds_per_period(timeframe: str) -> Optional[float]:
         if match:
             try: value = int(match.group(1)); return float(value * 604800) if value > 0 else None
             except ValueError: return None
-    elif tf_lower == '1M': return None # Variable length
     elif tf_lower.endswith('y'):
          match = re.match(r'(\d+)y$', tf_lower)
          if match:
@@ -405,65 +431,94 @@ def estimate_duration(num_configs_or_indicators: int, max_lag: int, path_type: s
 
 # --- Interim Report Function (Moved from main.py, adjusted) ---
 def run_interim_reports(
-    db_path: Path, symbol_id: int, timeframe_id: int,
-    configs_for_report: List[Dict[str, Any]], max_lag: int,
-    file_prefix: str, stage_name: str = "Interim",
-    correlation_data: Optional[Dict[int, List[Optional[float]]]] = None # Accept pre-fetched data
+    db_path: Path,
+    symbol_id: int,
+    timeframe_id: int,
+    configs_for_report: List[Dict[str, Any]],
+    max_lag: int,
+    file_prefix: str,
+    stage_name: str = "Interim",
+    correlation_data: Optional[Dict[int, List[Optional[float]]]] = None
 ) -> None:
-    """Fetches correlation data (if not provided) and generates reports."""
-    logger.info(f"--- Generating {stage_name} Reports ---")
-    conn = None; interim_correlations = correlation_data; report_data_ok = False; actual_max_lag_interim = 0
+    """Generate interim reports for analysis.
+    
+    Args:
+        db_path: Path to the database file
+        symbol_id: ID of the symbol being analyzed
+        timeframe_id: ID of the timeframe being analyzed
+        configs_for_report: List of indicator configurations to report on
+        max_lag: Maximum lag to consider in the analysis
+        file_prefix: Prefix for generated report files
+        stage_name: Name of the analysis stage
+        correlation_data: Optional pre-fetched correlation data
+    """
+    logger.info(f"--- Starting {stage_name} Reports ---")
+    
+    interim_correlations = correlation_data
+    report_data_ok = False
+    actual_max_lag_interim = 0
 
-    # Fetch data only if not provided
-    if interim_correlations is None:
-        logger.info(f"Fetching correlation data for {stage_name} reports...")
-        try:
-            conn = sqlite_manager.create_connection(str(db_path))
-            if not conn: raise ConnectionError("Failed connect DB for interim reports.")
-            config_ids_to_fetch = [cfg['config_id'] for cfg in configs_for_report if 'config_id' in cfg]
-            if not config_ids_to_fetch:
-                logger.warning(f"{stage_name} Reports: No config IDs to fetch."); return
-            interim_correlations = sqlite_manager.fetch_correlations(conn, symbol_id, timeframe_id, config_ids_to_fetch)
-        except Exception as fetch_err:
-            logger.error(f"Error fetching data for {stage_name} reports: {fetch_err}", exc_info=True)
-        finally:
-            if conn: conn.close()
-
-    # Validate fetched or provided data
     if interim_correlations:
-         for data_list in interim_correlations.values():
-              if data_list and isinstance(data_list, list):
-                  valid_indices = [i for i, v in enumerate(data_list) if pd.notna(v)]
-                  if valid_indices:
-                      actual_max_lag_interim = max(actual_max_lag_interim, max(valid_indices) + 1)
-         if actual_max_lag_interim > 0:
-             report_data_ok = True
-             logger.info(f"{stage_name} report using data up to actual max lag {actual_max_lag_interim}.")
-         else:
-             logger.warning(f"{stage_name} report: No valid correlation data found (max lag 0).")
+        for data_list in interim_correlations.values():
+            if data_list and isinstance(data_list, list):
+                valid_indices = [i for i, v in enumerate(data_list) if pd.notna(v)]
+                if valid_indices:
+                    actual_max_lag_interim = max(
+                        actual_max_lag_interim,
+                        max(valid_indices) + 1
+                    )
+                    
+        if actual_max_lag_interim > 0:
+            report_data_ok = True
+            logger.info(
+                f"{stage_name} report using data up to actual max lag "
+                f"{actual_max_lag_interim}."
+            )
+        else:
+            logger.warning(f"{stage_name} report: No valid correlation data found.")
     else:
-        logger.warning(f"{stage_name} report: No correlation data available (fetched or provided).")
+        logger.warning(f"{stage_name} report: No correlation data available.")
 
     if not report_data_ok:
         logger.warning(f"Skipping {stage_name} report generation due to lack of valid data.")
         return
 
     interim_prefix = f"{file_prefix}_{stage_name.upper()}"
-    report_lag = min(max_lag, actual_max_lag_interim) # Use the smaller of target max lag and actual data lag
+    report_lag = min(max_lag, actual_max_lag_interim)
 
-    # Generate reports (safely call each one, avoid console prints here)
     try:
-        visualization_generator.generate_peak_correlation_report(interim_correlations, configs_for_report, report_lag, app_config.REPORTS_DIR, interim_prefix)
-    except Exception as e: logger.error(f"Error generating {stage_name} peak report: {e}", exc_info=True)
+        correlations = cast(Dict[int, List[Optional[float]]], interim_correlations)
+        visualization_generator.generate_peak_correlation_report(
+            correlations,
+            configs_for_report,
+            report_lag,
+            app_config.REPORTS_DIR,
+            interim_prefix
+        )
+    except Exception as e:
+        logger.error(f"Error generating {stage_name} peak report: {e}", exc_info=True)
+        
     try:
-        leaderboard_manager.generate_consistency_report(interim_correlations, configs_for_report, report_lag, app_config.REPORTS_DIR, interim_prefix)
-    except Exception as e: logger.error(f"Error generating {stage_name} consistency report: {e}", exc_info=True)
+        correlations = cast(Dict[int, List[Optional[float]]], interim_correlations)
+        leaderboard_manager.generate_consistency_report(
+            correlations,
+            configs_for_report,
+            report_lag,
+            app_config.REPORTS_DIR,
+            interim_prefix
+        )
+    except Exception as e:
+        logger.error(f"Error generating {stage_name} consistency report: {e}", exc_info=True)
+        
     try:
-        # Force update of leaderboard text and tally for this stage report
         logger.info(f"Updating leaderboard.txt and tally report for {stage_name} stage.")
         leaderboard_manager.export_leaderboard_to_text()
         leaderboard_manager.generate_leading_indicator_report()
-    except Exception as e: logger.error(f"Error generating/exporting {stage_name} leaderboard/tally: {e}", exc_info=True)
+    except Exception as e:
+        logger.error(
+            f"Error generating/exporting {stage_name} leaderboard/tally: {e}",
+            exc_info=True
+        )
 
     logger.info(f"--- Finished {stage_name} Reports ---")
 # --- End of Interim Report Function ---

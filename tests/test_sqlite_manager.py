@@ -1,0 +1,292 @@
+import pytest
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+from sqlite_manager_class import SQLiteManager
+import time
+
+@pytest.mark.timeout(10)  # 10 second timeout for each test
+def test_sqlite_manager_initialization(temp_db):
+    """Test SQLiteManager initialization."""
+    assert temp_db is not None
+    assert hasattr(temp_db, 'connection')
+    assert temp_db.connection is not None
+
+@pytest.mark.timeout(10)
+def test_table_creation(temp_db):
+    """Test table creation and management."""
+    # Test creating a table
+    table_name = 'test_table'
+    columns = {
+        'id': 'INTEGER PRIMARY KEY',
+        'name': 'TEXT',
+        'value': 'REAL',
+        'timestamp': 'TIMESTAMP'
+    }
+    temp_db.create_table(table_name, columns)
+    
+    # Verify table exists
+    assert temp_db.table_exists(table_name)
+    
+    # Test creating table with invalid name
+    with pytest.raises(ValueError):
+        temp_db.create_table('', columns)
+
+@pytest.mark.timeout(10)
+def test_data_insertion(temp_db):
+    """Test data insertion methods."""
+    # Create test table
+    table_name = 'test_data'
+    columns = {
+        'id': 'INTEGER PRIMARY KEY',
+        'name': 'TEXT',
+        'value': 'REAL',
+        'timestamp': 'TIMESTAMP'
+    }
+    temp_db.create_table(table_name, columns)
+    
+    # Test inserting single row
+    data = {
+        'name': 'test',
+        'value': 42.0,
+        'timestamp': datetime.now()
+    }
+    temp_db.insert_data(table_name, data)
+    
+    # Test inserting multiple rows
+    multiple_data = [
+        {'name': 'test1', 'value': 1.0, 'timestamp': datetime.now()},
+        {'name': 'test2', 'value': 2.0, 'timestamp': datetime.now()}
+    ]
+    temp_db.insert_many(table_name, multiple_data)
+    
+    # Verify data was inserted
+    result = temp_db.query(f"SELECT COUNT(*) FROM {table_name}")
+    assert result[0][0] == 3
+
+@pytest.mark.timeout(10)
+def test_data_querying(temp_db):
+    """Test data querying methods."""
+    # Create and populate test table
+    table_name = 'test_query'
+    columns = {
+        'id': 'INTEGER PRIMARY KEY',
+        'name': 'TEXT',
+        'value': 'REAL',
+        'timestamp': 'TIMESTAMP'
+    }
+    temp_db.create_table(table_name, columns)
+    
+    # Insert test data
+    test_data = [
+        {'name': 'test1', 'value': 1.0, 'timestamp': datetime.now()},
+        {'name': 'test2', 'value': 2.0, 'timestamp': datetime.now()},
+        {'name': 'test3', 'value': 3.0, 'timestamp': datetime.now()}
+    ]
+    temp_db.insert_many(table_name, test_data)
+    
+    # Test basic query
+    result = temp_db.query(f"SELECT * FROM {table_name}")
+    assert len(result) == 3
+    
+    # Test query with conditions
+    result = temp_db.query(f"SELECT * FROM {table_name} WHERE value > 1.0")
+    assert len(result) == 2
+    
+    # Test query to DataFrame
+    df = temp_db.query_to_dataframe(f"SELECT * FROM {table_name}")
+    assert isinstance(df, pd.DataFrame)
+    assert len(df) == 3
+
+@pytest.mark.timeout(10)
+def test_data_updating(temp_db):
+    """Test data updating methods."""
+    # Create and populate test table
+    table_name = 'test_update'
+    columns = {
+        'id': 'INTEGER PRIMARY KEY',
+        'name': 'TEXT',
+        'value': 'REAL'
+    }
+    temp_db.create_table(table_name, columns)
+    
+    # Insert test data
+    data = {'name': 'test', 'value': 1.0}
+    temp_db.insert_data(table_name, data)
+    
+    # Update data
+    temp_db.update_data(table_name, {'value': 2.0}, {'name': 'test'})
+    
+    # Verify update
+    result = temp_db.query(f"SELECT value FROM {table_name} WHERE name = 'test'")
+    assert result[0][0] == 2.0
+
+@pytest.mark.timeout(10)
+def test_data_deletion(temp_db):
+    """Test data deletion methods."""
+    # Create and populate test table
+    table_name = 'test_delete'
+    columns = {
+        'id': 'INTEGER PRIMARY KEY',
+        'name': 'TEXT',
+        'value': 'REAL'
+    }
+    temp_db.create_table(table_name, columns)
+    
+    # Insert test data
+    test_data = [
+        {'name': 'test1', 'value': 1.0},
+        {'name': 'test2', 'value': 2.0},
+        {'name': 'test3', 'value': 3.0}
+    ]
+    temp_db.insert_many(table_name, test_data)
+    
+    # Delete specific row
+    temp_db.delete_data(table_name, {'name': 'test2'})
+    
+    # Verify deletion
+    result = temp_db.query(f"SELECT COUNT(*) FROM {table_name}")
+    assert result[0][0] == 2
+    
+    # Delete all data
+    temp_db.delete_all(table_name)
+    result = temp_db.query(f"SELECT COUNT(*) FROM {table_name}")
+    assert result[0][0] == 0
+
+@pytest.mark.timeout(10)
+def test_transaction_handling(temp_db):
+    """Test transaction handling."""
+    # Create test table
+    table_name = 'test_transaction'
+    columns = {
+        'id': 'INTEGER PRIMARY KEY',
+        'name': 'TEXT',
+        'value': 'REAL'
+    }
+    temp_db.create_table(table_name, columns)
+    
+    # Test successful transaction
+    with temp_db.transaction():
+        temp_db.insert_data(table_name, {'name': 'test1', 'value': 1.0})
+        temp_db.insert_data(table_name, {'name': 'test2', 'value': 2.0})
+    
+    result = temp_db.query(f"SELECT COUNT(*) FROM {table_name}")
+    assert result[0][0] == 2
+    
+    # Test failed transaction
+    try:
+        with temp_db.transaction():
+            temp_db.insert_data(table_name, {'name': 'test3', 'value': 3.0})
+            raise ValueError("Simulated error")
+    except ValueError:
+        pass
+    
+    result = temp_db.query(f"SELECT COUNT(*) FROM {table_name}")
+    assert result[0][0] == 2  # Should still be 2 due to rollback
+
+@pytest.mark.timeout(10)
+def test_table_management(temp_db):
+    """Test table management operations."""
+    # Test creating and dropping table
+    table_name = 'test_management'
+    columns = {
+        'id': 'INTEGER PRIMARY KEY',
+        'name': 'TEXT'
+    }
+    
+    temp_db.create_table(table_name, columns)
+    assert temp_db.table_exists(table_name)
+    
+    temp_db.drop_table(table_name)
+    assert not temp_db.table_exists(table_name)
+    
+    # Test getting table schema
+    temp_db.create_table(table_name, columns)
+    schema = temp_db.get_table_schema(table_name)
+    assert 'id' in schema
+    assert 'name' in schema
+
+@pytest.mark.timeout(10)
+def test_data_validation(temp_db):
+    """Test data validation methods."""
+    # Create test table with constraints
+    table_name = 'test_validation'
+    columns = {
+        'id': 'INTEGER PRIMARY KEY',
+        'name': 'TEXT NOT NULL',
+        'value': 'REAL CHECK (value > 0)'
+    }
+    temp_db.create_table(table_name, columns)
+    
+    # Test valid data
+    valid_data = {'name': 'test', 'value': 1.0}
+    temp_db.insert_data(table_name, valid_data)
+    
+    # Test invalid data
+    with pytest.raises(Exception):
+        temp_db.insert_data(table_name, {'name': None, 'value': 1.0})
+    
+    with pytest.raises(Exception):
+        temp_db.insert_data(table_name, {'name': 'test', 'value': -1.0})
+
+@pytest.mark.timeout(15)  # Longer timeout for backup/restore
+def test_backup_and_restore(temp_db, tmp_path):
+    """Test database backup and restore functionality."""
+    # Create and populate test table
+    table_name = 'test_backup'
+    columns = {
+        'id': 'INTEGER PRIMARY KEY',
+        'name': 'TEXT',
+        'value': 'REAL'
+    }
+    temp_db.create_table(table_name, columns)
+    
+    # Insert test data
+    test_data = [
+        {'name': 'test1', 'value': 1.0},
+        {'name': 'test2', 'value': 2.0}
+    ]
+    temp_db.insert_many(table_name, test_data)
+    
+    # Create backup
+    backup_path = tmp_path / "backup.db"
+    restored_path = tmp_path / "restored.db"
+    
+    try:
+        # Create backup
+        temp_db.backup_database(str(backup_path))
+        assert backup_path.exists()
+        
+        # Create new database for restore
+        new_db = SQLiteManager(str(restored_path))
+        try:
+            # Restore from backup
+            new_db.restore_database(str(backup_path))
+            
+            # Verify restored data
+            result = new_db.query(f"SELECT COUNT(*) FROM {table_name}")
+            assert result[0][0] == 2
+            
+            # Verify data integrity
+            original_data = temp_db.query(f"SELECT * FROM {table_name} ORDER BY id")
+            restored_data = new_db.query(f"SELECT * FROM {table_name} ORDER BY id")
+            assert original_data == restored_data
+            
+        finally:
+            # Clean up restored database
+            try:
+                new_db.connection.close()
+            except Exception:
+                pass
+            if restored_path.exists():
+                try:
+                    restored_path.unlink()
+                except Exception:
+                    pass
+    finally:
+        # Clean up backup file
+        if backup_path.exists():
+            try:
+                backup_path.unlink()
+            except Exception:
+                pass 

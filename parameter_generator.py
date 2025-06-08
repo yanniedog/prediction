@@ -59,39 +59,37 @@ def evaluate_conditions(params: Dict[str, Any], conditions: List[Dict[str, Dict[
     if not conditions: return True
     for condition_group in conditions:
         if not isinstance(condition_group, dict) or not condition_group: continue # Skip invalid condition groups
-        # Use list() to handle potential single-item dict safely
-        items = list(condition_group.items())
-        if not items: continue
-        param_name, ops_dict = items[0]
-        current_param_value = params.get(param_name) # Handle missing params gracefully
+        # Check all parameter conditions in the group
+        for param_name, ops_dict in condition_group.items():
+            current_param_value = params.get(param_name) # Handle missing params gracefully
+            if not isinstance(ops_dict, dict): continue # Skip invalid ops format
+            for op, value_or_ref in ops_dict.items():
+                compare_value = None; is_param_ref = False
+                # Check if value_or_ref is a parameter name
+                if isinstance(value_or_ref, str) and value_or_ref in params:
+                    compare_value = params[value_or_ref]; is_param_ref = True
+                # Check if value_or_ref is a literal value (None, number, bool, string)
+                elif value_or_ref is None or isinstance(value_or_ref, (int, float, bool, str)):
+                     compare_value = value_or_ref
+                else: # Invalid condition value
+                    logger.error(f"Condition value '{value_or_ref}' for '{param_name}' is invalid type {type(value_or_ref)}. Fails."); return False
 
-        if not isinstance(ops_dict, dict): continue # Skip invalid ops format
+                # If it was a reference, ensure the referenced param exists
+                if is_param_ref and value_or_ref not in params:
+                    if current_param_value is not None:
+                        logger.error(f"Condition references missing param '{value_or_ref}'. Fails."); return False
+                    else:
+                        pass
 
-        for op, value_or_ref in ops_dict.items():
-            compare_value = None; is_param_ref = False
-            # Check if value_or_ref is a parameter name
-            if isinstance(value_or_ref, str) and value_or_ref in params:
-                compare_value = params[value_or_ref]; is_param_ref = True
-            # Check if value_or_ref is a literal value (None, number, bool, string)
-            elif value_or_ref is None or isinstance(value_or_ref, (int, float, bool, str)):
-                 compare_value = value_or_ref
-            else: # Invalid condition value
-                logger.error(f"Condition value '{value_or_ref}' for '{param_name}' is invalid type {type(value_or_ref)}. Fails."); return False
+                # Check if operator is valid before evaluating
+                operator_map = { 'gt': '>', 'gte': '>=', 'lt': '<', 'lte': '<=', 'eq': '==', 'neq': '!=' }
+                if op not in operator_map:
+                    logger.error(f"Unsupported operator '{op}' in conditions. Skipping this condition.")
+                    continue  # Skip invalid operator
 
-            # If it was a reference, ensure the referenced param exists
-            if is_param_ref and value_or_ref not in params:
-                # Allow condition to pass if the referenced parameter *also* doesn't exist (e.g., comparing two optional params)
-                # But fail if the current parameter exists and the reference doesn't.
-                if current_param_value is not None:
-                    logger.error(f"Condition references missing param '{value_or_ref}'. Fails."); return False
-                else:
-                    # If both are missing, the comparison depends on the operator (e.g., == might be true, > false)
-                    # Let _evaluate_single_condition handle None comparisons
-                    pass
-
-            if not _evaluate_single_condition(current_param_value, op, compare_value):
-                logger.debug(f"Condition failed: {params} -> {param_name} ({current_param_value}) {op} {value_or_ref} ({compare_value})")
-                return False
+                if not _evaluate_single_condition(current_param_value, op, compare_value):
+                    logger.debug(f"Condition failed: {params} -> {param_name} ({current_param_value}) {op} {value_or_ref} ({compare_value})")
+                    return False
     return True
 # --- End of helper functions ---
 
@@ -145,7 +143,10 @@ def generate_configurations(
         p_min = details.get('min')
         p_max = details.get('max')
 
-        if isinstance(default, int):
+        # Treat bool, str, and None as non-numeric: only use default
+        if isinstance(default, bool) or isinstance(default, str) or default is None:
+            values = [default]
+        elif isinstance(default, int):
             # Determine min boundary, using 2 for most periods, 1 otherwise
             min_bound = 1
             # Check if param is a period type AND not in the list of exceptions that allow 1
@@ -212,6 +213,21 @@ def generate_configurations(
         # Try to generate just the default combo if possible
         default_combo = {p: d.get('default') for p, d in parameter_definitions.items() if d.get('default') is not None}
         return [default_combo] if default_combo and evaluate_conditions(default_combo, conditions) else []
+
+    # Check if any parameter is non-numeric (bool, str, or None)
+    has_non_numeric = any(
+        isinstance(details.get('default'), (bool, str)) or details.get('default') is None
+        for details in parameter_definitions.values()
+    )
+    if has_non_numeric:
+        # Only use the default configuration for all parameters
+        default_combo = {p: d.get('default') for p, d in parameter_definitions.items()}
+        if evaluate_conditions(default_combo, conditions):
+            logger.info(f"Non-numeric parameter detected, returning only default configuration for '{indicator_name}'.")
+            return [default_combo]
+        else:
+            logger.warning(f"Default parameter combination for '{indicator_name}' failed condition checks.")
+            return []
 
     # Generate combinations and check conditions
     keys = list(param_ranges.keys())
@@ -280,8 +296,18 @@ def _generate_random_valid_config(
             if p_type is int:
                 has_numeric = True
                 # Define bounds: prefer min/max, fallback to range around default
-                lower_b = min_val if min_val is not None else (max(1, int(default * 0.25)) if use_default_for_range else 1)
-                upper_b = max_val if max_val is not None else (max(lower_b + 1, int(default * 3.0), 200) if use_default_for_range else 200)
+                if min_val is not None:
+                    lower_b = min_val
+                elif default is not None:
+                    lower_b = max(1, int(default * 0.25))
+                else:
+                    lower_b = 1
+                if max_val is not None:
+                    upper_b = max_val
+                elif default is not None:
+                    upper_b = max(lower_b + 1, int(default * 3.0), 200)
+                else:
+                    upper_b = 200
 
                 # --- ***** FIX: Use 'param' instead of 'name' ***** ---
                 # Ensure min bound >= 1 (or 2 for periods)
@@ -307,8 +333,18 @@ def _generate_random_valid_config(
             elif p_type is float:
                 has_numeric = True
                 # Define bounds: prefer min/max, fallback range around default
-                lower_b = min_val if min_val is not None else (max(0.0, round(default * 0.25, 4)) if use_default_for_range else 0.0)
-                upper_b = max_val if max_val is not None else (max(lower_b + 0.01, round(default * 3.0, 4)) if use_default_for_range else 1.0)
+                if min_val is not None:
+                    lower_b = min_val
+                elif default is not None:
+                    lower_b = max(0.0, round(default * 0.25, 4))
+                else:
+                    lower_b = 0.0
+                if max_val is not None:
+                    upper_b = max_val
+                elif default is not None:
+                    upper_b = max(lower_b + 0.01, round(default * 3.0, 4))
+                else:
+                    upper_b = 1.0
                 # Apply specific bounds based on param type if min/max were not defined
                 if min_val is None:
                      if param in factor_params: lower_b = max(lower_b, 0.01)

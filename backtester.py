@@ -10,11 +10,14 @@
 import logging
 import pandas as pd
 import numpy as np
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Callable, Union
 from pathlib import Path
 from datetime import datetime, timezone
 import math
 import json # Added for parsing params
+import matplotlib.pyplot as plt
+import seaborn as sns
+from scipy import stats
 
 # Import config for constants
 import config
@@ -29,6 +32,366 @@ logger = logging.getLogger(__name__)
 
 # Get constant from config
 MIN_REGRESSION_POINTS = config.DEFAULTS.get("min_regression_points", 30) # Fallback default
+
+class Backtester:
+    def __init__(self, data_manager, indicator_factory):
+        """Initialize the Backtester with data and indicator managers."""
+        self.data_manager = data_manager
+        self.indicator_factory = indicator_factory
+        self._validate_dependencies()
+
+    def _validate_dependencies(self):
+        """Validate that all required dependencies are available."""
+        if not predictor.STATSMODELS_AVAILABLE:
+            logger.warning("statsmodels not available. Some functionality may be limited.")
+        try:
+            import scipy
+            self.SCIPY_AVAILABLE = True
+        except ImportError:
+            logger.warning("scipy not available. Some functionality may be limited.")
+            self.SCIPY_AVAILABLE = False
+
+    def run_strategy(self, data: pd.DataFrame, strategy_func: Callable, params: Dict[str, Any]) -> Dict[str, Any]:
+        """Run a trading strategy on the provided data."""
+        try:
+            # Generate positions using the strategy
+            positions = strategy_func(data, params)
+            if not isinstance(positions, pd.Series):
+                raise ValueError("Strategy must return a pandas Series of positions")
+            
+            # Size positions
+            sized_positions = self.size_positions(positions, method='fixed', size=0.1)
+            
+            # Calculate returns
+            returns = self.calculate_returns(data, sized_positions)
+            
+            # Calculate equity curve
+            equity_curve = (1 + returns).cumprod()
+            
+            return {
+                'positions': positions,
+                'sized_positions': sized_positions,
+                'returns': returns,
+                'equity_curve': equity_curve
+            }
+        except Exception as e:
+            logger.error(f"Error running strategy: {e}")
+            raise
+
+    def size_positions(self, positions: pd.Series, method: str = 'fixed', **kwargs) -> pd.Series:
+        """Size positions based on the specified method."""
+        if method == 'fixed':
+            size = kwargs.get('size', 0.1)
+            return positions * size
+        elif method == 'dynamic':
+            data = kwargs.get('data')
+            volatility_window = kwargs.get('volatility_window', 20)
+            if data is None:
+                raise ValueError("Data required for dynamic position sizing")
+            # Calculate volatility
+            returns = data['close'].pct_change()
+            volatility = returns.rolling(window=volatility_window).std()
+            # Size inversely proportional to volatility
+            target_vol = 0.15  # Target annualized volatility
+            position_size = target_vol / (volatility * np.sqrt(252))
+            position_size = position_size.clip(0, 1)  # Limit position size
+            # Align position_size to positions index
+            position_size_aligned = position_size.reindex(positions.index)
+            return positions * position_size_aligned
+        else:
+            raise ValueError(f"Unknown position sizing method: {method}")
+
+    def calculate_returns(self, data: pd.DataFrame, positions: pd.Series, transaction_cost: float = 0.0) -> pd.Series:
+        """Calculate strategy returns including transaction costs."""
+        # Calculate price returns
+        price_returns = data['close'].pct_change()
+        
+        # Calculate strategy returns
+        strategy_returns = positions.shift(1) * price_returns
+        
+        # Apply transaction costs
+        if transaction_cost > 0:
+            position_changes = positions.diff().abs()
+            transaction_costs = position_changes * transaction_cost
+            strategy_returns -= transaction_costs
+        
+        return strategy_returns
+
+    def calculate_cumulative_returns(self, returns: pd.Series) -> pd.Series:
+        """Calculate cumulative returns."""
+        return (1 + returns).cumprod()
+
+    def calculate_performance_metrics(self, returns: pd.Series) -> Dict[str, float]:
+        """Calculate key performance metrics."""
+        if not self.SCIPY_AVAILABLE:
+            raise ImportError("scipy required for performance metrics")
+        
+        # Annualized return
+        annual_return = returns.mean() * 252
+        
+        # Annualized volatility
+        annual_vol = returns.std() * np.sqrt(252)
+        
+        # Sharpe ratio
+        risk_free_rate = 0.02  # Assuming 2% risk-free rate
+        sharpe_ratio = (annual_return - risk_free_rate) / annual_vol if annual_vol != 0 else 0
+        
+        # Maximum drawdown
+        cum_returns = self.calculate_cumulative_returns(returns)
+        rolling_max = cum_returns.expanding().max()
+        drawdowns = cum_returns / rolling_max - 1
+        max_drawdown = drawdowns.min()
+        
+        return {
+            'annual_return': annual_return,
+            'annual_volatility': annual_vol,
+            'sharpe_ratio': sharpe_ratio,
+            'max_drawdown': max_drawdown
+        }
+
+    def calculate_risk_metrics(self, returns: pd.Series) -> Dict[str, float]:
+        """Calculate risk metrics."""
+        if not self.SCIPY_AVAILABLE:
+            raise ImportError("scipy required for risk metrics")
+        
+        # Volatility
+        volatility = returns.std() * np.sqrt(252)
+        
+        # Value at Risk (95%)
+        var_95 = np.percentile(returns, 5)
+        
+        # Conditional Value at Risk (95%)
+        cvar_95 = returns[returns <= var_95].mean()
+        
+        # Skewness and Kurtosis
+        skewness = stats.skew(returns)
+        kurtosis = stats.kurtosis(returns)
+        
+        return {
+            'volatility': volatility,
+            'var_95': var_95,
+            'cvar_95': cvar_95,
+            'skewness': skewness,
+            'kurtosis': kurtosis
+        }
+
+    def optimize_strategy(self, data: pd.DataFrame, strategy_func: Callable, 
+                         param_space: Dict[str, List[Any]], metric: str = 'sharpe_ratio') -> Dict[str, Any]:
+        """Optimize strategy parameters using grid search."""
+        best_score = float('-inf')
+        best_params = None
+        results = []
+        
+        # Generate parameter combinations
+        param_names = list(param_space.keys())
+        param_values = list(param_space.values())
+        param_combinations = [dict(zip(param_names, values)) 
+                            for values in np.array(np.meshgrid(*param_values)).T.reshape(-1, len(param_names))]
+        
+        for params in param_combinations:
+            try:
+                # Run strategy with current parameters
+                strategy_results = self.run_strategy(data, strategy_func, params)
+                returns = strategy_results['returns']
+                
+                # Calculate performance metrics
+                metrics = self.calculate_performance_metrics(returns)
+                score = metrics[metric]
+                
+                results.append({
+                    'params': params,
+                    'score': score,
+                    'metrics': metrics
+                })
+                
+                if score > best_score:
+                    best_score = score
+                    best_params = params
+            except Exception as e:
+                logger.warning(f"Strategy failed with params {params}: {e}")
+                continue
+        
+        return {
+            'best_params': best_params,
+            'best_score': best_score,
+            'all_results': results
+        }
+
+    def walk_forward_analysis(self, data: pd.DataFrame, strategy_func: Callable, 
+                            params: Dict[str, Any], train_size: float = 0.7, 
+                            step_size: float = 0.1) -> Dict[str, Any]:
+        """Perform walk-forward analysis."""
+        n_points = len(data)
+        train_size_points = int(n_points * train_size)
+        step_size_points = int(n_points * step_size)
+        
+        train_metrics = []
+        test_metrics = []
+        
+        for i in range(0, n_points - train_size_points, step_size_points):
+            # Split data
+            train_end = i + train_size_points
+            test_end = min(train_end + step_size_points, n_points)
+            
+            train_data = data.iloc[i:train_end]
+            test_data = data.iloc[train_end:test_end]
+            
+            if len(test_data) == 0:
+                break
+            
+            # Run strategy on training data
+            train_results = self.run_strategy(train_data, strategy_func, params)
+            train_metrics.append(self.calculate_performance_metrics(train_results['returns']))
+            
+            # Run strategy on test data
+            test_results = self.run_strategy(test_data, strategy_func, params)
+            test_metrics.append(self.calculate_performance_metrics(test_results['returns']))
+        
+        return {
+            'train_metrics': train_metrics,
+            'test_metrics': test_metrics
+        }
+
+    def run_monte_carlo_simulation(self, returns: pd.Series, n_simulations: int = 1000, 
+                                 time_steps: int = 252) -> Dict[str, Any]:
+        """Run Monte Carlo simulation of strategy returns."""
+        if not self.SCIPY_AVAILABLE:
+            raise ImportError("scipy required for Monte Carlo simulation")
+        
+        # Calculate mean and standard deviation of returns
+        mean_return = returns.mean()
+        std_return = returns.std()
+        
+        # Generate simulations
+        simulations = np.random.normal(
+            mean_return, 
+            std_return, 
+            (n_simulations, time_steps)
+        )
+        
+        # Calculate cumulative returns for each simulation
+        cum_returns = (1 + simulations).cumprod(axis=1)
+        
+        # Calculate confidence intervals
+        confidence_intervals = {
+            '95%': np.percentile(cum_returns, [2.5, 97.5], axis=0),
+            '68%': np.percentile(cum_returns, [16, 84], axis=0)
+        }
+        
+        return {
+            'simulations': cum_returns,
+            'confidence_intervals': confidence_intervals
+        }
+
+    def plot_equity_curve(self, returns: pd.Series) -> plt.Figure:
+        """Plot equity curve."""
+        fig, ax = plt.subplots(figsize=(12, 6))
+        equity_curve = self.calculate_cumulative_returns(returns)
+        equity_curve.plot(ax=ax)
+        ax.set_title('Equity Curve')
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Cumulative Return')
+        ax.grid(True)
+        return fig
+
+    def plot_drawdown(self, returns: pd.Series) -> plt.Figure:
+        """Plot drawdown chart."""
+        fig, ax = plt.subplots(figsize=(12, 6))
+        cum_returns = self.calculate_cumulative_returns(returns)
+        rolling_max = cum_returns.expanding().max()
+        drawdowns = cum_returns / rolling_max - 1
+        drawdowns.plot(ax=ax)
+        ax.set_title('Drawdown')
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Drawdown')
+        ax.grid(True)
+        return fig
+
+    def plot_monthly_returns_heatmap(self, returns: pd.Series) -> plt.Figure:
+        """Plot monthly returns heatmap."""
+        # Ensure index is DatetimeIndex
+        if not isinstance(returns.index, pd.DatetimeIndex):
+            # Try to convert from ms since epoch
+            returns = returns.copy()
+            returns.index = pd.to_datetime(returns.index, unit='ms')
+        # Resample returns to monthly frequency
+        monthly_returns = returns.resample('M').apply(lambda x: (1 + x).prod() - 1)
+        # Create a DataFrame with year and month as indices
+        monthly_returns_df = pd.DataFrame({
+            'year': monthly_returns.index.year,
+            'month': monthly_returns.index.month,
+            'returns': monthly_returns.values
+        })
+        # Pivot the data for the heatmap
+        heatmap_data = monthly_returns_df.pivot(
+            index='year', 
+            columns='month', 
+            values='returns'
+        )
+        # Create the heatmap
+        fig, ax = plt.subplots(figsize=(12, 8))
+        sns.heatmap(heatmap_data, annot=True, fmt='.2%', cmap='RdYlGn', 
+                   center=0, ax=ax)
+        ax.set_title('Monthly Returns Heatmap')
+        return fig
+
+    def generate_performance_report(self, returns: pd.Series) -> Dict[str, Any]:
+        """Generate a comprehensive performance report."""
+        # Calculate metrics
+        performance_metrics = self.calculate_performance_metrics(returns)
+        risk_metrics = self.calculate_risk_metrics(returns)
+        
+        # Generate plots
+        equity_plot = self.plot_equity_curve(returns)
+        drawdown_plot = self.plot_drawdown(returns)
+        heatmap = self.plot_monthly_returns_heatmap(returns)
+        
+        # Create summary
+        summary = {
+            'total_return': self.calculate_cumulative_returns(returns).iloc[-1] - 1,
+            'annualized_return': performance_metrics['annual_return'],
+            'sharpe_ratio': performance_metrics['sharpe_ratio'],
+            'max_drawdown': performance_metrics['max_drawdown'],
+            'volatility': risk_metrics['volatility']
+        }
+        
+        return {
+            'summary': summary,
+            'metrics': {**performance_metrics, **risk_metrics},
+            'charts': {
+                'equity_curve': equity_plot,
+                'drawdown': drawdown_plot,
+                'monthly_returns': heatmap
+            }
+        }
+
+    def compare_with_benchmark(self, strategy_returns: pd.Series, 
+                             benchmark_returns: pd.Series) -> Dict[str, Any]:
+        """Compare strategy performance with a benchmark."""
+        # Calculate metrics for both strategy and benchmark
+        strategy_metrics = self.calculate_performance_metrics(strategy_returns)
+        benchmark_metrics = self.calculate_performance_metrics(benchmark_returns)
+        
+        # Calculate relative performance
+        relative_returns = strategy_returns - benchmark_returns
+        relative_metrics = self.calculate_performance_metrics(relative_returns)
+        
+        # Calculate correlation
+        correlation = strategy_returns.corr(benchmark_returns)
+        
+        # Calculate information ratio
+        tracking_error = relative_returns.std() * np.sqrt(252)
+        information_ratio = relative_metrics['annual_return'] / tracking_error if tracking_error != 0 else 0
+        
+        return {
+            'relative_performance': relative_metrics,
+            'metrics_comparison': {
+                'strategy': strategy_metrics,
+                'benchmark': benchmark_metrics
+            },
+            'correlation': correlation,
+            'information_ratio': information_ratio
+        }
 
 def run_backtest(
     db_path: Path,

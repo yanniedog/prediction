@@ -1,8 +1,15 @@
 # predictor.py
+"""Prediction module for analyzing and predicting price movements."""
+
 import logging
 import pandas as pd
 import numpy as np
-from typing import Optional, Tuple, Dict, Any, List
+from typing import (
+    Optional, Tuple, Dict, Any, List, Sequence, Union, cast,
+    TypeVar, Protocol, Callable, TYPE_CHECKING, Mapping,
+    TypeAlias
+)
+from numpy.typing import ArrayLike
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 import re
@@ -14,13 +21,28 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
+# Type aliases for better type hints
+DateTimeArray: TypeAlias = ArrayLike
+FloatArray: TypeAlias = ArrayLike
+
 # Import statsmodels conditionally
-try:
-    import statsmodels.api as sm
+if TYPE_CHECKING:
+    from statsmodels.api import add_constant, OLS
+    from statsmodels.regression.linear_model import RegressionResultsWrapper
     STATSMODELS_AVAILABLE = True
-except ImportError:
-    STATSMODELS_AVAILABLE = False; sm = None
-    logging.getLogger(__name__).error("Predictor requires 'statsmodels'. Please install it (`pip install statsmodels`). Prediction functionality will be disabled.")
+else:
+    try:
+        from statsmodels.api import add_constant, OLS
+        from statsmodels.regression.linear_model import RegressionResultsWrapper
+        STATSMODELS_AVAILABLE = True
+    except ImportError:
+        add_constant = OLS = None
+        RegressionResultsWrapper = Any
+        STATSMODELS_AVAILABLE = False
+        logging.getLogger(__name__).error(
+            "Predictor requires 'statsmodels'. Please install it "
+            "(`pip install statsmodels`). Prediction functionality will be disabled."
+        )
 
 # Import project modules
 import config # Import config for constants
@@ -34,6 +56,27 @@ logger = logging.getLogger(__name__)
 
 # Get constant from config
 MIN_REGRESSION_POINTS = config.DEFAULTS.get("min_regression_points", 30) # Fallback default
+
+# Create a module-level factory instance
+_indicator_factory = indicator_factory.IndicatorFactory()
+
+# Type aliases for better readability
+IndicatorCache: TypeAlias = Mapping[str, pd.DataFrame]
+PriceSequence: TypeAlias = Sequence[float]
+DateSequence: TypeAlias = Sequence[datetime]
+
+# Type definitions for statsmodels
+class RegressionModel(Protocol):
+    """Protocol for regression model results."""
+    nobs: int
+    params: pd.Series
+    rsquared: float
+    summary: Any
+    model: Any
+    
+    def get_prediction(self, exog: pd.DataFrame) -> Any: ...
+
+RegressionModelT = TypeVar('RegressionModelT', bound=RegressionModel)
 
 # --- Helper Functions ---
 
@@ -85,187 +128,195 @@ def _get_latest_data_point(db_path: Path) -> Optional[pd.DataFrame]:
 
 
 def _get_historical_indicator_price_pairs(
-    db_path: Path, symbol_id: int, timeframe_id: int, indicator_config: Dict[str, Any], lag: int,
-    full_historical_data: pd.DataFrame, indicator_series_cache: Dict[int, pd.DataFrame]
+    db_path: Path,
+    symbol_id: int,
+    timeframe_id: int,
+    indicator_config: Dict[str, Any],
+    lag: int,
+    data: pd.DataFrame,
+    indicator_series_cache: IndicatorCache
 ) -> Optional[pd.DataFrame]:
+    """Get historical pairs of indicator values and future price changes.
+    
+    Args:
+        db_path: Path to the database file
+        symbol_id: ID of the symbol being analyzed
+        timeframe_id: ID of the timeframe being analyzed
+        indicator_config: Configuration for the indicator
+        lag: Lag value to use for correlation
+        data: DataFrame containing price data
+        indicator_series_cache: Cache of previously calculated indicator series
+        
+    Returns:
+        DataFrame with indicator values and future price changes, or None if error
     """
-    Fetches/calculates historical indicator, returns aligned (Indicator[t], Close[t+lag]) pairs.
-    Uses provided full historical data and indicator cache.
-    """
-    config_id = indicator_config.get('config_id')
-    indicator_name = indicator_config.get('indicator_name', 'Unknown')
-    if config_id is None:
-        logger.error("Indicator config missing 'config_id'. Cannot get historical pairs.")
-        return None
-
-    # Reduced log noise for this common operation
-    # logger.info(f"Preparing historical pairs: Cfg {config_id} ('{indicator_name}'), Lag {lag}...")
-
-    # Use cached indicator series if available
-    indicator_df = indicator_series_cache.get(config_id)
-    is_cached_failure = False
-    if indicator_df is not None:
-        if not isinstance(indicator_df, pd.DataFrame):
-             logger.warning(f"Invalid cached data type for Cfg {config_id}. Recalculating.")
-             indicator_df = None # Force recalc
-             if config_id in indicator_series_cache: del indicator_series_cache[config_id]
-        elif indicator_df.empty:
-             logger.debug(f"Cached indicator series for Cfg {config_id} is empty (cached failure).")
-             is_cached_failure = True # Mark as cached failure
-             indicator_df = None # Ensure we don't proceed
-        # else: logger.debug(f"Using cached indicator series for Cfg {config_id}") # Reduce noise
-
-    # Calculate if not cached AND not a cached failure
-    if indicator_df is None and not is_cached_failure:
-        logger.debug(f"Calculating '{indicator_name}' historical series for pairs (ID: {config_id})")
-        # Pass a copy to ensure the original full_historical_data isn't modified by the factory
-        indicator_df = indicator_factory._compute_single_indicator(full_historical_data.copy(), indicator_config)
-        if indicator_df is None or indicator_df.empty:
-            logger.error(f"Failed to calculate historical indicator Cfg {config_id}.")
-            indicator_series_cache[config_id] = pd.DataFrame() # Cache empty df on failure
-            return None
-        indicator_series_cache[config_id] = indicator_df # Cache the result
-        # logger.debug(f"Cached new indicator series for Cfg {config_id}") # Reduce noise
-
-    # If it was a cached failure or calculation failed now, return None
-    if indicator_df is None:
-        return None
-
-    # Find the correct output column(s)
-    # Use a regex to handle potential suffixes more robustly
-    pattern = re.compile(rf"^{re.escape(indicator_name)}_{config_id}(_.*)?$")
-    potential_cols = [col for col in indicator_df.columns if pattern.match(col)]
-
-    if not potential_cols:
-        logger.error(f"Could not find output column matching pattern for {indicator_name}_{config_id} in calculated indicator DF. Columns: {list(indicator_df.columns)}")
-        return None
-
-    indicator_col_name = potential_cols[0] # Use the first matching column
-    if len(potential_cols) > 1:
-        logger.debug(f"Multiple outputs for {indicator_name} Cfg {config_id}: {potential_cols}. Using first: '{indicator_col_name}'.")
-    # logger.debug(f"Using indicator column '{indicator_col_name}' for regression for lag {lag}.") # Reduce noise
-
-    # Align Indicator[t] and Close[t+lag] using the full historical data
     try:
-        # Reindex indicator result to match the main dataframe's index BEFORE assigning
-        if indicator_col_name not in indicator_df.columns:
-            logger.error(f"Selected indicator column '{indicator_col_name}' not found in indicator DataFrame.")
+        # Get and validate indicator name
+        indicator_name = indicator_config.get('indicator_name')
+        if not isinstance(indicator_name, str) or not indicator_name:
+            logger.error("Missing or invalid indicator name in config")
             return None
-        indicator_reindexed = indicator_df[indicator_col_name].reindex(full_historical_data.index)
-
-        # Ensure source columns are numeric before proceeding
-        if not pd.api.types.is_numeric_dtype(indicator_reindexed):
-            logger.warning(f"Indicator column '{indicator_col_name}' (Cfg {config_id}) is not numeric after reindex. Attempting conversion.")
-            indicator_reindexed = pd.to_numeric(indicator_reindexed, errors='coerce')
-        if not pd.api.types.is_numeric_dtype(full_historical_data['close']):
-             logger.error("'close' column is not numeric in source data.")
-             return None
-
-        # Create DataFrame for regression pairs
-        df_reg = pd.DataFrame({
-            'Indicator_t': indicator_reindexed,
-            'Close_t_plus_lag': full_historical_data['close'].shift(-lag)
-        }, index=full_historical_data.index) # Ensure index is preserved
-
-        initial_rows = len(df_reg)
-        df_reg.dropna(subset=['Indicator_t', 'Close_t_plus_lag'], inplace=True)
-        rows_dropped = initial_rows - len(df_reg)
-        # logger.info(f"Found {len(df_reg)} valid (Indicator[t], Close[t+{lag}]) pairs (dropped {rows_dropped} NaN rows).") # Reduce noise
-
-        if len(df_reg) < MIN_REGRESSION_POINTS:
-            logger.warning(f"Insufficient historical pairs ({len(df_reg)}) for regression for lag {lag} (min: {MIN_REGRESSION_POINTS}).")
+            
+        # Get and validate config ID
+        config_id = indicator_config.get('config_id')
+        if not isinstance(config_id, int):
+            logger.error(f"Invalid config_id type for {indicator_name}")
+            return None
+            
+        # Get and validate params
+        params = indicator_config.get('params')
+        if not isinstance(params, dict):
+            logger.error(f"Invalid params type for {indicator_name}")
             return None
 
-        return df_reg[['Indicator_t', 'Close_t_plus_lag']]
+        # Calculate or retrieve indicator values
+        indicator_df = _calculate_or_get_cached_indicator(
+            data,
+            indicator_name,
+            params,
+            config_id,
+            indicator_series_cache
+        )
+        
+        if indicator_df is None:
+            return None
 
+        # Get the indicator column name
+        indicator_col = f"{indicator_name}_{config_id}"
+        if indicator_col not in indicator_df.columns:
+            logger.error(f"Indicator column {indicator_col} not found")
+            return None
+
+        # Calculate future price changes
+        future_returns = data['close'].pct_change(periods=lag).shift(-lag)
+        
+        # Combine into pairs DataFrame
+        pairs_df = pd.DataFrame({
+            'indicator': indicator_df[indicator_col],
+            'future_return': future_returns
+        })
+        
+        # Drop any rows with NaN values
+        pairs_df = pairs_df.dropna()
+        
+        if len(pairs_df) < MIN_REGRESSION_POINTS:
+            logger.warning(
+                f"Insufficient pairs ({len(pairs_df)}) for {indicator_name} "
+                f"at lag {lag}. Need {MIN_REGRESSION_POINTS}."
+            )
+            return None
+            
+        return pairs_df
+        
     except Exception as e:
-        logger.error(f"Error creating historical pairs for Cfg {config_id}, Lag {lag}: {e}", exc_info=True)
+        logger.error(f"Error getting historical pairs: {e}", exc_info=True)
         return None
 
+def _calculate_or_get_cached_indicator(
+    data: pd.DataFrame,
+    indicator_name: str,
+    params: Dict[str, Any],
+    config_id: int,
+    indicator_series_cache: IndicatorCache
+) -> Optional[pd.DataFrame]:
+    """Calculate indicator values or retrieve from cache.
+    
+    Args:
+        data: DataFrame containing price data
+        indicator_name: Name of the indicator
+        params: Parameters for the indicator
+        config_id: Configuration ID
+        indicator_series_cache: Cache of previously calculated indicator series
+        
+    Returns:
+        DataFrame with indicator values, or None if error
+    """
+    try:
+        # Generate cache key
+        param_hash = utils.get_config_hash(params)
+        cache_key = f"{indicator_name}_{param_hash}"
+        
+        # Check cache first
+        if cache_key in indicator_series_cache:
+            return indicator_series_cache[cache_key]
+            
+        # Calculate new indicator values
+        indicator_df = _indicator_factory._compute_single_indicator(  # Use internal method
+            data=data.copy(),
+            name=indicator_name,
+            config={
+                'indicator_name': indicator_name,
+                'params': params,
+                'config_id': config_id
+            }
+        )
+        
+        if indicator_df is not None:
+            # Create a new dict with the updated cache
+            cache_dict = dict(indicator_series_cache)
+            cache_dict[cache_key] = indicator_df
+            # Update the original cache
+            indicator_series_cache.update(cache_dict)
+            
+        return indicator_df
+        
+    except Exception as e:
+        logger.error(f"Error calculating indicator {indicator_name}: {e}", exc_info=True)
+        return None
 
 def _perform_prediction_regression(
-    hist_pairs: pd.DataFrame, current_indicator_value: float, current_lag: int
-) -> Optional[Dict[str, Any]]:
+    pairs_df: pd.DataFrame,
+    current_indicator_value: float,
+    lag: int
+) -> Optional[Tuple[float, float]]:
+    """Perform regression to predict future returns.
+    
+    Args:
+        pairs_df: DataFrame with indicator values and future returns
+        current_indicator_value: Current value of the indicator
+        lag: Lag value used for correlation
+        
+    Returns:
+        Tuple of (predicted return, confidence score), or None if error
     """
-    Performs OLS regression and predicts future close price for a specific lag.
-    """
-    if not STATSMODELS_AVAILABLE: logger.error("Statsmodels unavailable."); return None
-    # logger.info(f"Performing linear regression via statsmodels for Lag={current_lag}...") # Reduce noise
-
-    if 'Indicator_t' not in hist_pairs.columns or 'Close_t_plus_lag' not in hist_pairs.columns:
-        logger.error(f"Lag={current_lag}: Missing required columns 'Indicator_t' or 'Close_t_plus_lag'.")
+    if not STATSMODELS_AVAILABLE or add_constant is None or OLS is None:
+        logger.error("statsmodels not available for regression")
         return None
-
-    X_series = hist_pairs['Indicator_t']; y_series = hist_pairs['Close_t_plus_lag']
-
-    # Check for constant predictor or target, or all NaNs AFTER potential internal dropna in OLS
-    if X_series.nunique(dropna=True) <= 1: logger.warning(f"Lag={current_lag}: Predictor '{X_series.name}' is constant or all NaN before OLS."); return None
-    if y_series.nunique(dropna=True) <= 1: logger.warning(f"Lag={current_lag}: Target '{y_series.name}' is constant or all NaN before OLS."); return None
-    # Ensure current indicator value is valid
-    if not np.isfinite(current_indicator_value):
-        logger.error(f"Lag={current_lag}: Invalid current_indicator_value ({current_indicator_value}) for prediction.")
-        return None
-
+        
     try:
-        # Add constant, handle potential issues explicitly
-        # Ensure X is a Series or DataFrame before adding constant
-        X_ols = X_series.copy()
-        y_ols = y_series.copy()
-        X_sm = sm.add_constant(X_ols, prepend=True, has_constant='raise')
-
-        # Fit model, dropping any remaining NaNs in the pair (should be handled by pair creation now)
-        model = sm.OLS(y_ols, X_sm, missing='drop').fit()
-
-        if not hasattr(model, 'summary') or not hasattr(model, 'params') or model.nobs < MIN_REGRESSION_POINTS:
-             logger.warning(f"Statsmodels OLS fit failed or insufficient obs ({model.nobs}<{MIN_REGRESSION_POINTS}) for Lag={current_lag}. Model object invalid."); return None
-
-        # Basic check on model results
-        if model.params.isnull().any(): logger.warning(f"Lag={current_lag}: Regression resulted in NaN parameters.")
-        # logger.debug(f"Regression Summary (Lag={current_lag}):\n" + str(model.summary())) # Keep DEBUG
-
-        # --- Predict ---
-        # Create prediction input DataFrame matching model's design
-        indicator_col_actual_name = X_ols.name
-        # Ensure structure matches model.model.exog_names which includes 'const'
-        x_pred_data = {'const': [1.0], indicator_col_actual_name: [float(current_indicator_value)]} # Ensure float
-        x_pred_df = pd.DataFrame(x_pred_data)
-        # Reorder columns to strictly match the model's expectation
-        try: x_pred_df = x_pred_df[model.model.exog_names]
-        except KeyError as e: logger.error(f"Lag={current_lag}: Mismatch pred cols. Model: {model.model.exog_names}, Got: {list(x_pred_df.columns)}. Error: {e}"); return None
-        except Exception as e_reorder: logger.error(f"Lag={current_lag}: Error reordering pred columns: {e_reorder}"); return None
-
-        # Perform prediction and get summary frame
-        pred_res = model.get_prediction(x_pred_df)
-        pred_summary = pred_res.summary_frame(alpha=0.05) # 95% CI
-
-        # Extract results carefully
-        predicted_value = pred_summary['mean'].iloc[0]
-        ci_lower = pred_summary['mean_ci_lower'].iloc[0]
-        ci_upper = pred_summary['mean_ci_upper'].iloc[0]
-
-        # --- Metrics ---
-        r_squared = model.rsquared; adj_r_squared = model.rsquared_adj
-        slope = model.params.get(indicator_col_actual_name, np.nan)
-        intercept = model.params.get('const', np.nan)
-        # Implied correlation from R-squared and slope sign
-        corr_from_r2 = np.sqrt(max(0, r_squared)) * np.sign(slope) if pd.notna(slope) and r_squared >= 0 else np.nan
-
-        # Check for infinite/NaN results which can happen with poor data/models
-        if not all(np.isfinite([predicted_value, ci_lower, ci_upper, slope, intercept, r_squared])):
-            logger.warning(f"Lag={current_lag}: Regression produced non-finite results. Pred={predicted_value}, Slope={slope}, R2={r_squared}")
-            return None # Return None if results are not usable
-
-        # Log results at INFO level for prediction runs
-        logger.info(f"Regression Prediction (Lag={current_lag}): {predicted_value:.4f} | 95% CI: [{ci_lower:.4f}, {ci_upper:.4f}] | R2={r_squared:.4f} | N={int(model.nobs)}")
-
-        return {
-            "predicted_value": predicted_value, "ci_lower": ci_lower, "ci_upper": ci_upper,
-            "r_squared": r_squared, "adj_r_squared": adj_r_squared, "correlation": corr_from_r2,
-            "intercept": intercept, "slope": slope, "model_params": model.params.to_dict(),
-            "model_pvalues": model.pvalues.to_dict(), "n_observations": int(model.nobs),
-        }
-    except Exception as e: logger.error(f"Error during prediction regression for Lag={current_lag}: {e}", exc_info=True); return None
-
+        if len(pairs_df) < MIN_REGRESSION_POINTS:
+            logger.warning(
+                f"Insufficient pairs ({len(pairs_df)}) for regression. "
+                f"Need {MIN_REGRESSION_POINTS}."
+            )
+            return None
+            
+        # Prepare data for regression
+        X = add_constant(pairs_df['indicator'])
+        y = pairs_df['future_return']
+        
+        # Fit regression model
+        model = OLS(y, X).fit()
+        
+        # Make prediction
+        current_X = pd.DataFrame({
+            'const': [1.0],
+            'indicator': [current_indicator_value]
+        })
+        prediction = model.get_prediction(current_X)
+        
+        # Get prediction interval
+        pred_mean = prediction.predicted_mean[0]
+        pred_std = prediction.se_mean[0]
+        
+        # Calculate confidence score (inverse of standard error)
+        confidence = 1.0 / (1.0 + pred_std)
+        
+        return pred_mean, confidence
+        
+    except Exception as e:
+        logger.error(f"Error in regression: {e}", exc_info=True)
+        return None
 
 def _export_prediction_details(
     prediction_results: List[Dict],
@@ -469,7 +520,11 @@ def predict_price(db_path: Path, symbol: str, timeframe: str, final_target_lag: 
         if indicator_df_full is None: # Not cached
             # logger.info(f"Calculating indicator series for current value {ind_name} (ID: {cfg_id})...") # Reduce noise
             # Use the already loaded full historical data
-            temp_df = indicator_factory._compute_single_indicator(full_historical_data.copy(), indicator_config)
+            temp_df = _indicator_factory._compute_single_indicator(
+                data=full_historical_data.copy(),
+                name=ind_name,
+                config=indicator_config
+            )
             if temp_df is not None and not temp_df.empty:
                 indicator_series_cache_predict[cfg_id] = temp_df # Cache result
                 indicator_df_full = temp_df
@@ -599,10 +654,10 @@ def predict_price(db_path: Path, symbol: str, timeframe: str, final_target_lag: 
 
 # --- Plotting Function ---
 def plot_predicted_path(
-    dates: List[datetime],
-    prices: List[float],
-    ci_lower: List[float],
-    ci_upper: List[float],
+    dates: DateSequence,
+    prices: PriceSequence,
+    ci_lower: PriceSequence,
+    ci_upper: PriceSequence,
     timeframe: str, symbol: str, file_prefix: str, final_target_lag: int,
     prediction_results: List[Dict] # <<< --- ***** ADD ARGUMENT HERE *****
 ):
@@ -700,6 +755,86 @@ def plot_predicted_path(
     try: fig.savefig(output_filepath); logger.info(f"Saved prediction plot: {output_filepath}"); print(f"\nPrediction plot saved to: {output_filepath}")
     except Exception as e: logger.error(f"Failed save plot {output_filepath.name}: {e}", exc_info=True)
     finally: plt.close(fig) # Ensure figure is closed
+
+
+class Predictor:
+    def __init__(self):
+        """Initialize the predictor."""
+        if not STATSMODELS_AVAILABLE:
+            raise ImportError("Statsmodels is required for prediction functionality. Please install it with 'pip install statsmodels'.")
+    
+    def get_latest_data_point(self, db_path: Path) -> Optional[pd.DataFrame]:
+        """Get the latest data point from the database."""
+        return _get_latest_data_point(db_path)
+    
+    def get_historical_indicator_price_pairs(
+        self,
+        db_path: Path,
+        symbol_id: int,
+        timeframe_id: int,
+        indicator_config: Dict[str, Any],
+        lag: int,
+        full_historical_data: pd.DataFrame,
+        indicator_series_cache: Dict[int, pd.DataFrame]
+    ) -> Optional[pd.DataFrame]:
+        """Get historical indicator and price pairs for prediction."""
+        return _get_historical_indicator_price_pairs(
+            db_path, symbol_id, timeframe_id, indicator_config,
+            lag, full_historical_data, indicator_series_cache
+        )
+    
+    def perform_prediction_regression(
+        self,
+        hist_pairs: pd.DataFrame,
+        current_indicator_value: float,
+        current_lag: int
+    ) -> Optional[Tuple[float, float]]:
+        """Perform regression for prediction."""
+        return _perform_prediction_regression(hist_pairs, current_indicator_value, current_lag)
+    
+    def export_prediction_details(
+        self,
+        prediction_results: List[Dict],
+        file_prefix: str,
+        symbol: str,
+        timeframe: str,
+        latest_date: datetime,
+        current_price: float
+    ):
+        """Export prediction details to files."""
+        return _export_prediction_details(
+            prediction_results, file_prefix, symbol,
+            timeframe, latest_date, current_price
+        )
+    
+    def predict_price(
+        self,
+        db_path: Path,
+        symbol: str,
+        timeframe: str,
+        final_target_lag: int
+    ) -> None:
+        """Predict future price based on historical data."""
+        return predict_price(db_path, symbol, timeframe, final_target_lag)
+    
+    def plot_predicted_path(
+        self,
+        dates: DateSequence,
+        prices: PriceSequence,
+        ci_lower: PriceSequence,
+        ci_upper: PriceSequence,
+        timeframe: str,
+        symbol: str,
+        file_prefix: str,
+        final_target_lag: int,
+        prediction_results: List[Dict]
+    ):
+        """Plot the predicted price path with confidence intervals."""
+        return plot_predicted_path(
+            dates, prices, ci_lower, ci_upper,
+            timeframe, symbol, file_prefix,
+            final_target_lag, prediction_results
+        )
 
 
 if __name__ == '__main__':

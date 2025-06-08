@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 # --- Caches ---
 indicator_series_cache: Dict[str, pd.DataFrame] = {} # param_hash -> indicator_output_df
 single_correlation_cache: Dict[Tuple[str, int], Optional[float]] = {} # (param_hash, lag) -> correlation_value
+indicator_factory_instance = indicator_factory.IndicatorFactory() # Create singleton instance
 
 # --- Constants ---
 WEAK_CORR_THRESHOLD_SKIP = app_config.DEFAULTS.get("weak_corr_threshold_skip", 0.15)
@@ -139,7 +140,17 @@ def _objective_function(params_list: List[Any], *, # Use keyword-only args after
 
             if indicator_output_df is None: # Compute indicator if needed
                 config_details = {'indicator_name': indicator_name, 'params': params_to_store, 'config_id': config_id}
-                indicator_output_df = indicator_factory._compute_single_indicator(base_data_with_required.copy(), config_details)
+                # Get indicator config from factory
+                indicator_config = indicator_factory_instance.indicator_params.get(indicator_name)
+                if indicator_config is None:
+                    logger.error(f"Unknown indicator: {indicator_name}")
+                    indicator_output_df = None
+                else:
+                    indicator_output_df = indicator_factory_instance._compute_single_indicator(
+                        data=base_data_with_required.copy(),
+                        name=indicator_name,
+                        config=indicator_config
+                    )
                 # Cache result or empty DF on failure
                 indicator_series_cache[param_hash] = indicator_output_df if (indicator_output_df is not None and not indicator_output_df.empty) else pd.DataFrame()
 
@@ -557,16 +568,18 @@ def _define_search_space(param_defs: Dict) -> Tuple[List, List[str], Dict, bool]
 
     # Handle matype separately if present
     if 'matype' in param_defs:
-        # Check if matype has a valid default indicating it's potentially tunable or fixed
-        if param_defs['matype'].get('default', -1) >= 0:
-             matype_values = list(range(9)) # TA-Lib MA types 0-8
-             search_space.append(Categorical(categories=matype_values, name='matype'))
-             param_names.append('matype')
-             has_tunable = True
-             logger.debug("Space 'matype': Categorical(0..8)")
-        elif 'default' in param_defs['matype']:
-             # If default is present but not >= 0 (e.g., None or invalid), treat as fixed
-             fixed_params['matype'] = param_defs['matype']['default']
+        matype_def = param_defs['matype']
+        default = matype_def.get('default')
+        # Only make matype tunable if it has a valid default >= 0
+        if isinstance(default, (int, float)) and default >= 0:
+            matype_values = list(range(9))  # TA-Lib MA types 0-8
+            search_space.append(Categorical(categories=matype_values, name='matype'))
+            param_names.append('matype')
+            has_tunable = True
+            logger.debug("Space 'matype': Categorical(0..8)")
+        elif default is not None:  # If default is present but not >= 0, treat as fixed
+            fixed_params['matype'] = int(default) if isinstance(default, (int, float)) else default
+            logger.debug(f"Fixed 'matype' to {fixed_params['matype']}")
 
     # Process other parameters
     for name, details in sorted(param_defs.items()):
@@ -693,7 +706,17 @@ def _process_default_config_fast_eval(
     # Check indicator cache or calculate if necessary
     if default_hash not in indicator_series_cache:
         config_details = {'indicator_name': indicator_name, 'params': defaults_full, 'config_id': default_id}
-        indicator_df = indicator_factory._compute_single_indicator(base_data.copy(), config_details)
+        # Get indicator config from factory
+        indicator_config = indicator_factory_instance.indicator_params.get(indicator_name)
+        if indicator_config is None:
+            logger.error(f"Unknown indicator: {indicator_name}")
+            indicator_df = None
+        else:
+            indicator_df = indicator_factory_instance._compute_single_indicator(
+                data=base_data.copy(),
+                name=indicator_name,
+                config=indicator_config
+            )
         # Cache result (or empty DF on failure)
         indicator_series_cache[default_hash] = indicator_df if (indicator_df is not None and not indicator_df.empty) else pd.DataFrame()
 

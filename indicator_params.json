@@ -1,672 +1,753 @@
 {
-    "indicators": {
-        "aberration": {
-            "type": "pandas-ta",
-            "required_inputs": ["high", "low", "close"],
-            "parameters": {},
-            "conditions": []
-        },
-        "ad": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low", "close", "volume"],
-            "parameters": {},
-            "conditions": []
-        },
-        "adosc": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low", "close", "volume"],
-            "parameters": {
-                "fastperiod": { "default": 3, "min": 2, "max": 100 },
-                "slowperiod": { "default": 10, "min": 3, "max": 200 }
-             },
-            "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ],
-            "range_steps_default": 5
-        },
-        "adx": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "adxr": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14, "min": 3, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 3 } } ],
-            "range_steps_default": 5
-        },
-        "ao": {
-            "type": "pandas-ta",
-            "required_inputs": ["high", "low"],
-            "parameters": {
-                "fast": { "default": 5, "min": 2, "max": 100 },
-                "slow": { "default": 34, "min": 3, "max": 200 }
-             },
-            "conditions": [ { "fast": { "gte": 2 } }, { "slow": { "gte": 2 } }, { "fast": { "lt": "slow" } } ],
-            "range_steps_default": 5
-        },
-        "apo": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": {
-                "fastperiod": { "default": 12, "min": 2, "max": 100 },
-                "slowperiod": { "default": 26, "min": 3, "max": 200 },
-                "matype": { "default": 0 }
-            },
-            "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ],
-            "range_steps_default": 5
-        },
-        "aroon": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low"],
-            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "aroonosc": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low"],
-            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "atr": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "bias": {
-            "type": "pandas-ta",
-            "required_inputs": ["close"],
-            "parameters": { "length": { "default": 26, "min": 2, "max": 200 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "bop": {
-            "type": "ta-lib",
-            "required_inputs": ["open", "high", "low", "close"],
-            "parameters": {},
-            "conditions": []
-        },
-         "brar": {
-            "type": "pandas-ta",
-            "required_inputs": ["open", "high", "low", "close"],
-            "parameters": { "length": { "default": 26, "min": 2, "max": 200 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "cci": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "cg": {
-            "type": "pandas-ta",
-            "required_inputs": ["close"],
-            "parameters": { "length": { "default": 10, "min": 2, "max": 200 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "cfo": {
-            "type": "pandas-ta",
-            "required_inputs": ["close"],
-            "parameters": { "length": { "default": 9, "min": 1, "max": 100 } },
-            "conditions": [ { "length": { "gte": 1 } } ],
-            "range_steps_default": 5
-        },
-        "chop": {
-             "type": "pandas-ta",
-            "required_inputs": ["high", "low", "close"],
-            "parameters": { "length": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "cmf": {
-            "type": "pandas-ta",
-            "required_inputs": ["high", "low", "close", "volume"],
-            "parameters": {
-                "length": { "default": 20, "min": 2, "max": 200 }
-            },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "cmo": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "dm": {
-            "type": "pandas-ta",
-             "required_inputs": ["high", "low"],
-            "parameters": { "length": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "dpo": {
-            "type": "pandas-ta",
-             "required_inputs": ["close"],
-            "parameters": { "length": { "default": 20, "min": 2, "max": 200 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "dx": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "ebsw": {
-             "type": "pandas-ta",
-             "required_inputs": ["high", "low", "close"],
-            "parameters": {
-                 "length": { "default": 13, "min": 2, "max": 100 },
-                 "atr_length": { "default": 13, "min": 2, "max": 100 }
-             },
-            "conditions": [ { "length": { "gte": 2 } }, { "atr_length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "efi": {
-            "type": "pandas-ta",
-            "required_inputs": ["close", "volume"],
-            "parameters": {
-                "length": { "default": 13, "min": 2, "max": 200 },
-                "mamode": { "default": "sma" }
-            },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "eom": {
-            "type": "pandas-ta",
-            "required_inputs": ["high", "low", "close", "volume"],
-            "parameters": {
-                "length": { "default": 14, "min": 1, "max": 100 },
-                "divisor": { "default": 100000000 }
-             },
-            "conditions": [ { "length": { "gte": 1 } } ],
-            "range_steps_default": 5
-        },
-        "er": {
-             "type": "pandas-ta",
-             "required_inputs": ["close"],
-            "parameters": { "length": { "default": 10, "min": 2, "max": 100 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "fisher": {
-            "type": "pandas-ta",
-            "required_inputs": ["high", "low"],
-            "parameters": {
-                "length": { "default": 9, "min": 2, "max": 100 },
-                "signal": { "default": 1, "min": 1, "max": 50 }
-            },
-            "conditions": [ { "length": { "gte": 2 } }, { "signal": { "gte": 1 } } ],
-            "range_steps_default": 5
-        },
-        "ht_dcperiod": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": {},
-            "conditions": []
-        },
-        "ht_dcphase": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": {},
-            "conditions": []
-        },
-        "ht_phasor": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": {},
-            "conditions": []
-        },
-        "ht_sine": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": {},
-            "conditions": []
-        },
-        "ht_trendmode": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": {},
-            "conditions": []
-        },
-        "inertia": {
-             "type": "pandas-ta",
-             "required_inputs": ["close", "high", "low"],
-            "parameters": {
-                "length": { "default": 20, "min": 4, "max": 100 },
-                "rsi_length": { "default": 14, "min": 2, "max": 100 }
-             },
-            "conditions": [ { "length": { "gte": 4 } }, { "rsi_length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "kst": {
-            "type": "pandas-ta",
-            "required_inputs": ["close"],
-            "parameters": {
-                "roc1": { "default": 10 }, "roc2": { "default": 15 }, "roc3": { "default": 20 }, "roc4": { "default": 30 },
-                "sma1": { "default": 10 }, "sma2": { "default": 10 }, "sma3": { "default": 10 }, "sma4": { "default": 15 },
-                "signal": { "default": 9, "min": 2, "max": 100 }
-            },
-            "conditions": [ { "signal": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "kvo": {
-            "type": "pandas-ta",
-            "required_inputs": ["high", "low", "close", "volume"],
-            "parameters": {
-                "fast": { "default": 34, "min": 2, "max": 100 },
-                "slow": { "default": 55, "min": 3, "max": 200 },
-                "signal": { "default": 13, "min": 1, "max": 50 },
-                "scalar": { "default": 100 }
-             },
-            "conditions": [ { "fast": { "gte": 2 } }, { "slow": { "gte": 2 } }, { "signal": { "gte": 1 } }, { "fast": { "lt": "slow" } } ],
-            "range_steps_default": 5
-        },
-        "macd": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": {
-                "fastperiod": { "default": 12, "min": 2, "max": 100 },
-                "slowperiod": { "default": 26, "min": 3, "max": 200 },
-                "signalperiod": { "default": 9, "min": 1, "max": 100 }
-             },
-            "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "signalperiod": { "gte": 1 } }, { "fastperiod": { "lt": "slowperiod" } } ],
-            "range_steps_default": 5
-        },
-        "mad": {
-             "type": "pandas-ta",
-             "required_inputs": ["close"],
-            "parameters": { "length": { "default": 30, "min": 2, "max": 200 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "mfi": {
-            "type": "pandas-ta",
-            "required_inputs": ["high", "low", "close", "volume"],
-            "parameters": { "length": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-         "minus_di": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-         "minus_dm": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low"],
-            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "mom": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 1 } } ],
-            "range_steps_default": 5
-        },
-        "nvi": {
-             "type": "custom",
-             "required_inputs": ["close", "volume"],
-             "parameters": {},
-             "conditions": [],
-             "function_name": "compute_nvi"
-        },
-        "obv": {
-            "type": "ta-lib",
-            "required_inputs": ["close", "volume"],
-            "parameters": {},
-            "conditions": []
-        },
-        "obv_price_divergence": {
-             "type": "custom",
-             "required_inputs": ["open", "high", "low", "close", "volume"],
-             "parameters": {
-                "method":{"default":"Difference"},
-                "obv_method":{"default":"SMA"},
-                "obv_period":{"default":14, "min": 2, "max": 200},
-                "price_input_type":{"default":"OHLC/4"},
-                "price_method":{"default":"SMA"},
-                "price_period":{"default":14, "min": 2, "max": 200},
-                "smoothing":{"default":0.01, "min": 0.001, "max": 0.1 }
-            },
-             "conditions": [ {"obv_period": {"gte": 2}}, {"price_period": {"gte": 2}}, {"smoothing": {"gt": 0}} ],
-             "function_name": "compute_obv_price_divergence",
-             "range_steps_default": 5
-        },
-         "pdist": {
-             "type": "pandas-ta",
-             "required_inputs": ["close"],
-             "parameters": {},
-             "conditions": []
-         },
-         "plus_di": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-         "plus_dm": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low"],
-            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "ppo": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": {
-                "fastperiod": { "default": 12, "min": 2, "max": 100 },
-                "slowperiod": { "default": 26, "min": 3, "max": 200 },
-                "matype": { "default": 0 }
-            },
-            "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ],
-            "range_steps_default": 5
-        },
-         "psl": {
-             "type": "pandas-ta",
-             "required_inputs": ["close"],
-            "parameters": { "length": { "default": 12, "min": 2, "max": 100 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "pvi": {
-             "type": "custom",
-             "required_inputs": ["close", "volume"],
-             "parameters": {},
-             "conditions": [],
-             "function_name": "compute_pvi"
-        },
-        "pvo": {
-            "type": "pandas-ta",
-            "required_inputs": ["volume"],
-            "parameters": {
-                "fast": { "default": 12, "min": 2, "max": 100 },
-                "slow": { "default": 26, "min": 3, "max": 200 },
-                "signal": { "default": 9, "min": 1, "max": 50 },
-                "scalar": { "default": 100 }
-             },
-            "conditions": [ { "fast": { "gte": 2 } }, { "slow": { "gte": 2 } }, { "signal": { "gte": 1 } }, { "fast": { "lt": "slow" } } ],
-            "range_steps_default": 5
-        },
-         "qqe": {
-             "type": "pandas-ta",
-             "required_inputs": ["close"],
-            "parameters": { "length": { "default": 14, "min": 2, "max": 100 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "qstick": {
-            "type": "pandas-ta",
-            "required_inputs": ["open", "close"],
-            "parameters": { "length": { "default": 10, "min": 1, "max": 100 } },
-            "conditions": [ { "length": { "gte": 1 } } ],
-            "range_steps_default": 5
-        },
-        "roc": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 1 } } ],
-            "range_steps_default": 5
-        },
-        "rocp": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 1 } } ],
-            "range_steps_default": 5
-        },
-        "rocr": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 1 } } ],
-            "range_steps_default": 5
-        },
-        "rocr100": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 1 } } ],
-            "range_steps_default": 5
-        },
-        "rsi": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-         "rsx": {
-             "type": "pandas-ta",
-             "required_inputs": ["close"],
-            "parameters": { "length": { "default": 14, "min": 2, "max": 100 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "rvi": {
-            "type": "pandas-ta",
-            "required_inputs": ["close", "high", "low", "open"],
-            "parameters": {
-                "length": { "default": 14, "min": 2, "max": 200 },
-                 "scalar": { "default": 100 },
-                "refined": { "default": false },
-                "thirds": { "default": false }
-             },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-         "rvgi": {
-            "type": "pandas-ta",
-            "required_inputs": ["open", "high", "low", "close", "volume"],
-            "parameters": { "length": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-         "slope": {
-            "type": "pandas-ta",
-            "required_inputs": ["close"],
-            "parameters": { "length": { "default": 1, "min": 1, "max": 100 } },
-            "conditions": [ { "length": { "gte": 1 } } ],
-            "range_steps_default": 5
-        },
-         "squeeze": {
-             "type": "pandas-ta",
-             "required_inputs": ["high", "low", "close"],
-             "parameters": {},
-             "conditions": []
-         },
-         "squeeze_pro": {
-             "type": "pandas-ta",
-             "required_inputs": ["high", "low", "close"],
-             "parameters": {},
-             "conditions": []
-         },
-        "stc": {
-            "type": "pandas-ta",
-            "required_inputs": ["close"],
-            "parameters": {
-                "fast_length": { "default": 23 },
-                "slow_length": { "default": 50 },
-                "cycle_length": { "default": 10, "min": 3, "max": 50 },
-                "factor": { "default": 0.5, "min": 0.1, "max": 0.9 }
-            },
-            "conditions": [ { "cycle_length": { "gte": 2 } }, { "factor": { "gt": 0 } } ],
-            "range_steps_default": 5
-        },
-        "stddev": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": {
-                "timeperiod": { "default": 5, "min": 2, "max": 100 },
-                "nbdev": { "default": 1.0 }
-            },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "stoch": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low", "close"],
-            "parameters": {
-                "fastk_period":{ "default": 5, "min": 1, "max": 100 },
-                "slowk_period":{ "default": 3, "min": 1, "max": 100 },
-                "slowk_matype":{ "default": 0 },
-                "slowd_period":{ "default": 3, "min": 1, "max": 100 },
-                "slowd_matype":{ "default": 0 }
-            },
-            "conditions": [ { "fastk_period": { "gte": 1 } }, { "slowk_period": { "gte": 1 } }, { "slowd_period": { "gte": 1 } } ],
-            "range_steps_default": 3
-        },
-        "stochf": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low", "close"],
-            "parameters": {
-                "fastk_period":{ "default": 5, "min": 1, "max": 100 },
-                "fastd_period":{ "default": 3, "min": 1, "max": 100 },
-                "fastd_matype":{ "default": 0 }
-            },
-            "conditions": [ { "fastk_period": { "gte": 1 } }, { "fastd_period": { "gte": 1 } } ],
-            "range_steps_default": 3
-        },
-        "stochrsi": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": {
-                "timeperiod": { "default": 14, "min": 2, "max": 200 },
-                "fastk_period": { "default": 5, "min": 1, "max": 100 },
-                "fastd_period": { "default": 3, "min": 1, "max": 100 },
-                "fastd_matype": { "default": 0 }
-            },
-            "conditions": [ { "timeperiod": { "gte": 2 } }, { "fastk_period": { "gte": 1 } }, { "fastd_period": { "gte": 1 } } ],
-            "range_steps_default": 5
-        },
-         "td_seq": {
-            "type": "pandas-ta",
-            "required_inputs": ["close"],
-            "parameters": { "asint": { "default": true } },
-            "conditions": []
-         },
-         "thermo": {
-             "type": "pandas-ta",
-             "required_inputs": ["high", "low", "close", "volume"],
-             "parameters": { "length": { "default": 20, "min": 2, "max": 100 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-         },
-         "trendflex": {
-             "type": "pandas-ta",
-             "required_inputs": ["close"],
-             "parameters": { "length": { "default": 20, "min": 2, "max": 100 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-         },
-        "trix": {
-            "type": "ta-lib",
-            "required_inputs": ["close"],
-             "parameters": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
-             "conditions": [ { "timeperiod": { "gte": 2 } } ],
-             "range_steps_default": 5
-        },
-         "true_range": {
-            "type": "pandas-ta",
-            "required_inputs": ["high", "low", "close"],
-            "parameters": {},
-            "conditions": []
-         },
-         "tsignals": {
-            "type": "pandas-ta",
-            "required_inputs": ["close", "volume"],
-            "parameters": {},
-            "conditions": []
-         },
-        "tsi": {
-            "type": "pandas-ta",
-            "required_inputs": ["close"],
-            "parameters": {
-                "fast": { "default": 13, "min": 2, "max": 100 },
-                "slow": { "default": 25, "min": 3, "max": 200 },
-                "signal": { "default": 13, "min": 2, "max": 100 }
-            },
-            "conditions": [ { "fast": { "gte": 2 } }, { "slow": { "gte": 2 } }, { "signal": { "gte": 2 } }, { "fast": { "lt": "slow" } } ],
-            "range_steps_default": 5
-        },
-         "ttm_trend": {
-             "type": "pandas-ta",
-             "required_inputs": ["high", "low", "close"],
-            "parameters": { "length": { "default": 5, "min": 2, "max": 100 } },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-         },
-        "ultosc": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low", "close"],
-            "parameters": {
-                "timeperiod1":{ "default": 7, "min": 1, "max": 100 },
-                "timeperiod2":{ "default": 14, "min": 2, "max": 150 },
-                "timeperiod3":{ "default": 28, "min": 3, "max": 200 }
-             },
-            "conditions": [ { "timeperiod1": { "gte": 1 } }, { "timeperiod2": { "gte": 1 } }, { "timeperiod3": { "gte": 1 } }, { "timeperiod1": { "lt": "timeperiod2" } }, { "timeperiod2": { "lt": "timeperiod3" } } ],
-            "range_steps_default": 5
-        },
-        "var": {
-             "type": "ta-lib",
-            "required_inputs": ["close"],
-            "parameters": {
-                "timeperiod": { "default": 5, "min": 2, "max": 100 },
-                "nbdev": { "default": 1.0 }
-            },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-         "volume_osc": {
-             "type": "custom",
-             "required_inputs": ["volume"],
-             "parameters": { "window": { "default": 20, "min": 2, "max": 200 } },
-             "conditions": [ {"window": {"gte": 2}} ],
-             "function_name": "compute_volume_oscillator",
-             "range_steps_default": 5
-         },
-         "vortex": {
-             "type": "pandas-ta",
-             "required_inputs": ["high", "low", "close"],
-             "parameters": { "length": { "default": 14, "min": 2, "max": 200 } },
-             "conditions": [ { "length": { "gte": 2 } } ],
-             "range_steps_default": 5
-         },
-        "willr": {
-            "type": "ta-lib",
-            "required_inputs": ["high", "low", "close"],
-            "parameters": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
-            "conditions": [ { "timeperiod": { "gte": 2 } } ],
-            "range_steps_default": 5
-        },
-        "zscore": {
-            "type": "pandas-ta",
-            "required_inputs": ["close"],
-            "parameters": {
-                "length": { "default": 30, "min": 2, "max": 200 },
-                "std": { "default": 1.0 },
-                "ddof": { "default": 0 }
-             },
-            "conditions": [ { "length": { "gte": 2 } } ],
-            "range_steps_default": 5
-        }
+    "aberration": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low", "close"],
+        "params": {"length": {"default": 20, "min": 2, "max": 100}},
+        "conditions": [],
+        "name": "aberration"
+    },
+    "ad": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low", "close", "volume"],
+        "params": {"timeperiod": {"default": 14, "min": 2, "max": 200}},
+        "conditions": [],
+        "name": "ad"
+    },
+    "adosc": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low", "close", "volume"],
+        "params": {
+            "fastperiod": { "default": 3, "min": 2, "max": 100 },
+            "slowperiod": { "default": 10, "min": 3, "max": 200 }
+        },
+        "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ],
+        "range_steps_default": 5,
+        "name": "adosc"
+    },
+    "adx": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low", "close"],
+        "params": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "adx"
+    },
+    "adxr": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low", "close"],
+        "params": { "timeperiod": { "default": 14, "min": 3, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 3 } } ],
+        "range_steps_default": 5,
+        "name": "adxr"
+    },
+    "ao": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low"],
+        "params": {
+            "fast": { "default": 5, "min": 2, "max": 100 },
+            "slow": { "default": 34, "min": 3, "max": 200 }
+        },
+        "conditions": [ { "fast": { "gte": 2 } }, { "slow": { "gte": 2 } }, { "fast": { "lt": "slow" } } ],
+        "range_steps_default": 5,
+        "name": "ao"
+    },
+    "apo": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": {
+            "fastperiod": { "default": 12, "min": 2, "max": 100 },
+            "slowperiod": { "default": 26, "min": 3, "max": 200 },
+            "matype": { "default": 0, "min": 0, "max": 8 }
+        },
+        "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ],
+        "range_steps_default": 5,
+        "name": "apo"
+    },
+    "aroon": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low"],
+        "params": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "aroon"
+    },
+    "aroonosc": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low"],
+        "params": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "aroonosc"
+    },
+    "atr": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low", "close"],
+        "params": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "atr"
+    },
+    "bias": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": { "length": { "default": 26, "min": 2, "max": 200 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "bias"
+    },
+    "bop": {
+        "type": "ta-lib",
+        "required_inputs": ["open", "high", "low", "close"],
+        "params": {},
+        "conditions": [],
+        "name": "bop"
+    },
+    "brar": {
+        "type": "pandas-ta",
+        "required_inputs": ["open", "high", "low", "close"],
+        "params": { "length": { "default": 26, "min": 2, "max": 200 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "brar"
+    },
+    "cci": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low", "close"],
+        "params": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "cci"
+    },
+    "cg": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": { "length": { "default": 10, "min": 2, "max": 200 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "cg"
+    },
+    "cfo": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": { "length": { "default": 9, "min": 1, "max": 100 } },
+        "conditions": [ { "length": { "gte": 1 } } ],
+        "range_steps_default": 5,
+        "name": "cfo"
+    },
+    "chop": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low", "close"],
+        "params": { "length": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "chop"
+    },
+    "cmf": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low", "close", "volume"],
+        "params": {
+            "length": { "default": 20, "min": 2, "max": 200 }
+        },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "cmf"
+    },
+    "cmo": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "cmo"
+    },
+    "dm": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low"],
+        "params": { "length": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "dm"
+    },
+    "dpo": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": { "length": { "default": 20, "min": 2, "max": 200 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "dpo"
+    },
+    "dx": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low", "close"],
+        "params": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "dx"
+    },
+    "ebsw": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low", "close"],
+        "params": {
+            "length": { "default": 13, "min": 2, "max": 100 },
+            "atr_length": { "default": 13, "min": 2, "max": 100 }
+        },
+        "conditions": [ { "length": { "gte": 2 } }, { "atr_length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "ebsw"
+    },
+    "efi": {
+        "type": "pandas-ta",
+        "required_inputs": ["close", "volume"],
+        "params": {
+            "length": { "default": 13, "min": 2, "max": 200 },
+            "mamode": { "default": "sma" }
+        },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "efi"
+    },
+    "eom": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low", "close", "volume"],
+        "params": {
+            "length": { "default": 14, "min": 1, "max": 100 },
+            "divisor": { "default": 100000000 }
+        },
+        "conditions": [ { "length": { "gte": 1 } } ],
+        "range_steps_default": 5,
+        "name": "eom"
+    },
+    "er": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": { "length": { "default": 10, "min": 2, "max": 100 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "er"
+    },
+    "fisher": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low"],
+        "params": {
+            "length": { "default": 9, "min": 2, "max": 100 },
+            "signal": { "default": 1, "min": 1, "max": 50 }
+        },
+        "conditions": [ { "length": { "gte": 2 } }, { "signal": { "gte": 1 } } ],
+        "range_steps_default": 5,
+        "name": "fisher"
+    },
+    "ht_dcperiod": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": {},
+        "conditions": [],
+        "name": "ht_dcperiod"
+    },
+    "ht_dcphase": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": {},
+        "conditions": [],
+        "name": "ht_dcphase"
+    },
+    "ht_phasor": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": {},
+        "conditions": [],
+        "name": "ht_phasor"
+    },
+    "ht_sine": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": {},
+        "conditions": [],
+        "name": "ht_sine"
+    },
+    "ht_trendmode": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": {},
+        "conditions": [],
+        "name": "ht_trendmode"
+    },
+    "inertia": {
+        "type": "pandas-ta",
+        "required_inputs": ["close", "high", "low"],
+        "params": {
+            "length": { "default": 20, "min": 4, "max": 100 },
+            "rsi_length": { "default": 14, "min": 2, "max": 100 }
+        },
+        "conditions": [ { "length": { "gte": 4 } }, { "rsi_length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "inertia"
+    },
+    "kst": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": {
+            "roc1": { "default": 10 }, "roc2": { "default": 15 }, "roc3": { "default": 20 }, "roc4": { "default": 30 },
+            "sma1": { "default": 10 }, "sma2": { "default": 10 }, "sma3": { "default": 10 }, "sma4": { "default": 15 },
+            "signal": { "default": 9, "min": 2, "max": 100 }
+        },
+        "conditions": [ { "signal": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "kst"
+    },
+    "kvo": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low", "close", "volume"],
+        "params": {
+            "fast": { "default": 34, "min": 2, "max": 100 },
+            "slow": { "default": 55, "min": 3, "max": 200 },
+            "signal": { "default": 13, "min": 1, "max": 50 },
+            "scalar": { "default": 100 }
+        },
+        "conditions": [ { "fast": { "gte": 2 } }, { "slow": { "gte": 2 } }, { "signal": { "gte": 1 } }, { "fast": { "lt": "slow" } } ],
+        "range_steps_default": 5,
+        "name": "kvo"
+    },
+    "macd": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": {
+            "fastperiod": { "default": 12, "min": 2, "max": 100 },
+            "slowperiod": { "default": 26, "min": 3, "max": 200 },
+            "signalperiod": { "default": 9, "min": 1, "max": 100 }
+        },
+        "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "signalperiod": { "gte": 1 } }, { "fastperiod": { "lt": "slowperiod" } } ],
+        "range_steps_default": 5,
+        "name": "macd"
+    },
+    "mad": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": { "length": { "default": 30, "min": 2, "max": 200 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "mad"
+    },
+    "mfi": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low", "close", "volume"],
+        "params": { "length": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "mfi"
+    },
+    "minus_di": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low", "close"],
+        "params": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "minus_di"
+    },
+    "minus_dm": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low"],
+        "params": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "minus_dm"
+    },
+    "mom": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 1 } } ],
+        "range_steps_default": 5,
+        "name": "mom"
+    },
+    "nvi": {
+        "type": "custom",
+        "required_inputs": ["close", "volume"],
+        "params": {},
+        "conditions": [],
+        "function_name": "compute_nvi",
+        "name": "nvi"
+    },
+    "obv": {
+        "type": "ta-lib",
+        "required_inputs": ["close", "volume"],
+        "params": {},
+        "conditions": [],
+        "name": "obv"
+    },
+    "obv_price_divergence": {
+        "type": "custom",
+        "required_inputs": ["open", "high", "low", "close", "volume"],
+        "params": {
+            "method":{"default":"Difference"},
+            "obv_method":{"default":"SMA"},
+            "obv_period":{"default":14, "min": 2, "max": 200},
+            "price_input_type":{"default":"OHLC/4"},
+            "price_method":{"default":"SMA"},
+            "price_period":{"default":14, "min": 2, "max": 200},
+            "smoothing":{"default":0.01, "min": 0.001, "max": 0.1 }
+        },
+        "conditions": [ {"obv_period": {"gte": 2}}, {"price_period": {"gte": 2}}, {"smoothing": {"gt": 0}} ],
+        "function_name": "compute_obv_price_divergence",
+        "range_steps_default": 5,
+        "name": "obv_price_divergence"
+    },
+    "pdist": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": {},
+        "conditions": [],
+        "name": "pdist"
+    },
+    "plus_di": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low", "close"],
+        "params": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "plus_di"
+    },
+    "plus_dm": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low"],
+        "params": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "plus_dm"
+    },
+    "ppo": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": {
+            "fastperiod": { "default": 12, "min": 2, "max": 100 },
+            "slowperiod": { "default": 26, "min": 3, "max": 200 },
+            "matype": { "default": 0, "min": 0, "max": 8 }
+        },
+        "conditions": [ { "fastperiod": { "gte": 2 } }, { "slowperiod": { "gte": 2 } }, { "fastperiod": { "lt": "slowperiod" } } ],
+        "range_steps_default": 5,
+        "name": "ppo"
+    },
+    "psl": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": { "length": { "default": 12, "min": 2, "max": 100 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "psl"
+    },
+    "pvi": {
+        "type": "custom",
+        "required_inputs": ["close", "volume"],
+        "params": {},
+        "conditions": [],
+        "function_name": "compute_pvi",
+        "name": "pvi"
+    },
+    "pvo": {
+        "type": "pandas-ta",
+        "required_inputs": ["volume"],
+        "params": {
+            "fast": { "default": 12, "min": 2, "max": 100 },
+            "slow": { "default": 26, "min": 3, "max": 200 },
+            "signal": { "default": 9, "min": 1, "max": 50 },
+            "scalar": { "default": 100 }
+        },
+        "conditions": [ { "fast": { "gte": 2 } }, { "slow": { "gte": 2 } }, { "signal": { "gte": 1 } }, { "fast": { "lt": "slow" } } ],
+        "range_steps_default": 5,
+        "name": "pvo"
+    },
+    "qqe": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": { "length": { "default": 14, "min": 2, "max": 100 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "qqe"
+    },
+    "qstick": {
+        "type": "pandas-ta",
+        "required_inputs": ["open", "close"],
+        "params": { "length": { "default": 10, "min": 1, "max": 100 } },
+        "conditions": [ { "length": { "gte": 1 } } ],
+        "range_steps_default": 5,
+        "name": "qstick"
+    },
+    "roc": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 1 } } ],
+        "range_steps_default": 5,
+        "name": "roc"
+    },
+    "rocp": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 1 } } ],
+        "range_steps_default": 5,
+        "name": "rocp"
+    },
+    "rocr": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 1 } } ],
+        "range_steps_default": 5,
+        "name": "rocr"
+    },
+    "rocr100": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": { "timeperiod": { "default": 10, "min": 1, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 1 } } ],
+        "range_steps_default": 5,
+        "name": "rocr100"
+    },
+    "rsi": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "rsi"
+    },
+    "rsx": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": { "length": { "default": 14, "min": 2, "max": 100 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "rsx"
+    },
+    "rvi": {
+        "type": "pandas-ta",
+        "required_inputs": ["close", "high", "low", "open"],
+        "params": {
+            "length": { "default": 14, "min": 2, "max": 200 },
+            "scalar": { "default": 100 },
+            "refined": { "default": false },
+            "thirds": { "default": false }
+        },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "rvi"
+    },
+    "rvgi": {
+        "type": "pandas-ta",
+        "required_inputs": ["open", "high", "low", "close", "volume"],
+        "params": { "length": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "rvgi"
+    },
+    "slope": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": { "length": { "default": 1, "min": 1, "max": 100 } },
+        "conditions": [ { "length": { "gte": 1 } } ],
+        "range_steps_default": 5,
+        "name": "slope"
+    },
+    "squeeze": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low", "close"],
+        "params": {},
+        "conditions": [],
+        "name": "squeeze"
+    },
+    "squeeze_pro": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low", "close"],
+        "params": {},
+        "conditions": [],
+        "name": "squeeze_pro"
+    },
+    "stc": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": {
+            "fast_length": { "default": 23 },
+            "slow_length": { "default": 50 },
+            "cycle_length": { "default": 10, "min": 3, "max": 50 },
+            "factor": { "default": 0.5, "min": 0.1, "max": 0.9 }
+        },
+        "conditions": [ { "cycle_length": { "gte": 2 } }, { "factor": { "gt": 0 } } ],
+        "range_steps_default": 5,
+        "name": "stc"
+    },
+    "stddev": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": {
+            "timeperiod": { "default": 5, "min": 2, "max": 100 },
+            "nbdev": { "default": 1.0 }
+        },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "stddev"
+    },
+    "stoch": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low", "close"],
+        "params": {
+            "fastk_period":{ "default": 5, "min": 1, "max": 100 },
+            "slowk_period":{ "default": 3, "min": 1, "max": 100 },
+            "slowk_matype":{ "default": 0, "min": 0, "max": 8 },
+            "slowd_period":{ "default": 3, "min": 1, "max": 100 },
+            "slowd_matype":{ "default": 0, "min": 0, "max": 8 }
+        },
+        "conditions": [ { "fastk_period": { "gte": 1 } }, { "slowk_period": { "gte": 1 } }, { "slowd_period": { "gte": 1 } } ],
+        "range_steps_default": 3,
+        "name": "stoch"
+    },
+    "stochf": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low", "close"],
+        "params": {
+            "fastk_period":{ "default": 5, "min": 1, "max": 100 },
+            "fastd_period":{ "default": 3, "min": 1, "max": 100 },
+            "fastd_matype":{ "default": 0, "min": 0, "max": 8 }
+        },
+        "conditions": [ { "fastk_period": { "gte": 1 } }, { "fastd_period": { "gte": 1 } } ],
+        "range_steps_default": 3,
+        "name": "stochf"
+    },
+    "stochrsi": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": {
+            "timeperiod": { "default": 14, "min": 2, "max": 200 },
+            "fastk_period": { "default": 5, "min": 1, "max": 100 },
+            "fastd_period": { "default": 3, "min": 1, "max": 100 },
+            "fastd_matype": { "default": 0, "min": 0, "max": 8 }
+        },
+        "conditions": [ { "timeperiod": { "gte": 2 } }, { "fastk_period": { "gte": 1 } }, { "fastd_period": { "gte": 1 } } ],
+        "range_steps_default": 5,
+        "name": "stochrsi"
+    },
+    "td_seq": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": { "asint": { "default": true } },
+        "conditions": [],
+        "name": "td_seq"
+    },
+    "thermo": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low", "close", "volume"],
+        "params": { "length": { "default": 20, "min": 2, "max": 100 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "thermo"
+    },
+    "trendflex": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": { "length": { "default": 20, "min": 2, "max": 100 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "trendflex"
+    },
+    "trix": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": { "timeperiod": { "default": 30, "min": 2, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "trix"
+    },
+    "true_range": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low", "close"],
+        "params": {},
+        "conditions": [],
+        "name": "true_range"
+    },
+    "tsignals": {
+        "type": "pandas-ta",
+        "required_inputs": ["close", "volume"],
+        "params": {},
+        "conditions": [],
+        "name": "tsignals"
+    },
+    "tsi": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": {
+            "fast": { "default": 13, "min": 2, "max": 100 },
+            "slow": { "default": 25, "min": 3, "max": 200 },
+            "signal": { "default": 13, "min": 2, "max": 100 }
+        },
+        "conditions": [ { "fast": { "gte": 2 } }, { "slow": { "gte": 2 } }, { "signal": { "gte": 2 } }, { "fast": { "lt": "slow" } } ],
+        "range_steps_default": 5,
+        "name": "tsi"
+    },
+    "ttm_trend": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low", "close"],
+        "params": { "length": { "default": 5, "min": 2, "max": 100 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "ttm_trend"
+    },
+    "ultosc": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low", "close"],
+        "params": {
+            "timeperiod1":{ "default": 7, "min": 1, "max": 100 },
+            "timeperiod2":{ "default": 14, "min": 2, "max": 150 },
+            "timeperiod3":{ "default": 28, "min": 3, "max": 200 }
+        },
+        "conditions": [ { "timeperiod1": { "gte": 1 } }, { "timeperiod2": { "gte": 1 } }, { "timeperiod3": { "gte": 1 } }, { "timeperiod1": { "lt": "timeperiod2" } }, { "timeperiod2": { "lt": "timeperiod3" } } ],
+        "range_steps_default": 5,
+        "name": "ultosc"
+    },
+    "var": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": {
+            "timeperiod": { "default": 5, "min": 2, "max": 100 },
+            "nbdev": { "default": 1.0 }
+        },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "var"
+    },
+    "volume_osc": {
+        "type": "custom",
+        "required_inputs": ["volume"],
+        "params": { "window": { "default": 20, "min": 2, "max": 200 } },
+        "conditions": [ {"window": {"gte": 2}} ],
+        "function_name": "compute_volume_oscillator",
+        "range_steps_default": 5,
+        "name": "volume_osc"
+    },
+    "vortex": {
+        "type": "pandas-ta",
+        "required_inputs": ["high", "low", "close"],
+        "params": { "length": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "vortex"
+    },
+    "willr": {
+        "type": "ta-lib",
+        "required_inputs": ["high", "low", "close"],
+        "params": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "willr"
+    },
+    "zscore": {
+        "type": "pandas-ta",
+        "required_inputs": ["close"],
+        "params": {
+            "length": { "default": 30, "min": 2, "max": 200 },
+            "std": { "default": 1.0 },
+            "ddof": { "default": 0 }
+        },
+        "conditions": [ { "length": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "zscore"
     }
 }

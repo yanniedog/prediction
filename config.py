@@ -1,6 +1,7 @@
 # config.py
 import os
 from pathlib import Path
+from types import MappingProxyType
 
 # --- Core Paths ---
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -67,3 +68,58 @@ LINE_CHARTS_DIR.mkdir(parents=True, exist_ok=True)
 COMBINED_CHARTS_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LEADERBOARD_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+class Config:
+    """Configuration class that encapsulates all settings."""
+    def __init__(self):
+        # Core Paths
+        self.PROJECT_ROOT = PROJECT_ROOT
+        self.DB_DIR = DB_DIR
+        self.REPORTS_DIR = REPORTS_DIR
+        self.HEATMAPS_DIR = HEATMAPS_DIR
+        self.LINE_CHARTS_DIR = LINE_CHARTS_DIR
+        self.COMBINED_CHARTS_DIR = COMBINED_CHARTS_DIR
+        self.LOG_DIR = LOG_DIR
+        self.INDICATOR_PARAMS_PATH = INDICATOR_PARAMS_PATH
+        self.LEADERBOARD_DB_PATH = LEADERBOARD_DB_PATH
+        
+        # Database
+        self.DB_NAME_TEMPLATE = DB_NAME_TEMPLATE
+        self.SQLITE_MAX_VARIABLE_NUMBER = SQLITE_MAX_VARIABLE_NUMBER
+        
+        # Defaults - Make a deep copy to prevent modification
+        self.DEFAULTS = DEFAULTS.copy()
+        
+        # Ensure directories exist
+        self._ensure_directories()
+    
+    def _ensure_directories(self):
+        """Ensure all required directories exist."""
+        self.DB_DIR.mkdir(parents=True, exist_ok=True)
+        self.REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        self.HEATMAPS_DIR.mkdir(parents=True, exist_ok=True)
+        self.LINE_CHARTS_DIR.mkdir(parents=True, exist_ok=True)
+        self.COMBINED_CHARTS_DIR.mkdir(parents=True, exist_ok=True)
+        self.LOG_DIR.mkdir(parents=True, exist_ok=True)
+        self.LEADERBOARD_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    
+    def get_config_dict(self):
+        """Return configuration as an immutable dictionary."""
+        # Create a regular dict first
+        config_dict = {
+            'project_root': self.PROJECT_ROOT,
+            'db_dir': self.DB_DIR,
+            'reports_dir': self.REPORTS_DIR,
+            'heatmaps_dir': self.HEATMAPS_DIR,
+            'line_charts_dir': self.LINE_CHARTS_DIR,
+            'combined_charts_dir': self.COMBINED_CHARTS_DIR,
+            'log_dir': self.LOG_DIR,
+            'indicator_params_path': self.INDICATOR_PARAMS_PATH,
+            'leaderboard_db_path': self.LEADERBOARD_DB_PATH,
+            'defaults': MappingProxyType(self.DEFAULTS)  # Make defaults immutable
+        }
+        # Return an immutable view of the entire dict
+        return MappingProxyType(config_dict)
+
+# Create a default instance for backward compatibility
+config = Config()

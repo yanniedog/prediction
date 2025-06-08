@@ -734,3 +734,81 @@ def generate_consistency_report(
     except Exception as e:
         logger.error(f"Error saving consistency report: {e}", exc_info=True)
         return False
+
+class LeaderboardManager:
+    def __init__(self):
+        """Initialize the leaderboard manager."""
+        self._initialize_db()
+    
+    def _initialize_db(self) -> bool:
+        """Initialize the database on class instantiation."""
+        return initialize_leaderboard_db()
+    
+    def create_connection(self) -> Optional[sqlite3.Connection]:
+        """Create a connection to the leaderboard database."""
+        return _create_leaderboard_connection()
+    
+    def load_leaderboard(self) -> Dict[Tuple[int, str], Dict[str, Any]]:
+        """Load current leaderboard data from the database."""
+        return load_leaderboard()
+    
+    def check_and_update_single_lag(
+        self,
+        lag: int,
+        correlation_value: float,
+        indicator_name: str,
+        params: Dict[str, Any],
+        config_id: int,
+        symbol: str,
+        timeframe: str,
+        data_daterange: str,
+        source_db_name: str
+    ) -> bool:
+        """Check and update a single lag in the leaderboard."""
+        return check_and_update_single_lag(
+            lag, correlation_value, indicator_name, params,
+            config_id, symbol, timeframe, data_daterange, source_db_name
+        )
+    
+    def update_leaderboard(
+        self,
+        current_run_correlations: Dict[int, List[Optional[float]]],
+        indicator_configs: List[Dict[str, Any]],
+        max_lag: int,
+        symbol: str,
+        timeframe: str,
+        data_daterange: str,
+        source_db_name: str
+    ) -> None:
+        """Update the leaderboard with new correlation data."""
+        return update_leaderboard(
+            current_run_correlations, indicator_configs,
+            max_lag, symbol, timeframe, data_daterange, source_db_name
+        )
+    
+    def export_leaderboard_to_text(self) -> bool:
+        """Export the leaderboard to a text file."""
+        return export_leaderboard_to_text()
+    
+    def find_best_predictor_for_lag(self, target_lag: int) -> Optional[Dict[str, Any]]:
+        """Find the best predictor for a given lag."""
+        return find_best_predictor_for_lag(target_lag)
+    
+    def generate_leading_indicator_report(self) -> bool:
+        """Generate a report of leading indicators."""
+        return generate_leading_indicator_report()
+    
+    def generate_consistency_report(
+        self,
+        correlations_by_config_id: Dict[int, List[Optional[float]]],
+        indicator_configs_processed: List[Dict[str, Any]],
+        max_lag: int,
+        output_dir: Path,
+        file_prefix: str,
+        abs_corr_threshold: float = 0.15
+    ) -> bool:
+        """Generate a consistency report for indicators."""
+        return generate_consistency_report(
+            correlations_by_config_id, indicator_configs_processed,
+            max_lag, output_dir, file_prefix, abs_corr_threshold
+        )
