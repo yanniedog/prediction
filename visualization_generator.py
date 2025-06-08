@@ -386,3 +386,16 @@ def generate_peak_correlation_report(
     except Exception as e:
         logger.error(f"Failed save peak report CSV {csv_filepath}: {e}", exc_info=True)
     return csv_filepath
+
+def plot_indicator_performance(data, indicator_name, output_path):
+    if indicator_name not in data.columns:
+        raise ValueError(f"Indicator {indicator_name} not found in data")
+    plt.figure(figsize=(10, 4))
+    plt.plot(data["timestamp"] if "timestamp" in data.columns else data.index, data[indicator_name], label=indicator_name)
+    plt.title(f"Performance of {indicator_name}")
+    plt.xlabel("Time")
+    plt.ylabel(indicator_name)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(output_path)
+    plt.close()

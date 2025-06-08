@@ -738,3 +738,86 @@ class DataManager:
             return df.iloc[::step]
         else:
             raise ValueError('Unsupported sampling method')
+
+def _load_csv(path):
+    import pandas as pd
+    try:
+        return pd.read_csv(path, index_col=0, parse_dates=True)
+    except Exception as e:
+        raise ValueError(f"Failed to load CSV: {e}")
+
+def _save_csv(df, path):
+    try:
+        df.to_csv(path)
+    except Exception as e:
+        raise ValueError(f"Failed to save CSV: {e}")
+
+def _validate_data(data):
+    import pandas as pd
+    if not isinstance(data, pd.DataFrame):
+        raise ValueError("Input is not a DataFrame")
+    required_cols = ['open', 'high', 'low', 'close', 'volume']
+    for col in required_cols:
+        if col not in data.columns or data[col].isnull().any():
+            raise ValueError(f"Missing or NaN in required column: {col}")
+    return True
+
+def _merge_data(dfs):
+    import pandas as pd
+    if not dfs:
+        raise ValueError("No dataframes to merge")
+    return pd.concat(dfs, ignore_index=True)
+
+def _filter_data(df, start=None, end=None):
+    if 'timestamp' not in df.columns:
+        raise ValueError("No 'timestamp' column in DataFrame")
+    mask = pd.Series([True] * len(df))
+    if start is not None:
+        mask &= df['timestamp'] >= pd.to_datetime(start)
+    if end is not None:
+        mask &= df['timestamp'] <= pd.to_datetime(end)
+    filtered = df[mask]
+    if filtered.empty:
+        raise ValueError("No data in the specified range")
+    return filtered
+
+def _resample_data(df, rule):
+    if 'timestamp' not in df.columns:
+        raise ValueError("No 'timestamp' column in DataFrame")
+    df = df.set_index('timestamp')
+    try:
+        resampled = df.resample(rule).agg({
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last',
+            'volume': 'sum'
+        }).dropna().reset_index()
+    except Exception as e:
+        raise ValueError(f"Invalid resample rule: {e}")
+    return resampled
+
+def _fill_missing_data(df):
+    if df.empty:
+        raise ValueError("Empty DataFrame")
+    filled = df.fillna(method='ffill').fillna(method='bfill')
+    if filled.isnull().any().any():
+        raise ValueError("Could not fill all missing data")
+    return filled
+
+def _normalize_data(df, columns=None):
+    import numpy as np
+    if columns is None:
+        columns = ['open', 'high', 'low', 'close', 'volume']
+    for col in columns:
+        if col not in df.columns:
+            raise ValueError(f"Column not found: {col}")
+    normed = df.copy()
+    normed[columns] = (normed[columns] - normed[columns].mean()) / (normed[columns].std() + 1e-9)
+    return normed
+
+def _split_data(df, test_size=0.2):
+    if not 0 < test_size < 1:
+        raise ValueError("test_size must be between 0 and 1")
+    n = int(len(df) * (1 - test_size))
+    return df.iloc[:n], df.iloc[n:]

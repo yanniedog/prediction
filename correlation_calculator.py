@@ -1106,3 +1106,53 @@ class CorrelationCalculator:
         except Exception as e:
             self.logger.error(f"Error forecasting correlations: {e}")
             return pd.DataFrame()
+
+def _calculate_correlation(series1: pd.Series, series2: pd.Series, method: str = 'pearson') -> float:
+    """Calculate correlation between two series."""
+    if method == 'pearson':
+        return series1.corr(series2, method='pearson')
+    elif method == 'spearman':
+        return series1.corr(series2, method='spearman')
+    elif method == 'kendall':
+        return series1.corr(series2, method='kendall')
+    else:
+        raise ValueError(f"Unknown correlation method: {method}")
+
+def _calculate_lag_correlation(series1: pd.Series, series2: pd.Series, lag: int = 1, method: str = 'pearson') -> float:
+    """Calculate lagged correlation between two series."""
+    if lag == 0:
+        return _calculate_correlation(series1, series2, method)
+    return _calculate_correlation(series1, series2.shift(-lag), method)
+
+def _calculate_rolling_correlation(series1: pd.Series, series2: pd.Series, window: int = 20, method: str = 'pearson') -> pd.Series:
+    """Calculate rolling correlation between two series."""
+    return series1.rolling(window).corr(series2, method=method)
+
+def _calculate_cross_correlation(series1: pd.Series, series2: pd.Series, lag: int = 0) -> float:
+    """Calculate cross-correlation at a given lag."""
+    if lag > 0:
+        return np.corrcoef(series1[lag:], series2[:-lag])[0, 1]
+    elif lag < 0:
+        return np.corrcoef(series1[:lag], series2[-lag:])[0, 1]
+    else:
+        return np.corrcoef(series1, series2)[0, 1]
+
+def _calculate_autocorrelation(series: pd.Series, lag: int = 1) -> float:
+    """Calculate autocorrelation for a given lag."""
+    return series.autocorr(lag=lag)
+
+def _calculate_partial_correlation(series1: pd.Series, series2: pd.Series, control: pd.Series) -> float:
+    """Calculate partial correlation between two series, controlling for a third."""
+    from scipy.stats import linregress
+    # Regress out control from both series
+    res1 = series1 - linregress(control, series1).slope * control
+    res2 = series2 - linregress(control, series2).slope * control
+    return _calculate_correlation(res1, res2)
+
+def _calculate_spearman_correlation(series1: pd.Series, series2: pd.Series) -> float:
+    """Calculate Spearman correlation."""
+    return _calculate_correlation(series1, series2, method='spearman')
+
+def _calculate_kendall_correlation(series1: pd.Series, series2: pd.Series) -> float:
+    """Calculate Kendall correlation."""
+    return _calculate_correlation(series1, series2, method='kendall')

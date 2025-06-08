@@ -817,3 +817,36 @@ def _log_optimization_summary(indicator_name: str, max_lag: int, best_config_per
     #         logger.debug(f"  Lag {lag}: Best ID={best_info['config_id']}, Score={best_info.get('score_at_lag', 'N/A'):.4f}, Corr={best_info.get('correlation_at_lag', 'N/A')}")
     #     else:
     #         logger.debug(f"  Lag {lag}: No valid best config found.")
+
+def optimize_parameters(data, indicator_name, indicator_definition, method="bayesian"):
+    """
+    Simple optimizer: tries a few parameter combinations and selects the one with the highest mean indicator value.
+    """
+    param_defs = indicator_definition.get("parameters", {})
+    best_params = None
+    best_score = float('-inf')
+    factory = indicator_factory.IndicatorFactory()
+    # Try default and min/max for each param
+    from itertools import product
+    param_names = list(param_defs.keys())
+    param_ranges = []
+    for p, spec in param_defs.items():
+        if spec["type"] == "int":
+            param_ranges.append([spec["min"], spec["max"], spec.get("default", spec["min"])])
+        elif spec["type"] == "float":
+            param_ranges.append([spec["min"], spec["max"], spec.get("default", spec["min"])])
+        else:
+            param_ranges.append([spec.get("default")])
+    for values in product(*param_ranges):
+        params = dict(zip(param_names, values))
+        try:
+            indicators = factory.compute_indicators(data, {indicator_name: params})
+            score = indicators[indicator_name].mean()
+            if score > best_score:
+                best_score = score
+                best_params = params
+        except Exception:
+            continue
+    if best_params is None:
+        raise Exception("No valid parameter set found")
+    return best_params, best_score

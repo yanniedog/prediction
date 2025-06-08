@@ -33,6 +33,41 @@ logger = logging.getLogger(__name__)
 # Get constant from config
 MIN_REGRESSION_POINTS = config.DEFAULTS.get("min_regression_points", 30) # Fallback default
 
+class Strategy:
+    """A class representing a trading strategy with entry and exit conditions."""
+    def __init__(self, entry_condition: Callable, exit_condition: Callable):
+        """
+        Initialize a Strategy with entry and exit conditions.
+        
+        Args:
+            entry_condition: A function that takes (data, params) and returns a Series of entry signals
+            exit_condition: A function that takes (data, params) and returns a Series of exit signals
+        """
+        self.entry_condition = entry_condition
+        self.exit_condition = exit_condition
+    
+    def __call__(self, data: pd.DataFrame, params: Dict[str, Any]) -> pd.Series:
+        """
+        Execute the strategy on the given data.
+        
+        Args:
+            data: DataFrame containing price/indicator data
+            params: Dictionary of strategy parameters
+            
+        Returns:
+            pd.Series: Series of position signals (1 for long, -1 for short, 0 for neutral)
+        """
+        entry_signals = self.entry_condition(data, params)
+        exit_signals = self.exit_condition(data, params)
+        
+        # Combine signals (entry overrides exit)
+        positions = pd.Series(0, index=data.index)
+        positions[entry_signals > 0] = 1
+        positions[entry_signals < 0] = -1
+        positions[exit_signals != 0] = 0
+        
+        return positions
+
 class Backtester:
     def __init__(self, data_manager, indicator_factory):
         """Initialize the Backtester with data and indicator managers."""
@@ -420,6 +455,97 @@ class Backtester:
             'correlation': correlation,
             'information_ratio': information_ratio
         }
+
+def _calculate_returns(positions: pd.Series, prices: pd.Series) -> pd.Series:
+    """Calculate strategy returns from positions and prices."""
+    if positions.empty or prices.empty:
+        raise ValueError("Empty positions or prices series")
+    if not positions.index.equals(prices.index):
+        raise ValueError("Position and price indices must match")
+    
+    # Calculate price returns
+    price_returns = prices.pct_change()
+    
+    # Calculate strategy returns (using previous day's position)
+    strategy_returns = positions.shift(1) * price_returns
+    
+    return strategy_returns
+
+def _calculate_drawdown(returns: pd.Series) -> pd.Series:
+    """Calculate drawdown series from returns."""
+    if returns.empty:
+        raise ValueError("Empty returns series")
+    
+    # Calculate cumulative returns
+    cum_returns = (1 + returns).cumprod()
+    
+    # Calculate running maximum
+    running_max = cum_returns.expanding().max()
+    
+    # Calculate drawdown
+    drawdown = cum_returns / running_max - 1
+    
+    return drawdown
+
+def _calculate_max_drawdown(returns: pd.Series) -> float:
+    """Calculate maximum drawdown from returns."""
+    drawdown = _calculate_drawdown(returns)
+    return drawdown.min()
+
+def _calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0.02) -> float:
+    """Calculate Sharpe ratio from returns."""
+    if returns.empty:
+        raise ValueError("Empty returns series")
+    
+    # Annualized return
+    annual_return = returns.mean() * 252
+    
+    # Annualized volatility
+    annual_vol = returns.std() * np.sqrt(252)
+    
+    # Sharpe ratio
+    if annual_vol == 0:
+        return 0.0
+    
+    return (annual_return - risk_free_rate) / annual_vol
+
+def _calculate_sortino_ratio(returns: pd.Series, risk_free_rate: float = 0.02) -> float:
+    """Calculate Sortino ratio from returns."""
+    if returns.empty:
+        raise ValueError("Empty returns series")
+    
+    # Annualized return
+    annual_return = returns.mean() * 252
+    
+    # Downside deviation (only negative returns)
+    downside_returns = returns[returns < 0]
+    if len(downside_returns) == 0:
+        return float('inf')  # No downside returns
+    
+    downside_deviation = downside_returns.std() * np.sqrt(252)
+    
+    # Sortino ratio
+    if downside_deviation == 0:
+        return float('inf')
+    
+    return (annual_return - risk_free_rate) / downside_deviation
+
+def _calculate_win_rate(returns: pd.Series) -> float:
+    """Calculate win rate from returns."""
+    if returns.empty:
+        raise ValueError("Empty returns series")
+    
+    # Count winning trades (positive returns)
+    winning_trades = (returns > 0).sum()
+    
+    # Count total trades (non-zero returns)
+    total_trades = (returns != 0).sum()
+    
+    # Calculate win rate
+    if total_trades == 0:
+        return 0.0
+    
+    return winning_trades / total_trades
 
 def run_backtest(
     db_path: Path,

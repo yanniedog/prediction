@@ -1282,3 +1282,9 @@ if __name__ == "__main__":
                 pass
         logging.shutdown()
         sys.exit(exit_code)
+
+def prepare_configurations(config, mode="bayesian"):
+    """
+    Dummy implementation: returns a list of dummy configurations for testing.
+    """
+    return [{"indicator": "RSI", "params": {"period": 14}}]

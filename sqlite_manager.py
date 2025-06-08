@@ -442,3 +442,24 @@ def get_indicator_configs_by_ids(conn: sqlite3.Connection, config_ids: List[int]
     except Exception as e: # Catch other errors like JSON parsing
         logger.error(f"Error fetching indicator config details by IDs: {e}", exc_info=True)
         return []
+
+class SQLiteManager:
+    def __init__(self, db_path):
+        self.db_path = db_path
+        self.conn = create_connection(db_path)
+        if self.conn is None:
+            raise Exception(f"Could not connect to database: {db_path}")
+    def insert(self, table, row_dict):
+        cols = ', '.join(row_dict.keys())
+        placeholders = ', '.join(['?'] * len(row_dict))
+        sql = f"INSERT INTO {table} ({cols}) VALUES ({placeholders})"
+        values = list(row_dict.values())
+        cur = self.conn.cursor()
+        cur.execute(sql, values)
+        self.conn.commit()
+    def select(self, table, columns):
+        cols = ', '.join(columns)
+        sql = f"SELECT {cols} FROM {table}"
+        cur = self.conn.cursor()
+        cur.execute(sql)
+        return cur.fetchall()

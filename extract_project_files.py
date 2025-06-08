@@ -3,20 +3,33 @@ import shutil
 from pathlib import Path
 from typing import List, Optional
 
-def extract_files(source_dir: str, dest_dir: str, patterns: Optional[List[str]] = None) -> None:
+def extract_files(files: List[str], dest_dir: str) -> None:
     """
-    Copy files matching given patterns from source_dir to dest_dir.
-    If patterns is None, copy all files.
+    Copy files to dest_dir.
     """
-    source = Path(source_dir)
     dest = Path(dest_dir)
     dest.mkdir(parents=True, exist_ok=True)
-    if not patterns:
-        patterns = ['*']
-    for pattern in patterns:
-        for file in source.glob(pattern):
-            if file.is_file():
-                shutil.copy2(file, dest / file.name)
+    _validate_paths(files, dest_dir)
+    _copy_files(files, dest_dir)
+
+def _filter_files(files: List[str], ext: str) -> List[str]:
+    """Filter files by extension."""
+    return [f for f in files if f.endswith(ext)]
+
+def _copy_files(files: List[str], dest_dir: str) -> None:
+    """Copy files to destination directory."""
+    dest = Path(dest_dir)
+    for f in files:
+        shutil.copy2(f, dest / Path(f).name)
+
+def _validate_paths(files: List[str], dest_dir: str) -> None:
+    """Validate that all files exist and dest_dir is a directory."""
+    dest = Path(dest_dir)
+    if not dest.exists() or not dest.is_dir():
+        raise ValueError("Destination directory does not exist or is not a directory")
+    for f in files:
+        if not Path(f).exists():
+            raise ValueError(f"Source file does not exist: {f}")
 
 if __name__ == "__main__":
     import argparse
@@ -25,5 +38,7 @@ if __name__ == "__main__":
     parser.add_argument("dest", help="Destination directory")
     parser.add_argument("--patterns", nargs="*", default=None, help="Glob patterns to match files (default: all files)")
     args = parser.parse_args()
-    extract_files(args.source, args.dest, args.patterns)
+    source = Path(args.source)
+    files = [str(f) for f in source.glob("*") if f.is_file()]
+    extract_files(files, args.dest)
     print(f"Files extracted from {args.source} to {args.dest}.") 

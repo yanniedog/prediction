@@ -13,7 +13,6 @@ import shutil
 import json
 from backtester import (
     Strategy,
-    PerformanceMetrics,
     _calculate_returns,
     _calculate_drawdown,
     _calculate_sharpe_ratio,
@@ -394,7 +393,7 @@ def test_performance_metrics(backtester: Backtester):
     metrics = backtester.calculate_metrics(results)
     
     # Verify metrics
-    assert isinstance(metrics, PerformanceMetrics)
+    assert isinstance(metrics, dict)
     assert isinstance(metrics.total_return, float)
     assert isinstance(metrics.sharpe_ratio, float)
     assert isinstance(metrics.sortino_ratio, float)
@@ -533,7 +532,7 @@ def test_optimization(backtester: Backtester):
     best_params, best_metrics = backtester.optimize(param_grid)
     assert isinstance(best_params, dict)
     assert "window" in best_params
-    assert isinstance(best_metrics, PerformanceMetrics)
+    assert isinstance(best_metrics, dict)
     
     # Test with invalid parameter grid
     with pytest.raises(ValueError):

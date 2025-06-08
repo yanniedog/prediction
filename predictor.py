@@ -847,5 +847,26 @@ class Predictor:
         )
 
 
+def predict_price_movement(data, indicator_name, lag, params):
+    """
+    Predict price movement using a simple difference or regression for demonstration.
+    Raises if indicator is missing or params are invalid.
+    """
+    if indicator_name not in data.columns:
+        # Try to compute indicator if possible
+        try:
+            factory = indicator_factory.IndicatorFactory()
+            indicators = factory.compute_indicators(data, {indicator_name: params})
+            data[indicator_name] = indicators[indicator_name]
+        except Exception:
+            raise Exception(f"Indicator {indicator_name} could not be computed or does not exist.")
+    if lag <= 0:
+        raise ValueError("Lag must be positive")
+    # Simple prediction: difference between indicator and its lagged value
+    pred = data[indicator_name] - data[indicator_name].shift(lag)
+    pred = pred.fillna(0)
+    return pred
+
+
 if __name__ == '__main__':
     print("Predictor module. Run via main.py.")

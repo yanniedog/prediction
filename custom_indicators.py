@@ -355,3 +355,19 @@ def compute_volatility(data: pd.DataFrame, period: int = 20) -> pd.Series:
 # --- Removed apply_all_custom_indicators function ---
 # This function is no longer needed as main.py ensures custom indicator
 # defaults are added to the processing list if necessary.
+
+_custom_indicator_registry = {}
+
+def register_custom_indicator(name, func):
+    _custom_indicator_registry[name] = func
+
+def custom_rsi(data, period=14):
+    import pandas as pd
+    delta = data['close'].diff()
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    avg_gain = gain.rolling(window=period, min_periods=period).mean()
+    avg_loss = loss.rolling(window=period, min_periods=period).mean()
+    rs = avg_gain / (avg_loss + 1e-9)
+    rsi = 100 - (100 / (1 + rs))
+    return pd.DataFrame({'CUSTOM_RSI': rsi})
