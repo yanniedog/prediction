@@ -2,6 +2,10 @@ import pytest
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+from data_manager import _fetch_klines, _process_klines, _save_to_sqlite
+from pathlib import Path
+import sqlite3
+import os
 
 def test_data_manager_initialization(data_manager):
     """Test DataManager initialization."""
@@ -103,3 +107,65 @@ def test_data_sampling(data_manager, test_data):
     systematic_sample = data_manager.sample_data(test_data, method='systematic', step=5)
     assert isinstance(systematic_sample, pd.DataFrame)
     assert len(systematic_sample) == len(test_data) // 5 
+
+def test_fetch_klines_handles_invalid_symbol(monkeypatch):
+    # Simulate API returning empty for invalid symbol
+    def mock_get(*args, **kwargs):
+        class MockResponse:
+            def raise_for_status(self): pass
+            def json(self): return []
+        return MockResponse()
+    monkeypatch.setattr("requests.get", mock_get)
+    result = _fetch_klines("INVALID", "1d", 0, 1000)
+    assert result == []
+
+def test_process_klines_handles_empty():
+    df = _process_klines([])
+    assert isinstance(df, pd.DataFrame)
+    assert df.empty
+
+def test_process_klines_handles_invalid_data():
+    # Data with invalid open_time
+    klines = [[None, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]]
+    df = _process_klines(klines)
+    assert df.empty
+
+def test_save_to_sqlite_handles_empty(tmp_path):
+    db_path = tmp_path / "test.db"
+    df = pd.DataFrame()
+    # Should return True (nothing to save, but not an error)
+    assert _save_to_sqlite(df, str(db_path), "BTCUSDT", "1d")
+
+def test_save_to_sqlite_creates_db(tmp_path):
+    db_path = tmp_path / "test.db"
+    # Use a valid open_time (after 2015-01-01)
+    valid_open_time = int(datetime(2016, 1, 1).timestamp() * 1000)
+    df = pd.DataFrame({
+        "open_time": [valid_open_time], "open": [1], "high": [1], "low": [1], "close": [1], "volume": [1],
+        "close_time": [valid_open_time], "quote_asset_volume": [1], "number_of_trades": [1],
+        "taker_buy_base_asset_volume": [1], "taker_buy_quote_asset_volume": [1]
+    })
+    assert _save_to_sqlite(df, str(db_path), "BTCUSDT", "1d")
+    assert os.path.exists(db_path)
+    # Check table exists
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    cur.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = [row[0] for row in cur.fetchall()]
+    assert any("BTCUSDT_1d" in t for t in tables)
+    conn.close()
+
+def test_fetch_klines_handles_api_error(monkeypatch):
+    class MockResponse:
+        def raise_for_status(self): raise Exception("API error")
+        def json(self): return []
+    def mock_get(*args, **kwargs): return MockResponse()
+    monkeypatch.setattr("requests.get", mock_get)
+    result = _fetch_klines("BTCUSDT", "1d", 0, 1000)
+    assert result == []
+
+def test_process_klines_filters_old_timestamps():
+    # Timestamp before 2015
+    klines = [[1000000000, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]]
+    df = _process_klines(klines)
+    assert df.empty 
