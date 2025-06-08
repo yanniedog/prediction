@@ -51,70 +51,9 @@ class IndicatorFactory:
     def _compute_single_indicator(self, data: pd.DataFrame, name: str, config: Dict[str, Any]) -> Optional[pd.DataFrame]:
         """Compute a single indicator based on its configuration."""
         try:
-            result_df = None
-            if config['type'] == 'talib':
-                result_df = pd.DataFrame(index=data.index)
-                func_name = config['name']
-                params = config['params']
-                # Get required input columns
-                required_cols = []
-                if 'high' in params: required_cols.append('high')
-                if 'low' in params: required_cols.append('low')
-                if 'close' in params: required_cols.append('close')
-                if 'volume' in params: required_cols.append('volume')
-                if 'open' in params: required_cols.append('open')
-                # Validate required columns
-                missing_cols = [col for col in required_cols if col not in data.columns]
-                if missing_cols:
-                    logger.error(f"Missing required columns for {name}: {missing_cols}")
-                    return result_df
-                # Get TA-Lib function
-                ta_func = getattr(ta, func_name.upper(), None)
-                if not ta_func:
-                    raise ValueError(f"Unknown TA-Lib function: {func_name}")
-                # Prepare input arrays
-                inputs = {}
-                for param_name, col_value in params.items():
-                    # If the value is a dict (e.g., {'default': 14}), use the default
-                    if isinstance(col_value, dict):
-                        value = col_value.get('default', None)
-                    else:
-                        value = col_value
-                    # If value is a string and a column, use the column data
-                    if isinstance(value, str) and value in data.columns:
-                        inputs[param_name] = data[value].values
-                    else:
-                        # Use as-is (for timeperiod, float, int, etc.)
-                        inputs[param_name] = value
-                logger.debug(f"Calling TA-Lib function {func_name.upper()} with inputs: {inputs}")
-                # Get output names
-                output_names = self._get_ta_lib_output_suffixes(func_name.upper())
-                # Compute indicator
-                results = ta_func(**inputs)
-                logger.debug(f"TA-Lib function {func_name.upper()} returned: {results}")
-                if results is None:
-                    logger.error(f"TA-Lib function {func_name.upper()} returned None for {name}")
-                    return result_df
-                # Handle different return types
-                if isinstance(results, (np.ndarray, list)):
-                    # Single array result
-                    if len(output_names) > 0:
-                        result_df[f"{name}_{output_names[0]}"] = results
-                    else:
-                        result_df[name] = results
-                elif isinstance(results, tuple):
-                    # Multiple array results
-                    for i, output_name in enumerate(output_names):
-                        if i < len(results):
-                            result_df[f"{name}_{output_name}"] = results[i]
-                else:
-                    # Single value result
-                    result_df[name] = results
-                if result_df.empty:
-                    logger.error(f"Result DataFrame is empty for {name}")
-                return result_df
-
-            elif config['type'] == 'ta-lib':
+            result_df = pd.DataFrame(index=data.index)
+            
+            if config['type'] in ['talib', 'ta-lib']:  # Handle both types the same way
                 func_name = config['name']
                 params = config['params']
                 required_cols = []
@@ -128,7 +67,7 @@ class IndicatorFactory:
                 missing_cols = [col for col in required_cols if col not in data.columns]
                 if missing_cols:
                     logger.error(f"Missing required columns for {name}: {missing_cols}")
-                    return pd.DataFrame(index=data.index)
+                    return result_df
                 # Get TA-Lib function
                 ta_func = getattr(ta, func_name.upper(), None)
                 if not ta_func:
@@ -155,9 +94,8 @@ class IndicatorFactory:
                 logger.debug(f"TA-Lib function {func_name.upper()} returned: {results}")
                 if results is None:
                     logger.error(f"TA-Lib function {func_name.upper()} returned None for {name}")
-                    return pd.DataFrame(index=data.index)
+                    return result_df
                 # Handle different return types
-                result_df = pd.DataFrame(index=data.index)
                 if isinstance(results, (np.ndarray, list)):
                     # Single array result
                     if len(output_names) > 0:
@@ -257,13 +195,37 @@ class IndicatorFactory:
         indicator_def = self.indicator_params.get(name)
         return indicator_def.get('params') if indicator_def else None
 
-    def create_custom_indicator(self, name: str, func, data: pd.DataFrame, **params) -> pd.DataFrame:
+    def create_custom_indicator(self, name: str, func, data: pd.DataFrame, **params):
         """Register and compute a custom indicator on the fly."""
         result = func(data, **params)
-        if isinstance(result, pd.DataFrame):
+        if isinstance(result, pd.Series):
             return result
+        elif isinstance(result, pd.DataFrame) and result.shape[1] == 1:
+            return result.iloc[:, 0]
         else:
-            return pd.DataFrame({f"{name}": result})
+            return pd.Series(result, name=name)
+
+    def create_indicator(self, name: str, data: pd.DataFrame, **params):
+        """Compute a standard indicator by name, using provided data and parameters."""
+        if name.lower() in self.indicator_params:
+            config = self.indicator_params[name.lower()]
+        elif name.upper() in self.indicator_params:
+            config = self.indicator_params[name.upper()]
+        elif name in self.indicator_params:
+            config = self.indicator_params[name]
+        else:
+            raise ValueError(f"Unknown indicator: {name}")
+        # Merge provided params with defaults
+        merged_params = config['params'].copy()
+        merged_params.update(params)
+        # Build a config dict for _compute_single_indicator
+        config_for_compute = config.copy()
+        config_for_compute['params'] = merged_params
+        result = self._compute_single_indicator(data, name, config_for_compute)
+        # Return as Series if only one column, else DataFrame
+        if result is not None and isinstance(result, pd.DataFrame) and result.shape[1] == 1:
+            return result.iloc[:, 0]
+        return result
 
 def compute_configured_indicators(data: pd.DataFrame, indicator_configs: List[Dict[str, Any]]) -> Tuple[pd.DataFrame, Set[int]]:
     """
