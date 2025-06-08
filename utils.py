@@ -622,3 +622,41 @@ def get_data_date_range(data: pd.DataFrame) -> str:
     except Exception as e:
         logger.error(f"Error getting date range: {e}")
         return "Error"
+
+def flatten_dict(d: Dict[str, Any], parent_key: str = '', sep: str = '_') -> Dict[str, Any]:
+    """Flattens a nested dictionary into a single level dictionary.
+    
+    Args:
+        d: The dictionary to flatten
+        parent_key: The parent key for nested dictionaries
+        sep: The separator to use between nested keys
+        
+    Returns:
+        A flattened dictionary with keys joined by the separator
+    """
+    items: List[Tuple[str, Any]] = []
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.extend(flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
+
+def dict_hash(d: Dict[str, Any]) -> str:
+    """Generates a stable hash for a dictionary.
+    
+    Args:
+        d: The dictionary to hash
+        
+    Returns:
+        A hexadecimal string hash of the dictionary
+    """
+    # First flatten the dictionary to handle nested structures
+    flat_dict = flatten_dict(d)
+    # Round any floats for consistency
+    rounded_dict = round_floats_for_hashing(flat_dict)
+    # Sort keys and convert to JSON string
+    dict_str = json.dumps(rounded_dict, sort_keys=True, separators=(',', ':'))
+    # Generate SHA256 hash
+    return hashlib.sha256(dict_str.encode('utf-8')).hexdigest()
