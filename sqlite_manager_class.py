@@ -463,13 +463,17 @@ class SQLiteManager:
         try:
             cursor = self.connection.cursor()
             cursor.execute(sql, values)
-            self.connection.commit()
+            # Only commit if we're not in a transaction
+            if not self.connection.in_transaction:
+                self.connection.commit()
         except sqlite3.Error as e:
             logger.error(f"Error inserting data into {table_name}: {e}", exc_info=True)
-            try:
-                self.connection.rollback()
-            except Exception as rb_err:
-                logger.error(f"Rollback failed during insert_data: {rb_err}")
+            # Only rollback if we're not in a transaction
+            if not self.connection.in_transaction:
+                try:
+                    self.connection.rollback()
+                except Exception as rb_err:
+                    logger.error(f"Rollback failed during insert_data: {rb_err}")
             raise
 
     def insert_many(self, table_name: str, data_list: List[Dict[str, Any]]) -> None:
@@ -485,13 +489,17 @@ class SQLiteManager:
         try:
             cursor = self.connection.cursor()
             cursor.executemany(sql, values)
-            self.connection.commit()
+            # Only commit if we're not in a transaction
+            if not self.connection.in_transaction:
+                self.connection.commit()
         except sqlite3.Error as e:
             logger.error(f"Error inserting many rows into {table_name}: {e}", exc_info=True)
-            try:
-                self.connection.rollback()
-            except Exception as rb_err:
-                logger.error(f"Rollback failed during insert_many: {rb_err}")
+            # Only rollback if we're not in a transaction
+            if not self.connection.in_transaction:
+                try:
+                    self.connection.rollback()
+                except Exception as rb_err:
+                    logger.error(f"Rollback failed during insert_many: {rb_err}")
             raise
 
     def query(self, sql: str, params: Optional[Tuple[Any, ...]] = None) -> List[Tuple[Any, ...]]:
@@ -578,14 +586,71 @@ class SQLiteManager:
                 logger.error(f"Rollback failed during delete_all: {rb_err}")
             raise
 
+    def drop_table(self, table_name: str) -> None:
+        """Drop a table from the database."""
+        if not table_name or not isinstance(table_name, str):
+            raise ValueError("Invalid table name for drop_table.")
+        sql = f"DROP TABLE IF EXISTS {table_name};"
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(sql)
+            self.connection.commit()
+        except sqlite3.Error as e:
+            logger.error(f"Error dropping table {table_name}: {e}", exc_info=True)
+            try:
+                self.connection.rollback()
+            except Exception as rb_err:
+                logger.error(f"Rollback failed during drop_table: {rb_err}")
+            raise
+
+    def get_table_schema(self, table_name: str) -> Dict[str, str]:
+        """Get the schema of a table as a dictionary of column names and types."""
+        if not table_name or not isinstance(table_name, str):
+            raise ValueError("Invalid table name for get_table_schema.")
+        if not self.table_exists(table_name):
+            raise ValueError(f"Table {table_name} does not exist.")
+        
+        cursor = self.connection.cursor()
+        try:
+            cursor.execute(f"PRAGMA table_info({table_name});")
+            columns = cursor.fetchall()
+            schema = {}
+            for col in columns:
+                # PRAGMA table_info returns: (cid, name, type, notnull, dflt_value, pk)
+                schema[col[1]] = col[2]  # name -> type mapping
+            return schema
+        except sqlite3.Error as e:
+            logger.error(f"Error getting schema for table {table_name}: {e}", exc_info=True)
+            raise
+
     @contextmanager
     def transaction(self):
         """Context manager for database transactions."""
+        if not self.connection:
+            raise ValueError("No active database connection")
+        
+        # Store the current transaction state
+        cursor = self.connection.cursor()
         try:
-            self.connection.execute("BEGIN;")
-            yield
-            self.connection.commit()
-        except Exception as e:
-            self.connection.rollback()
-            logger.error(f"Transaction failed and rolled back: {e}", exc_info=True)
+            # Check if we're already in a transaction
+            cursor.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='sqlite_sequence'")
+            in_transaction = self.connection.in_transaction
+            
+            if not in_transaction:
+                cursor.execute("BEGIN IMMEDIATE;")
+            
+            try:
+                yield
+                if not in_transaction:
+                    self.connection.commit()
+            except Exception as e:
+                if not in_transaction:
+                    logger.error(f"Transaction failed: {e}", exc_info=True)
+                    try:
+                        self.connection.rollback()
+                    except Exception as rb_err:
+                        logger.error(f"Rollback failed during transaction: {rb_err}")
+                raise
+        except sqlite3.Error as e:
+            logger.error(f"Error in transaction setup: {e}", exc_info=True)
             raise
