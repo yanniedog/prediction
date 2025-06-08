@@ -4,6 +4,7 @@ import numpy as np
 from datetime import datetime, timedelta
 from sqlite_manager_class import SQLiteManager
 import time
+from unittest.mock import patch
 
 @pytest.mark.timeout(10)  # 10 second timeout for each test
 def test_sqlite_manager_initialization(temp_db):
@@ -175,9 +176,10 @@ def test_transaction_handling(temp_db):
     
     # Test failed transaction
     try:
-        with temp_db.transaction():
-            temp_db.insert_data(table_name, {'name': 'test3', 'value': 3.0})
-            raise ValueError("Simulated error")
+        with patch('sqlite_manager_class.logger.error'), patch('builtins.print'):
+            with temp_db.transaction():
+                temp_db.insert_data(table_name, {'name': 'test3', 'value': 3.0})
+                raise ValueError("Simulated error")
     except ValueError:
         pass
     

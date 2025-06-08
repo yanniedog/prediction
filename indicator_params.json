@@ -768,6 +768,7 @@
         "type": "ta-lib",
         "required_inputs": ["close"],
         "params": {
+            "real": "close",
             "timeperiod": { "default": 14, "min": 2, "max": 200 }
         },
         "conditions": [ { "timeperiod": { "gte": 2 } } ],

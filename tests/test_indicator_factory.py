@@ -17,12 +17,13 @@ def indicator_defs():
 @pytest.fixture
 def sample_data():
     # Minimal DataFrame with required columns for most indicators
+    n = 50
     return pd.DataFrame({
-        "close": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        "open": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-        "high": [2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
-        "low": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
-        "volume": [100, 110, 120, 130, 140, 150, 160, 170, 180, 190],
+        "close": np.arange(1, n+1),
+        "open": np.arange(1, n+1),
+        "high": np.arange(2, n+2),
+        "low": np.arange(0, n),
+        "volume": np.arange(100, 100+n)
     })
 
 @pytest.fixture
@@ -113,8 +114,8 @@ def test_indicator_customization(indicator_factory, test_data):
 def test_indicator_caching(indicator_factory, test_data):
     """Test indicator caching functionality."""
     # Create the same indicator twice
-    indicator1 = indicator_factory.create_indicator('SMA', test_data, period=20)
-    indicator2 = indicator_factory.create_indicator('SMA', test_data, period=20)
+    indicator1 = indicator_factory.create_indicator('SMA', test_data, timeperiod=20)
+    indicator2 = indicator_factory.create_indicator('SMA', test_data, timeperiod=20)
 
     # Verify caching works
     assert indicator1.equals(indicator2)
@@ -124,11 +125,11 @@ def test_indicator_error_handling(indicator_factory, test_data):
     # Test with empty data
     empty_data = pd.DataFrame()
     with pytest.raises(ValueError):
-        indicator_factory.create_indicator('SMA', empty_data, period=20)
+        indicator_factory.create_indicator('SMA', empty_data, timeperiod=20)
 
     # Test with invalid indicator name
     with pytest.raises(ValueError):
-        indicator_factory.create_indicator('InvalidIndicator', test_data, period=20)
+        indicator_factory.create_indicator('InvalidIndicator', test_data, timeperiod=20)
 
     # Test with insufficient data
     small_data = test_data.iloc[:5]
@@ -216,4 +217,149 @@ def test_get_indicator_params_basic(indicator_factory):
 
     # Test with invalid indicator
     params = indicator_factory.get_indicator_params('INVALID_INDICATOR')
-    assert params is None 
+    assert params is None
+
+@pytest.mark.timeout(10)
+def test_compute_indicator_ta_error_handling(indicator_factory):
+    """Test that create_indicator returns None or handles error when TA-Lib SMA raises a TypeError."""
+    import pandas as pd
+    import numpy as np
+    from unittest.mock import patch, MagicMock
+
+    # Create a minimal DataFrame
+    df = pd.DataFrame({"close": np.random.rand(100)})
+    # Patch talib.SMA to raise TypeError
+    with patch("talib.SMA", new=MagicMock(side_effect=TypeError("SMA() takes at least 1 positional argument (0 given)"))):
+        with patch("indicator_factory.logger.error") as mock_logger:
+            # Should not raise, should handle gracefully
+            result = indicator_factory.create_indicator("sma", df, timeperiod=14)
+            if result is None:
+                handled = True
+            elif hasattr(result, 'empty') and result.empty:
+                handled = True
+            elif hasattr(result, 'isnull') and result.isnull().all().all():
+                handled = True
+            else:
+                handled = False
+            assert handled, "create_indicator did not handle TA-Lib error gracefully."
+            mock_logger.assert_called()
+
+def test_ema_accuracy(indicator_factory, test_data):
+    """Test EMA calculation accuracy against known values."""
+    # Create a simple dataset with known EMA values
+    data = pd.DataFrame({
+        'close': np.array([10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0], dtype=np.float64),
+        'open': np.array([10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0], dtype=np.float64),
+        'high': np.array([11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0], dtype=np.float64),
+        'low': np.array([9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0], dtype=np.float64)
+    })
+    
+    # Calculate EMA with period 3
+    ema_series = indicator_factory.create_indicator('ema', data, timeperiod=3)
+    
+    # Expected EMA values for period 3 (using standard EMA formula)
+    expected_ema = pd.Series([
+        10.0,  # First value is same as close
+        10.5,  # (11-10)*0.5 + 10
+        11.25, # (12-10.5)*0.5 + 10.5
+        12.125,# (13-11.25)*0.5 + 11.25
+        13.0625,# (14-12.125)*0.5 + 12.125
+        14.03125,# (15-13.0625)*0.5 + 13.0625
+        15.015625,# (16-14.03125)*0.5 + 14.03125
+        16.0078125,# (17-15.015625)*0.5 + 15.015625
+        17.00390625,# (18-16.0078125)*0.5 + 16.0078125
+        18.001953125 # (19-17.00390625)*0.5 + 17.00390625
+    ], index=data.index, dtype=np.float64)
+    
+    # Compare with tolerance for floating point arithmetic
+    pd.testing.assert_series_equal(
+        ema_series.round(6),
+        expected_ema.round(6),
+        check_names=False,
+        rtol=1e-5
+    )
+
+def test_ema_timeperiods(indicator_factory, test_data):
+    """Test EMA with different timeperiods."""
+    # Test various timeperiods
+    periods = [2, 5, 14, 50, 100]
+    for period in periods:
+        ema_series = indicator_factory.create_indicator('ema', test_data, timeperiod=period)
+        
+        # Basic validation
+        assert isinstance(ema_series, (pd.Series, pd.DataFrame))
+        assert len(ema_series) == len(test_data)
+        if isinstance(ema_series, pd.Series):
+            assert not ema_series.isnull().all()
+            # Check that EMA values are within price range
+            assert ema_series.min() >= test_data['low'].min()
+            assert ema_series.max() <= test_data['high'].max()
+        else:
+            for col in ema_series.columns:
+                assert not ema_series[col].isnull().all()
+                assert ema_series[col].min() >= test_data['low'].min()
+                assert ema_series[col].max() <= test_data['high'].max()
+        # Check that EMA is more responsive with shorter periods
+        if period < 14:
+            default_series = indicator_factory.create_indicator('ema', test_data)
+            if isinstance(ema_series, pd.Series) and isinstance(default_series, pd.Series):
+                assert ema_series.std() > default_series.std()
+
+def test_ema_edge_cases(indicator_factory):
+    """Test EMA with edge cases."""
+    # Test with minimum period (2)
+    data = pd.DataFrame({
+        'close': np.array([10.0, 11.0, 12.0, 13.0, 14.0], dtype=np.float64),
+        'open': np.array([10.0, 11.0, 12.0, 13.0, 14.0], dtype=np.float64),
+        'high': np.array([11.0, 12.0, 13.0, 14.0, 15.0], dtype=np.float64),
+        'low': np.array([9.0, 10.0, 11.0, 12.0, 13.0], dtype=np.float64)
+    })
+    
+    # Test minimum period
+    ema_series = indicator_factory.create_indicator('ema', data, timeperiod=2)
+    assert not ema_series.isnull().all()
+    
+    # Test with very long period (should be close to SMA)
+    long_period = 100
+    ema_series = indicator_factory.create_indicator('ema', data, timeperiod=long_period)
+    sma_series = indicator_factory.create_indicator('sma', data, timeperiod=long_period)
+    
+    # EMA and SMA should be similar for long periods
+    pd.testing.assert_series_equal(
+        ema_series.round(3),
+        sma_series.round(3),
+        check_names=False,
+        rtol=0.1  # Allow 10% difference due to different calculation methods
+    )
+
+def test_ema_convergence(indicator_factory):
+    """Test EMA convergence properties."""
+    # Create a dataset with a clear trend
+    n = 100
+    trend = np.linspace(0, 100, n)  # Linear trend
+    noise = np.random.normal(0, 1, n)  # Small noise
+    data = pd.DataFrame({
+        'close': trend + noise,
+        'open': trend + noise,
+        'high': trend + noise + 1,
+        'low': trend + noise - 1
+    })
+    
+    # Test different periods
+    periods = [5, 20, 50]
+    for period in periods:
+        result_df = indicator_factory.compute_indicators(data, indicators=['ema'], params={'timeperiod': period})
+        ema_col = [col for col in result_df.columns if col.startswith('ema_')][0]
+        
+        # EMA should follow the trend
+        correlation = result_df[ema_col].corr(pd.Series(trend, index=data.index))
+        assert correlation > 0.9  # High correlation with trend
+        
+        # EMA should be smoother than raw data
+        assert result_df[ema_col].std() < data['close'].std()
+        
+        # EMA should converge to the trend
+        last_values = result_df[ema_col].iloc[-10:]  # Last 10 values
+        trend_last = trend[-10:]
+        mean_diff = np.abs(last_values - trend_last).mean()
+        assert mean_diff < 2.0  # Should be close to trend 

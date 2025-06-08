@@ -61,8 +61,9 @@ def test_get_latest_data_point(predictor, test_data, test_db_path):
     assert 'open_time' in latest_data.columns
     assert 'close' in latest_data.columns
     
-    # Test with non-existent database
-    latest_data = predictor.get_latest_data_point(Path('nonexistent.db'))
+    # Test with non-existent database, suppress error logs and print output
+    with patch('predictor.logger.error'), patch('builtins.print'):
+        latest_data = predictor.get_latest_data_point(Path('nonexistent.db'))
     assert latest_data is None
 
 def test_get_historical_indicator_price_pairs(predictor, test_data, test_db_path):
@@ -165,13 +166,14 @@ def test_predict_price(predictor, test_data, test_db_path):
         final_target_lag=5
     )
     
-    # Test with non-existent database
-    predictor.predict_price(
-        db_path=Path('nonexistent.db'),
-        symbol='BTCUSDT',
-        timeframe='1h',
-        final_target_lag=5
-    )
+    # Test with non-existent database, suppress error logs and print output
+    with patch('predictor.logger.error'), patch('builtins.print'):
+        predictor.predict_price(
+            db_path=Path('nonexistent.db'),
+            symbol='BTCUSDT',
+            timeframe='1h',
+            final_target_lag=5
+        )
 
 def test_plot_predicted_path(predictor, tmp_path):
     """Test plotting predicted path."""
