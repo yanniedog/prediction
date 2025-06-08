@@ -7,6 +7,7 @@ import sqlite3
 from predictor import Predictor
 import json
 from unittest.mock import patch
+from sqlite_manager import initialize_database
 
 @pytest.fixture
 def predictor():
@@ -128,10 +129,33 @@ def test_perform_prediction_regression(predictor, test_data):
 
 def test_predict_price(predictor, test_data, test_db_path):
     """Test predicting price."""
+    # Initialize database schema
+    if not initialize_database(str(test_db_path)):
+        pytest.fail("Failed to initialize database schema")
+    
     # Save test data to database
     conn = sqlite3.connect(str(test_db_path))
-    test_data.to_sql('historical_data', conn, if_exists='replace', index=False)
-    conn.close()
+    try:
+        # Get symbol and timeframe IDs
+        conn.execute("BEGIN;")
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", ('BTCUSDT',))
+        cursor.execute("INSERT OR IGNORE INTO timeframes (timeframe) VALUES (?)", ('1h',))
+        cursor.execute("SELECT id FROM symbols WHERE symbol = ?", ('BTCUSDT',))
+        symbol_id = cursor.fetchone()[0]
+        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", ('1h',))
+        timeframe_id = cursor.fetchone()[0]
+        conn.commit()
+        
+        # Add symbol_id and timeframe_id to test data
+        test_data['symbol_id'] = symbol_id
+        test_data['timeframe_id'] = timeframe_id
+        test_data['close_time'] = test_data['open_time'] + 3600000  # Add 1 hour in milliseconds
+        
+        # Save to historical_data table
+        test_data.to_sql('historical_data', conn, if_exists='replace', index=False)
+    finally:
+        conn.close()
     
     # Test prediction
     predictor.predict_price(

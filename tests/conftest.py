@@ -281,6 +281,9 @@ def temp_db(request):
         manager = SQLiteManager(str(db_path))
         # Set a shorter timeout for tests
         manager.connection.execute("PRAGMA busy_timeout = 5000")  # 5 second timeout
+        # Initialize the database schema
+        if not manager.initialize_database():
+            raise RuntimeError("Failed to initialize test database schema")
         yield manager
     finally:
         # Ensure connection is closed
