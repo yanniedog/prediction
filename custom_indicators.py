@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import talib as ta
 import logging
-from typing import List, Optional
+from typing import List, Optional, Callable, Union, Any
 
 logger = logging.getLogger(__name__)
 
@@ -226,60 +226,47 @@ def compute_vwap(data: pd.DataFrame) -> pd.DataFrame:
         logger.error(f"Error calculating VWAP: {e}", exc_info=True)
         raise IndicatorError(f"Failed to calculate VWAP: {e}")
 
-def _compute_volume_index(data: pd.DataFrame, col_name: str, volume_condition: callable) -> Optional[pd.DataFrame]:
-    """Helper for PVI and NVI calculation. Returns a DataFrame with the result or None.
+
+def _compute_volume_index(data: pd.DataFrame, col_name: str, volume_condition: Callable[[float], bool]) -> Optional[pd.DataFrame]:
+    """Helper function to compute volume-based indices (PVI/NVI).
     
     Args:
         data: DataFrame with OHLCV data
-        col_name: Name of the column to store the result
-        volume_condition: Callable that takes volume difference and returns bool
-        
+        col_name: Name of the index column to compute
+        volume_condition: Function that takes a volume difference and returns bool
     Returns:
-        DataFrame with the calculated index or None if calculation fails
+        DataFrame with the computed index column, or None if calculation fails
     """
-    if not _check_required_cols(data, ['close', 'volume'], col_name):
-        return None
-
     logger.debug(f"Computing {col_name}")
-    result_df = pd.DataFrame(index=data.index) # Create new DataFrame
+    result_df = pd.DataFrame(index=data.index)
     try:
         # Calculate differences and percentage changes
         vol_diff = data['volume'].diff()
-        price_change_ratio = data['close'].pct_change().fillna(0.0) # Fill first NaN with 0 change
+        price_change_ratio = data['close'].pct_change().fillna(0.0)
 
         index_series = pd.Series(np.nan, index=data.index, dtype=float)
-        index_series.iloc[0] = 1000.0 # Start value
+        index_series.iloc[0] = 1000.0  # Start value
 
-        # Iterative approach for PVI/NVI logic
-        # Using vectorized operations where possible is faster, but the logic is inherently sequential.
-        # The loop remains the clearest way to implement this specific logic.
         for i in range(1, len(data)):
             prev_index = index_series.iloc[i-1]
-            if pd.isna(prev_index): # Should not happen after setting iloc[0]
-                 logger.error(f"Previous {col_name} is NaN at index {i-1}. Cannot proceed."); return None
+            if pd.isna(prev_index):
+                logger.error(f"Previous {col_name} is NaN at index {i-1}. Cannot proceed.")
+                return None
 
-            # Check volume condition
-            current_vol_diff = vol_diff.iloc[i]
-            if pd.notna(current_vol_diff) and volume_condition(current_vol_diff):
-                # Apply price change if volume condition met
-                current_price_change = price_change_ratio.iloc[i]
-                # Avoid extreme changes that might skew the index excessively
-                if pd.notna(current_price_change) and abs(current_price_change) < 10.0: # Limit change factor
-                    index_series.iloc[i] = prev_index * (1.0 + current_price_change)
+            current_vol_diff: Union[float, Any] = vol_diff.iloc[i]
+            if pd.notna(current_vol_diff) and isinstance(current_vol_diff, (int, float)) and volume_condition(float(current_vol_diff)):
+                current_price_change: Union[float, Any] = price_change_ratio.iloc[i]
+                if pd.notna(current_price_change) and isinstance(current_price_change, (int, float)) and abs(float(current_price_change)) < 10.0:
+                    index_series.iloc[i] = prev_index * (1.0 + float(current_price_change))
                 else:
-                    # If change is extreme or NaN, keep previous index value
-                    if pd.notna(current_price_change):
-                         logger.warning(f"{col_name} calc: Skipping extreme price change ({current_price_change:.2f}) at index {i}. Using previous {col_name}.")
+                    if pd.notna(current_price_change) and isinstance(current_price_change, (int, float)):
+                        logger.warning(f"{col_name} calc: Skipping extreme price change ({float(current_price_change):.2f}) at index {i}. Using previous {col_name}.")
                     index_series.iloc[i] = prev_index
             else:
-                # If volume condition not met, index remains unchanged
                 index_series.iloc[i] = prev_index
 
-        # Handle potential infinities just in case, although checks should prevent them
-        result_df[col_name] = index_series.replace([np.inf, -np.inf], np.nan) # Add to new DF
-        # Forward fill any remaining NaNs (should only be at the very start if price calc failed)
+        result_df[col_name] = index_series.replace([np.inf, -np.inf], np.nan)
         result_df[col_name] = result_df[col_name].ffill()
-
         return result_df
 
     except Exception as e:
@@ -302,23 +289,10 @@ def compute_pvi(data: pd.DataFrame) -> pd.DataFrame:
     _check_required_cols(data, required_cols, 'PVI')
 
     logger.debug(f"Computing PVI")
-    result_df = pd.DataFrame(index=data.index)
-    try:
-        close = data['close']
-        volume = data['volume']
-        pvi = pd.Series(1000.0, index=data.index)
-        for i in range(1, len(data)):
-            if volume.iloc[i] > volume.iloc[i - 1]:
-                pvi.iloc[i] = pvi.iloc[i - 1] * (1 + (close.iloc[i] - close.iloc[i - 1]) / close.iloc[i - 1])
-            else:
-                pvi.iloc[i] = pvi.iloc[i - 1]
-        result_df[PVI] = pvi
-        return result_df
-    except Exception as e:
-        if isinstance(e, MissingColumnsError):
-            raise
-        logger.error(f"Error calculating PVI: {e}", exc_info=True)
-        raise IndicatorError(f"Failed to calculate PVI: {e}")
+    result_df = _compute_volume_index(data, PVI, lambda x: x > 0)
+    if result_df is None:
+        raise IndicatorError("Failed to calculate PVI")
+    return result_df
 
 def compute_nvi(data: pd.DataFrame) -> pd.DataFrame:
     """Calculates Negative Volume Index (NVI) cumulatively.
@@ -336,23 +310,21 @@ def compute_nvi(data: pd.DataFrame) -> pd.DataFrame:
     _check_required_cols(data, required_cols, 'NVI')
 
     logger.debug(f"Computing NVI")
-    result_df = pd.DataFrame(index=data.index)
-    try:
-        close = data['close']
-        volume = data['volume']
-        nvi = pd.Series(1000.0, index=data.index)
-        for i in range(1, len(data)):
-            if volume.iloc[i] < volume.iloc[i - 1]:
-                nvi.iloc[i] = nvi.iloc[i - 1] * (1 + (close.iloc[i] - close.iloc[i - 1]) / close.iloc[i - 1])
-            else:
-                nvi.iloc[i] = nvi.iloc[i - 1]
-        result_df[NVI] = nvi
-        return result_df
-    except Exception as e:
-        if isinstance(e, MissingColumnsError):
-            raise
-        logger.error(f"Error calculating NVI: {e}", exc_info=True)
-        raise IndicatorError(f"Failed to calculate NVI: {e}")
+    result_df = _compute_volume_index(data, NVI, lambda x: x < 0)
+    if result_df is None:
+        raise IndicatorError("Failed to calculate NVI")
+    return result_df
+
+# --- Removed apply_all_custom_indicators function ---
+# This function is no longer needed as main.py ensures custom indicator
+# defaults are added to the processing list if necessary.
+    _check_required_cols(data, required_cols, 'NVI')
+
+    logger.debug(f"Computing NVI")
+    result_df = _compute_volume_index(data, NVI, lambda x: x < 0)
+    if result_df is None:
+        raise IndicatorError("Failed to calculate NVI")
+    return result_df
 
 # --- Removed apply_all_custom_indicators function ---
 # This function is no longer needed as main.py ensures custom indicator

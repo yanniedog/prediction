@@ -506,7 +506,10 @@
     "rsi": {
         "type": "ta-lib",
         "required_inputs": ["close"],
-        "params": { "timeperiod": { "default": 14, "min": 2, "max": 200 } },
+        "params": {
+            "real": "close",
+            "timeperiod": { "default": 14, "min": 2, "max": 200 }
+        },
         "conditions": [ { "timeperiod": { "gte": 2 } } ],
         "range_steps_default": 5,
         "name": "rsi"
@@ -754,6 +757,7 @@
         "type": "ta-lib",
         "required_inputs": ["close"],
         "params": {
+            "real": "close",
             "timeperiod": { "default": 14, "min": 2, "max": 200 }
         },
         "conditions": [ { "timeperiod": { "gte": 2 } } ],
@@ -769,5 +773,19 @@
         "conditions": [ { "timeperiod": { "gte": 2 } } ],
         "range_steps_default": 5,
         "name": "sma"
+    },
+    "bb": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": {
+            "real": "close",
+            "timeperiod": { "default": 20, "min": 2, "max": 200 },
+            "nbdevup": { "default": 2.0, "min": 0.1, "max": 5.0 },
+            "nbdevdn": { "default": 2.0, "min": 0.1, "max": 5.0 },
+            "matype": { "default": 0, "min": 0, "max": 8 }
+        },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "bbands"
     }
 }

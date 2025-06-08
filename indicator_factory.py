@@ -45,15 +45,8 @@ class IndicatorFactory:
                 raise ValueError(f"Invalid indicator type {config['type']} for {name}")
 
     def _get_ta_lib_output_suffixes(self, func_name: str) -> List[str]:
-        """Get output names for TA-Lib function."""
-        try:
-            func_info = ta.get_function_groups().get(func_name)
-            if not func_info:
-                raise ValueError(f"Unknown TA-Lib function: {func_name}")
-            return func_info.get('output_names', [func_name])
-        except Exception as e:
-            logger.error(f"Error getting TA-Lib output names for {func_name}: {e}", exc_info=True)
-            raise
+        """Get output names for TA-Lib function. Default to function name."""
+        return [func_name]
 
     def _compute_single_indicator(self, data: pd.DataFrame, name: str, config: Dict[str, Any]) -> Optional[pd.DataFrame]:
         """Compute a single indicator based on its configuration."""
@@ -81,20 +74,26 @@ class IndicatorFactory:
                     raise ValueError(f"Unknown TA-Lib function: {func_name}")
                 # Prepare input arrays
                 inputs = {}
-                for param_name, col_name in params.items():
-                    if col_name in data.columns:
-                        inputs[param_name] = data[col_name].values
+                for param_name, col_value in params.items():
+                    # If the value is a dict (e.g., {'default': 14}), use the default
+                    if isinstance(col_value, dict):
+                        value = col_value.get('default', None)
                     else:
-                        # If the param is not a column, use as-is (for timeperiod, etc.)
-                        inputs[param_name] = col_name
-                logger.debug(f"Calling TA-Lib function {func_name} with inputs: {inputs}")
+                        value = col_value
+                    # If value is a string and a column, use the column data
+                    if isinstance(value, str) and value in data.columns:
+                        inputs[param_name] = data[value].values
+                    else:
+                        # Use as-is (for timeperiod, float, int, etc.)
+                        inputs[param_name] = value
+                logger.debug(f"Calling TA-Lib function {func_name.upper()} with inputs: {inputs}")
                 # Get output names
-                output_names = self._get_ta_lib_output_suffixes(func_name)
+                output_names = self._get_ta_lib_output_suffixes(func_name.upper())
                 # Compute indicator
                 results = ta_func(**inputs)
-                logger.debug(f"TA-Lib function {func_name} returned: {results}")
+                logger.debug(f"TA-Lib function {func_name.upper()} returned: {results}")
                 if results is None:
-                    logger.error(f"TA-Lib function {func_name} returned None for {name}")
+                    logger.error(f"TA-Lib function {func_name.upper()} returned None for {name}")
                     return result_df
                 # Handle different return types
                 if isinstance(results, (np.ndarray, list)):
@@ -136,20 +135,26 @@ class IndicatorFactory:
                     raise ValueError(f"Unknown TA-Lib function: {func_name}")
                 # Prepare input arrays
                 inputs = {}
-                for param_name, col_name in params.items():
-                    if col_name in data.columns:
-                        inputs[param_name] = data[col_name].values
+                for param_name, col_value in params.items():
+                    # If the value is a dict (e.g., {'default': 14}), use the default
+                    if isinstance(col_value, dict):
+                        value = col_value.get('default', None)
                     else:
-                        # If the param is not a column, use as-is (for timeperiod, etc.)
-                        inputs[param_name] = col_name
-                logger.debug(f"Calling TA-Lib function {func_name} with inputs: {inputs}")
+                        value = col_value
+                    # If value is a string and a column, use the column data
+                    if isinstance(value, str) and value in data.columns:
+                        inputs[param_name] = data[value].values
+                    else:
+                        # Use as-is (for timeperiod, float, int, etc.)
+                        inputs[param_name] = value
+                logger.debug(f"Calling TA-Lib function {func_name.upper()} with inputs: {inputs}")
                 # Get output names
-                output_names = self._get_ta_lib_output_suffixes(func_name)
+                output_names = self._get_ta_lib_output_suffixes(func_name.upper())
                 # Compute indicator
                 results = ta_func(**inputs)
-                logger.debug(f"TA-Lib function {func_name} returned: {results}")
+                logger.debug(f"TA-Lib function {func_name.upper()} returned: {results}")
                 if results is None:
-                    logger.error(f"TA-Lib function {func_name} returned None for {name}")
+                    logger.error(f"TA-Lib function {func_name.upper()} returned None for {name}")
                     return pd.DataFrame(index=data.index)
                 # Handle different return types
                 result_df = pd.DataFrame(index=data.index)
@@ -227,7 +232,7 @@ class IndicatorFactory:
         for name in indicators:
             if name not in self.indicator_params:
                 logger.warning(f"Unknown indicator: {name}")
-                continue
+                raise ValueError(f"Unknown indicator: {name}")
                 
             config = self.indicator_params[name]
             indicator_df = self._compute_single_indicator(data, name, config)
@@ -251,6 +256,14 @@ class IndicatorFactory:
         """Get parameters for a specific indicator."""
         indicator_def = self.indicator_params.get(name)
         return indicator_def.get('params') if indicator_def else None
+
+    def create_custom_indicator(self, name: str, func, data: pd.DataFrame, **params) -> pd.DataFrame:
+        """Register and compute a custom indicator on the fly."""
+        result = func(data, **params)
+        if isinstance(result, pd.DataFrame):
+            return result
+        else:
+            return pd.DataFrame({f"{name}": result})
 
 def compute_configured_indicators(data: pd.DataFrame, indicator_configs: List[Dict[str, Any]]) -> Tuple[pd.DataFrame, Set[int]]:
     """
