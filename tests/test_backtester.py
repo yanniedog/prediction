@@ -22,10 +22,19 @@ def test_backtester_initialization(backtester):
 
 def test_strategy_execution(backtester, test_data):
     """Test strategy execution methods."""
-    # Define a simple strategy
-    def simple_strategy(data, params):
-        sma = data['close'].rolling(window=params['window']).mean()
-        return pd.Series(np.where(data['close'] > sma, 1, -1), index=data.index)
+    def simple_strategy(data: pd.DataFrame, params: Dict[str, Any]) -> pd.Series:
+        """Simple moving average strategy that avoids modifying input data."""
+        # Create a copy of required columns
+        df = pd.DataFrame(index=data.index)
+        df['close'] = data['close']
+        
+        # Calculate moving average
+        window = params['window']
+        df['sma'] = df['close'].rolling(window=window).mean()
+        
+        # Generate positions using vectorized operations and convert to Series
+        positions = pd.Series(np.where(df['close'] > df['sma'], 1, -1), index=data.index)
+        return positions
     
     # Execute strategy
     results = backtester.run_strategy(test_data, simple_strategy, {'window': 20})
@@ -33,6 +42,7 @@ def test_strategy_execution(backtester, test_data):
     assert 'positions' in results
     assert 'returns' in results
     assert 'equity_curve' in results
+    assert results['positions'].index.equals(test_data.index)
 
 def test_position_sizing(backtester, test_data):
     """Test position sizing methods."""
@@ -165,19 +175,28 @@ def test_optimization(backtester, test_data):
 @pytest.mark.timeout(30)
 def test_walk_forward_analysis(backtester, sample_data):
     """Test walk-forward analysis."""
-    # Create a copy of the data to avoid SettingWithCopyWarning
-    data = sample_data.copy()
-    
-    # Define a simple strategy that uses .loc for modifications
-    def strategy(data, params):
-        data = data.copy()  # Create a copy to avoid warnings
-        data.loc[:, 'short_ma'] = data['close'].rolling(window=params['short_window']).mean()
-        data.loc[:, 'long_ma'] = data['close'].rolling(window=params['long_window']).mean()
-        return pd.Series(np.where(data['short_ma'] > data['long_ma'], 1, -1), index=data.index)
+    def strategy(data: pd.DataFrame, params: Dict[str, Any]) -> pd.Series:
+        """Moving average crossover strategy for walk-forward analysis."""
+        # Create a copy of required columns
+        df = pd.DataFrame(index=data.index)
+        df['close'] = data['close']
+        
+        # Calculate moving averages
+        short_window = params['short_window']
+        long_window = params['long_window']
+        
+        df['short_ma'] = df['close'].rolling(window=short_window).mean()
+        df['long_ma'] = df['close'].rolling(window=long_window).mean()
+        
+        # Generate positions using vectorized operations
+        positions = np.where(df['short_ma'] > df['long_ma'], 1,
+                           np.where(df['short_ma'] < df['long_ma'], -1, 0))
+        
+        return pd.Series(positions, index=data.index)
     
     params = {'short_window': 10, 'long_window': 20}
     results = backtester.walk_forward_analysis(
-        data,
+        sample_data,
         strategy,
         params,
         train_size=0.7,
@@ -307,17 +326,24 @@ def mock_indicator_factory():
 @pytest.fixture
 def sample_strategy():
     def strategy(data: pd.DataFrame, params: Dict[str, Any]) -> pd.Series:
-        # Simple moving average crossover strategy
+        """Simple moving average crossover strategy that avoids modifying input data."""
+        # Create a copy of required columns to avoid modifying input data
+        df = pd.DataFrame(index=data.index)
+        df['close'] = data['close']
+        
+        # Calculate moving averages
         short_window = params.get('short_window', 10)
         long_window = params.get('long_window', 20)
         
-        data['short_ma'] = data['close'].rolling(window=short_window).mean()
-        data['long_ma'] = data['close'].rolling(window=long_window).mean()
+        df['short_ma'] = df['close'].rolling(window=short_window).mean()
+        df['long_ma'] = df['close'].rolling(window=long_window).mean()
         
-        positions = pd.Series(0, index=data.index)
-        positions[data['short_ma'] > data['long_ma']] = 1
-        positions[data['short_ma'] < data['long_ma']] = -1
-        
+        # Generate positions using vectorized operations and convert to Series
+        positions = pd.Series(
+            np.where(df['short_ma'] > df['long_ma'], 1, 
+                    np.where(df['short_ma'] < df['long_ma'], -1, 0)),
+            index=data.index
+        )
         return positions
     
     return strategy
@@ -449,6 +475,10 @@ def test_optimize_strategy(backtester, sample_data, sample_strategy):
         'long_window': [20, 30, 40]
     }
     
+    # Ensure sample_data has required columns
+    if 'close' not in sample_data.columns:
+        sample_data['close'] = np.random.uniform(100, 200, len(sample_data))
+    
     results = backtester.optimize_strategy(
         sample_data,
         sample_strategy,
@@ -460,6 +490,7 @@ def test_optimize_strategy(backtester, sample_data, sample_strategy):
     assert 'best_params' in results
     assert 'best_score' in results
     assert 'all_results' in results
+    assert all(isinstance(r['params'], dict) for r in results['all_results'])
 
 # Test Monte Carlo simulation
 def test_run_monte_carlo_simulation(backtester, sample_data):

@@ -544,9 +544,9 @@ class CorrelationCalculator:
         }
         
         return {
-            'forecast_matrix': pd.DataFrame(forecast_matrix, 
-                                          index=data.columns, 
-                                          columns=data.columns),
+            'forecast': pd.DataFrame(forecast_matrix, 
+                                   index=data.columns, 
+                                   columns=data.columns),
             'confidence_intervals': {
                 'lower': pd.DataFrame(confidence_intervals['lower'], 
                                     index=data.columns, 
