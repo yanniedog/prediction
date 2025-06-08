@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from main import _select_data_source_and_lag
 from utils import get_max_lag, get_data_date_range
+import sqlite3
 
 @pytest.fixture
 def sample_data():
