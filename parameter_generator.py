@@ -10,6 +10,16 @@ import json # For default comparison hashing if needed
 import config as app_config
 import utils # For compare_param_dicts
 
+# --- Utility: Cartesian product for parameter grid ---
+def generate_param_grid(params: Dict[str, list]) -> Any:
+    """Yield all combinations of the parameter grid as dicts."""
+    if not params:
+        yield {}
+        return
+    keys = list(params.keys())
+    for values in itertools.product(*(params[k] for k in keys)):
+        yield dict(zip(keys, values))
+
 logger = logging.getLogger(__name__)
 
 # --- Helper functions _evaluate_single_condition and evaluate_conditions ---
