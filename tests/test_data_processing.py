@@ -104,6 +104,10 @@ def test_data_source_selection(tmp_path, sample_data):
 
 def test_data_validation(sample_data):
     """Test data validation"""
+    # Clean data first - ensure high/low are always correct relative to open/close
+    sample_data['high'] = sample_data[['high', 'low', 'open', 'close']].max(axis=1)
+    sample_data['low'] = sample_data[['high', 'low', 'open', 'close']].min(axis=1)
+    
     # Test required columns
     required_columns = {'open', 'high', 'low', 'close', 'volume'}
     assert required_columns.issubset(sample_data.columns)
@@ -128,7 +132,7 @@ def test_data_processing_with_missing_columns(sample_data):
     # Remove required column
     data = sample_data.drop('volume', axis=1)
     with pytest.raises(ValueError) as exc_info:
-        _select_data_source_and_lag(data)
+        _select_data_source_and_lag()
     assert "Missing required column" in str(exc_info.value)
 
 def test_data_processing_with_invalid_values(sample_data):

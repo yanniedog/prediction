@@ -33,14 +33,14 @@ def temp_dir() -> Generator[Path, None, None]:
 @pytest.fixture(scope="function")
 def sample_data() -> pd.DataFrame:
     """Create sample price data for testing."""
-    dates = pd.date_range(start='2024-01-01', end='2024-12-31', freq='D', tz='UTC')
+    dates = pd.date_range(start='2024-01-01', periods=100, freq='H')
     data = pd.DataFrame({
         'date': dates,
-        'open': np.random.uniform(100, 200, len(dates)),
-        'high': np.random.uniform(200, 300, len(dates)),
-        'low': np.random.uniform(50, 100, len(dates)),
-        'close': np.random.uniform(100, 200, len(dates)),
-        'volume': np.random.uniform(1000, 5000, len(dates))
+        'open': np.random.uniform(100, 200, 100),
+        'high': np.random.uniform(200, 300, 100),
+        'low': np.random.uniform(50, 100, 100),
+        'close': np.random.uniform(100, 200, 100),
+        'volume': np.random.uniform(1000, 5000, 100)
     })
     return data
 
@@ -49,48 +49,14 @@ def sample_indicator_definitions() -> Dict[str, Dict[str, Any]]:
     """Create sample indicator definitions for testing."""
     return {
         "RSI": {
-            "name": "RSI",
-            "params": {
-                "period": {
-                    "default": 14,
-                    "min": 2,
-                    "max": 100
-                }
-            },
-            "parameters": {
-                "period": {
-                    "default": 14,
-                    "min": 2,
-                    "max": 100
-                }
-            }
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {"timeperiod": 14}
         },
-        "MACD": {
-            "name": "MACD",
-            "params": {
-                "fast": {
-                    "default": 12.0,
-                    "min": 1.0,
-                    "max": 50.0
-                },
-                "slow": {
-                    "default": 26.0,
-                    "min": 5.0,
-                    "max": 100.0
-                }
-            },
-            "parameters": {
-                "fast": {
-                    "default": 12.0,
-                    "min": 1.0,
-                    "max": 50.0
-                },
-                "slow": {
-                    "default": 26.0,
-                    "min": 5.0,
-                    "max": 100.0
-                }
-            }
+        "BB": {
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {"timeperiod": 20, "nbdevup": 2, "nbdevdn": 2}
         }
     }
 

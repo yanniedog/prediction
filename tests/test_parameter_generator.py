@@ -1,4 +1,5 @@
 import pytest
+import pandas as pd
 import numpy as np
 from typing import Dict, List, Any, Optional, Generator, cast
 from pathlib import Path
@@ -12,8 +13,71 @@ from parameter_generator import (
     _evaluate_single_condition,
     evaluate_conditions,
     generate_configurations,
+    generate_classical_configurations,
+    generate_bayesian_configurations,
+    validate_parameter_ranges,
+    _generate_range_values,
     _generate_random_valid_config
 )
+
+@pytest.fixture(scope="function")
+def sample_indicator_definitions() -> Dict[str, Dict[str, Any]]:
+    """Create sample indicator definitions for testing."""
+    return {
+        "RSI": {
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {
+                "timeperiod": {
+                    "default": 14,
+                    "min": 2,
+                    "max": 100
+                }
+            }
+        },
+        "BB": {
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {
+                "timeperiod": {
+                    "default": 20,
+                    "min": 5,
+                    "max": 200
+                },
+                "nbdevup": {
+                    "default": 2.0,
+                    "min": 0.5,
+                    "max": 5.0
+                },
+                "nbdevdn": {
+                    "default": 2.0,
+                    "min": 0.5,
+                    "max": 5.0
+                }
+            }
+        },
+        "MACD": {
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {
+                "fastperiod": {
+                    "default": 12,
+                    "min": 2,
+                    "max": 50
+                },
+                "slowperiod": {
+                    "default": 26,
+                    "min": 5,
+                    "max": 100
+                },
+                "signalperiod": {
+                    "default": 9,
+                    "min": 2,
+                    "max": 50
+                }
+            }
+        }
+    }
 
 @pytest.fixture(scope="function")
 def sample_indicator_definition() -> Dict[str, Any]:
@@ -171,6 +235,208 @@ def test_evaluate_conditions() -> None:
         "period": 14
     }
     assert parameter_generator.evaluate_conditions(none_params, conditions) is False
+
+def test_generate_configurations_basic(sample_indicator_definitions):
+    """Test basic configuration generation."""
+    # Test with single parameter indicator
+    configs = generate_configurations(sample_indicator_definitions["RSI"])
+    assert isinstance(configs, list)
+    assert len(configs) > 0
+    for config in configs:
+        assert isinstance(config, dict)
+        assert "timeperiod" in config
+        assert config["timeperiod"] >= 2
+        assert config["timeperiod"] <= 100
+    
+    # Test with multiple parameter indicator
+    configs = generate_configurations(sample_indicator_definitions["BB"])
+    assert isinstance(configs, list)
+    assert len(configs) > 0
+    for config in configs:
+        assert isinstance(config, dict)
+        assert all(param in config for param in ["timeperiod", "nbdevup", "nbdevdn"])
+        assert config["timeperiod"] >= 5 and config["timeperiod"] <= 200
+        assert config["nbdevup"] >= 0.5 and config["nbdevup"] <= 5.0
+        assert config["nbdevdn"] >= 0.5 and config["nbdevdn"] <= 5.0
+
+def test_generate_classical_configurations(sample_indicator_definitions):
+    """Test classical configuration generation."""
+    # Test with single parameter
+    configs = generate_classical_configurations(sample_indicator_definitions["RSI"])
+    assert isinstance(configs, list)
+    assert len(configs) > 0
+    
+    # Verify parameter ranges
+    timeperiods = {config["timeperiod"] for config in configs}
+    assert min(timeperiods) >= 2
+    assert max(timeperiods) <= 100
+    assert 14 in timeperiods  # Default value should be included
+    
+    # Test with multiple parameters
+    configs = generate_classical_configurations(sample_indicator_definitions["MACD"])
+    assert isinstance(configs, list)
+    assert len(configs) > 0
+    
+    # Verify all parameters are within ranges
+    for config in configs:
+        assert config["fastperiod"] >= 2 and config["fastperiod"] <= 50
+        assert config["slowperiod"] >= 5 and config["slowperiod"] <= 100
+        assert config["signalperiod"] >= 2 and config["signalperiod"] <= 50
+        assert config["fastperiod"] < config["slowperiod"]  # Logical constraint
+
+def test_generate_bayesian_configurations(sample_indicator_definitions):
+    """Test Bayesian configuration generation."""
+    # Test with single parameter
+    configs = generate_bayesian_configurations(sample_indicator_definitions["RSI"])
+    assert isinstance(configs, list)
+    assert len(configs) > 0
+    
+    # Verify parameter ranges
+    for config in configs:
+        assert config["timeperiod"] >= 2
+        assert config["timeperiod"] <= 100
+    
+    # Test with multiple parameters
+    configs = generate_bayesian_configurations(sample_indicator_definitions["BB"])
+    assert isinstance(configs, list)
+    assert len(configs) > 0
+    
+    # Verify all parameters are within ranges
+    for config in configs:
+        assert config["timeperiod"] >= 5 and config["timeperiod"] <= 200
+        assert config["nbdevup"] >= 0.5 and config["nbdevup"] <= 5.0
+        assert config["nbdevdn"] >= 0.5 and config["nbdevdn"] <= 5.0
+
+def test_validate_parameter_ranges(sample_indicator_definitions):
+    """Test parameter range validation."""
+    # Test valid ranges
+    assert validate_parameter_ranges(sample_indicator_definitions["RSI"]["params"])
+    assert validate_parameter_ranges(sample_indicator_definitions["BB"]["params"])
+    
+    # Test invalid ranges
+    invalid_params = {
+        "timeperiod": {
+            "default": 14,
+            "min": 100,  # min > max
+            "max": 50
+        }
+    }
+    assert not validate_parameter_ranges(invalid_params)
+    
+    # Test missing required fields
+    invalid_params = {
+        "timeperiod": {
+            "default": 14,
+            "min": 2
+            # missing max
+        }
+    }
+    assert not validate_parameter_ranges(invalid_params)
+    
+    # Test invalid default value
+    invalid_params = {
+        "timeperiod": {
+            "default": 150,  # default > max
+            "min": 2,
+            "max": 100
+        }
+    }
+    assert not validate_parameter_ranges(invalid_params)
+
+def test_generate_range_values():
+    """Test range value generation."""
+    # Test integer range
+    values = _generate_range_values(2, 10, 5, is_int=True)
+    assert len(values) == 5
+    assert all(isinstance(v, int) for v in values)
+    assert min(values) >= 2
+    assert max(values) <= 10
+    
+    # Test float range
+    values = _generate_range_values(0.5, 5.0, 5, is_int=False)
+    assert len(values) == 5
+    assert all(isinstance(v, float) for v in values)
+    assert min(values) >= 0.5
+    assert max(values) <= 5.0
+    
+    # Test with default value
+    values = _generate_range_values(2, 10, 5, is_int=True, default=5)
+    assert 5 in values  # Default value should be included
+    
+    # Test with small range
+    values = _generate_range_values(1, 2, 5, is_int=True)
+    assert len(values) == 2  # Should only generate unique values
+    assert set(values) == {1, 2}
+
+def test_error_handling(sample_indicator_definitions):
+    """Test error handling in parameter generation."""
+    # Test with invalid indicator definition
+    with pytest.raises(ValueError):
+        generate_configurations({})
+    
+    # Test with missing parameter definitions
+    invalid_def = {
+        "type": "talib",
+        "required_inputs": ["close"],
+        "params": {}  # Empty params
+    }
+    with pytest.raises(ValueError):
+        generate_configurations(invalid_def)
+    
+    # Test with invalid parameter type
+    invalid_def = {
+        "type": "talib",
+        "required_inputs": ["close"],
+        "params": {
+            "timeperiod": {
+                "default": "invalid",  # Should be number
+                "min": 2,
+                "max": 100
+            }
+        }
+    }
+    with pytest.raises(ValueError):
+        generate_configurations(invalid_def)
+    
+    # Test with invalid range values
+    invalid_def = {
+        "type": "talib",
+        "required_inputs": ["close"],
+        "params": {
+            "timeperiod": {
+                "default": 14,
+                "min": "invalid",  # Should be number
+                "max": 100
+            }
+        }
+    }
+    with pytest.raises(ValueError):
+        generate_configurations(invalid_def)
+
+def test_parameter_constraints(sample_indicator_definitions):
+    """Test parameter constraints and relationships."""
+    # Test MACD constraints (fastperiod < slowperiod)
+    configs = generate_configurations(sample_indicator_definitions["MACD"])
+    for config in configs:
+        assert config["fastperiod"] < config["slowperiod"]
+    
+    # Test BB constraints (nbdevup and nbdevdn should be positive)
+    configs = generate_configurations(sample_indicator_definitions["BB"])
+    for config in configs:
+        assert config["nbdevup"] > 0
+        assert config["nbdevdn"] > 0
+
+def test_configuration_uniqueness(sample_indicator_definitions):
+    """Test that generated configurations are unique."""
+    # Test RSI configurations
+    configs = generate_configurations(sample_indicator_definitions["RSI"])
+    param_values = [config["timeperiod"] for config in configs]
+    assert len(param_values) == len(set(param_values))  # All values should be unique
+    
+    # Test BB configurations
+    configs = generate_configurations(sample_indicator_definitions["BB"])
+    param_tuples = [(config["timeperiod"], config["nbdevup"], config["nbdevdn"]) for config in configs]
+    assert len(param_tuples) == len(set(param_tuples))  # All combinations should be unique
 
 def test_generate_configurations(sample_indicator_definition: Dict[str, Any]) -> None:
     """Test generation of parameter configurations."""

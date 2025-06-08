@@ -280,7 +280,8 @@ def temp_db(request):
     try:
         manager = SQLiteManager(str(db_path))
         # Set a shorter timeout for tests
-        manager.connection.execute("PRAGMA busy_timeout = 5000")  # 5 second timeout
+        if manager.connection is not None:
+            manager.connection.execute("PRAGMA busy_timeout = 5000")  # 5 second timeout
         # Initialize the database schema
         if not manager.initialize_database():
             raise RuntimeError("Failed to initialize test database schema")
@@ -288,10 +289,12 @@ def temp_db(request):
     finally:
         # Ensure connection is closed
         if manager is not None:
-            try:
-                manager.connection.close()
-            except Exception:
-                pass
+            conn = getattr(manager, 'connection', None)
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
             manager = None  # Clear reference
         
         # Force cleanup with retries
@@ -359,4 +362,11 @@ def sqlite_manager(config):
     yield manager
     # Cleanup after tests
     if os.path.exists(db_path):
-        os.remove(db_path) 
+        os.remove(db_path)
+
+@pytest.fixture(autouse=True, scope='session')
+def mock_input_global():
+    original_input = builtins.input
+    builtins.input = lambda *args, **kwargs: ''
+    yield
+    builtins.input = original_input 

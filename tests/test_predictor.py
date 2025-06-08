@@ -8,6 +8,15 @@ from predictor import Predictor
 import json
 from unittest.mock import patch
 from sqlite_manager import initialize_database
+from typing import Dict, List, Any, Optional, Tuple
+from predictor import (
+    predict_price_movement,
+    calculate_indicators,
+    _cache_indicators,
+    _get_cached_indicators,
+    _calculate_correlation,
+    _prepare_prediction_data
+)
 
 @pytest.fixture
 def predictor():
@@ -34,6 +43,65 @@ def test_db_path(tmp_path):
     """Create a temporary database for testing."""
     db_path = tmp_path / "test.db"
     return db_path
+
+@pytest.fixture(scope="function")
+def sample_data() -> pd.DataFrame:
+    """Create sample price data for testing."""
+    dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+    np.random.seed(42)
+    data = pd.DataFrame({
+        "open": np.random.normal(100, 1, 100),
+        "high": np.random.normal(101, 1, 100),
+        "low": np.random.normal(99, 1, 100),
+        "close": np.random.normal(100, 1, 100),
+        "volume": np.random.normal(1000, 100, 100)
+    }, index=dates)
+    data["high"] = data[["open", "close"]].max(axis=1) + abs(np.random.normal(0, 0.1, 100))
+    data["low"] = data[["open", "close"]].min(axis=1) - abs(np.random.normal(0, 0.1, 100))
+    return data
+
+@pytest.fixture(scope="function")
+def sample_indicator_definition() -> Dict[str, Any]:
+    """Create sample indicator definition for testing."""
+    return {
+        "RSI": {
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {
+                "timeperiod": {
+                    "default": 14,
+                    "min": 2,
+                    "max": 100
+                }
+            }
+        },
+        "BB": {
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {
+                "timeperiod": {
+                    "default": 20,
+                    "min": 5,
+                    "max": 200
+                },
+                "nbdevup": {
+                    "default": 2.0,
+                    "min": 0.5,
+                    "max": 5.0
+                },
+                "nbdevdn": {
+                    "default": 2.0,
+                    "min": 0.5,
+                    "max": 5.0
+                }
+            }
+        }
+    }
+
+@pytest.fixture(scope="function")
+def prediction_data(sample_data: pd.DataFrame, sample_indicator_definition: Dict[str, Any]) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """Prepare prediction data for testing."""
+    return _prepare_prediction_data(sample_data, sample_indicator_definition)
 
 def test_predictor_initialization():
     """Test Predictor initialization."""
@@ -207,4 +275,203 @@ def test_plot_predicted_path(predictor, tmp_path):
     
     # Verify plot file was created
     plot_files = list(tmp_path.glob('test_prediction*.png'))
-    assert len(plot_files) > 0 
+    assert len(plot_files) > 0
+
+def test_prepare_prediction_data(sample_data: pd.DataFrame, sample_indicator_definition: Dict[str, Any]):
+    """Test preparation of prediction data."""
+    data, indicator_def = _prepare_prediction_data(sample_data, sample_indicator_definition)
+    
+    # Verify data preparation
+    assert isinstance(data, pd.DataFrame)
+    assert not data.empty
+    assert all(col in data.columns for col in ["open", "high", "low", "close", "volume"])
+    
+    # Verify indicator definition
+    assert isinstance(indicator_def, dict)
+    assert "RSI" in indicator_def
+    assert "BB" in indicator_def
+    assert "params" in indicator_def["RSI"]
+    assert "params" in indicator_def["BB"]
+
+def test_calculate_indicators(prediction_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test indicator calculation."""
+    data, indicator_def = prediction_data
+    
+    # Test RSI calculation
+    indicators = calculate_indicators(data, indicator_def["RSI"], {"timeperiod": 14})
+    assert isinstance(indicators, pd.Series)
+    assert not indicators.empty
+    assert not indicators.isna().all()
+    
+    # Test BB calculation
+    indicators = calculate_indicators(data, indicator_def["BB"], {
+        "timeperiod": 20,
+        "nbdevup": 2.0,
+        "nbdevdn": 2.0
+    })
+    assert isinstance(indicators, pd.Series)
+    assert not indicators.empty
+    assert not indicators.isna().all()
+    
+    # Test invalid parameters
+    with pytest.raises(ValueError):
+        calculate_indicators(data, indicator_def["RSI"], {"timeperiod": 1})  # Below min
+    
+    # Test missing required parameter
+    with pytest.raises(ValueError):
+        calculate_indicators(data, indicator_def["RSI"], {})  # Missing timeperiod
+
+def test_indicator_caching(prediction_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test indicator caching functionality."""
+    data, indicator_def = prediction_data
+    
+    # Calculate and cache indicators
+    config = {"timeperiod": 14}
+    indicators = calculate_indicators(data, indicator_def["RSI"], config)
+    _cache_indicators(data, indicator_def["RSI"], config, indicators)
+    
+    # Retrieve cached indicators
+    cached_indicators = _get_cached_indicators(data, indicator_def["RSI"], config)
+    assert isinstance(cached_indicators, pd.Series)
+    assert not cached_indicators.empty
+    assert cached_indicators.equals(indicators)
+    
+    # Test cache miss
+    different_config = {"timeperiod": 20}
+    cached_indicators = _get_cached_indicators(data, indicator_def["RSI"], different_config)
+    assert cached_indicators is None
+
+def test_calculate_correlation(prediction_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test correlation calculation."""
+    data, indicator_def = prediction_data
+    
+    # Calculate indicators
+    indicators = calculate_indicators(data, indicator_def["RSI"], {"timeperiod": 14})
+    
+    # Test correlation calculation
+    correlation = _calculate_correlation(indicators, data["close"], lag=1)
+    assert isinstance(correlation, float)
+    assert not np.isnan(correlation)
+    assert not np.isinf(correlation)
+    assert -1 <= correlation <= 1
+    
+    # Test with different lags
+    correlations = [_calculate_correlation(indicators, data["close"], lag=i) for i in range(1, 6)]
+    assert len(correlations) == 5
+    assert all(isinstance(c, float) for c in correlations)
+    assert all(not np.isnan(c) for c in correlations)
+    assert all(not np.isinf(c) for c in correlations)
+    assert all(-1 <= c <= 1 for c in correlations)
+
+def test_predict_price_movement(prediction_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test price movement prediction."""
+    data, indicator_def = prediction_data
+    
+    # Test prediction with RSI
+    predictions = predict_price_movement(data, indicator_def["RSI"], {"timeperiod": 14}, lag=1)
+    assert isinstance(predictions, pd.Series)
+    assert not predictions.empty
+    assert not predictions.isna().all()
+    
+    # Test prediction with BB
+    predictions = predict_price_movement(data, indicator_def["BB"], {
+        "timeperiod": 20,
+        "nbdevup": 2.0,
+        "nbdevdn": 2.0
+    }, lag=1)
+    assert isinstance(predictions, pd.Series)
+    assert not predictions.empty
+    assert not predictions.isna().all()
+    
+    # Test with different lags
+    for lag in range(1, 6):
+        predictions = predict_price_movement(data, indicator_def["RSI"], {"timeperiod": 14}, lag=lag)
+        assert isinstance(predictions, pd.Series)
+        assert not predictions.empty
+        assert not predictions.isna().all()
+
+def test_prediction_accuracy(prediction_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test prediction accuracy."""
+    data, indicator_def = prediction_data
+    
+    # Generate predictions
+    predictions = predict_price_movement(data, indicator_def["RSI"], {"timeperiod": 14}, lag=1)
+    
+    # Calculate actual price movements
+    actual_movements = data["close"].pct_change().shift(-1)  # Next period's return
+    
+    # Calculate accuracy metrics
+    correct_predictions = (predictions > 0) == (actual_movements > 0)
+    accuracy = correct_predictions.mean()
+    
+    assert isinstance(accuracy, float)
+    assert not np.isnan(accuracy)
+    assert 0 <= accuracy <= 1
+
+def test_error_handling(prediction_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test error handling in prediction."""
+    data, indicator_def = prediction_data
+    
+    # Test with empty data
+    with pytest.raises(ValueError):
+        predict_price_movement(pd.DataFrame(), indicator_def["RSI"], {"timeperiod": 14})
+    
+    # Test with invalid indicator definition
+    with pytest.raises(ValueError):
+        predict_price_movement(data, {}, {"timeperiod": 14})
+    
+    # Test with invalid parameters
+    with pytest.raises(ValueError):
+        predict_price_movement(data, indicator_def["RSI"], {"timeperiod": 1})  # Below min
+    
+    # Test with missing required parameter
+    with pytest.raises(ValueError):
+        predict_price_movement(data, indicator_def["RSI"], {})  # Missing timeperiod
+    
+    # Test with invalid lag
+    with pytest.raises(ValueError):
+        predict_price_movement(data, indicator_def["RSI"], {"timeperiod": 14}, lag=0)  # Invalid lag
+
+def test_data_validation(prediction_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test data validation in prediction."""
+    data, indicator_def = prediction_data
+    
+    # Test with missing required columns
+    invalid_data = data.drop(columns=["close"])
+    with pytest.raises(ValueError):
+        predict_price_movement(invalid_data, indicator_def["RSI"], {"timeperiod": 14})
+    
+    # Test with non-numeric data
+    invalid_data = data.copy()
+    invalid_data["close"] = "invalid"
+    with pytest.raises(ValueError):
+        predict_price_movement(invalid_data, indicator_def["RSI"], {"timeperiod": 14})
+    
+    # Test with all NaN data
+    invalid_data = data.copy()
+    invalid_data["close"] = np.nan
+    with pytest.raises(ValueError):
+        predict_price_movement(invalid_data, indicator_def["RSI"], {"timeperiod": 14})
+
+def test_indicator_validation(prediction_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test indicator validation in prediction."""
+    data, indicator_def = prediction_data
+    
+    # Test with invalid indicator type
+    invalid_def = indicator_def["RSI"].copy()
+    invalid_def["type"] = "invalid"
+    with pytest.raises(ValueError):
+        predict_price_movement(data, invalid_def, {"timeperiod": 14})
+    
+    # Test with missing required inputs
+    invalid_def = indicator_def["RSI"].copy()
+    invalid_def["required_inputs"] = ["invalid"]
+    with pytest.raises(ValueError):
+        predict_price_movement(data, invalid_def, {"timeperiod": 14})
+    
+    # Test with invalid parameter definition
+    invalid_def = indicator_def["RSI"].copy()
+    invalid_def["params"]["timeperiod"]["min"] = 100
+    invalid_def["params"]["timeperiod"]["max"] = 50
+    with pytest.raises(ValueError):
+        predict_price_movement(data, invalid_def, {"timeperiod": 14}) 

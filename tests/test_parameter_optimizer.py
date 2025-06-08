@@ -13,8 +13,18 @@ from parameter_optimizer import (
     _process_default_config_fast_eval,
     _format_final_evaluated_configs,
     _log_optimization_summary,
-    SKOPT_AVAILABLE
+    SKOPT_AVAILABLE,
+    optimize_parameters,
+    optimize_parameters_bayesian,
+    optimize_parameters_classical,
+    objective_function,
+    _prepare_optimization_data,
+    _evaluate_configuration
 )
+from pathlib import Path
+import tempfile
+import shutil
+import json
 
 # Test fixtures
 @pytest.fixture
@@ -68,6 +78,44 @@ def sample_shifted_closes() -> Dict[int, pd.Series]:
         2: base_series.shift(-2),
         3: base_series.shift(-3)
     }
+
+@pytest.fixture(scope="function")
+def sample_data() -> pd.DataFrame:
+    """Create sample price data for testing."""
+    dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+    np.random.seed(42)
+    data = pd.DataFrame({
+        "open": np.random.normal(100, 1, 100),
+        "high": np.random.normal(101, 1, 100),
+        "low": np.random.normal(99, 1, 100),
+        "close": np.random.normal(100, 1, 100),
+        "volume": np.random.normal(1000, 100, 100)
+    }, index=dates)
+    data["high"] = data[["open", "close"]].max(axis=1) + abs(np.random.normal(0, 0.1, 100))
+    data["low"] = data[["open", "close"]].min(axis=1) - abs(np.random.normal(0, 0.1, 100))
+    return data
+
+@pytest.fixture(scope="function")
+def sample_indicator_definition() -> Dict[str, Any]:
+    """Create sample indicator definition for testing."""
+    return {
+        "RSI": {
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {
+                "timeperiod": {
+                    "default": 14,
+                    "min": 2,
+                    "max": 100
+                }
+            }
+        }
+    }
+
+@pytest.fixture(scope="function")
+def optimization_data(sample_data: pd.DataFrame, sample_indicator_definition: Dict[str, Any]) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """Prepare optimization data for testing."""
+    return _prepare_optimization_data(sample_data, sample_indicator_definition)
 
 # Test _get_config_hash
 def test_get_config_hash_consistent():
@@ -379,3 +427,182 @@ def test_optimize_parameters_bayesian_per_lag(
         assert 'params' in config
         assert 'config_id' in config
         assert 'correlations' in config 
+
+def test_prepare_optimization_data(sample_data: pd.DataFrame, sample_indicator_definition: Dict[str, Any]):
+    """Test preparation of optimization data."""
+    data, indicator_def = _prepare_optimization_data(sample_data, sample_indicator_definition)
+    
+    # Verify data preparation
+    assert isinstance(data, pd.DataFrame)
+    assert not data.empty
+    assert all(col in data.columns for col in ["open", "high", "low", "close", "volume"])
+    
+    # Verify indicator definition
+    assert isinstance(indicator_def, dict)
+    assert "RSI" in indicator_def
+    assert "params" in indicator_def["RSI"]
+    assert "timeperiod" in indicator_def["RSI"]["params"]
+
+def test_objective_function(optimization_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test objective function evaluation."""
+    data, indicator_def = optimization_data
+    
+    # Test with valid configuration
+    config = {"timeperiod": 14}
+    score = objective_function(config, data, indicator_def)
+    assert isinstance(score, float)
+    assert not np.isnan(score)
+    assert not np.isinf(score)
+    
+    # Test with invalid configuration
+    invalid_config = {"timeperiod": 1}  # Below min
+    with pytest.raises(ValueError):
+        objective_function(invalid_config, data, indicator_def)
+    
+    # Test with missing required parameter
+    invalid_config = {}  # Missing timeperiod
+    with pytest.raises(ValueError):
+        objective_function(invalid_config, data, indicator_def)
+
+def test_evaluate_configuration(optimization_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test configuration evaluation."""
+    data, indicator_def = optimization_data
+    
+    # Test valid configuration
+    config = {"timeperiod": 14}
+    score, _ = _evaluate_configuration(config, data, indicator_def)
+    assert isinstance(score, float)
+    assert not np.isnan(score)
+    assert not np.isinf(score)
+    
+    # Test invalid configuration
+    invalid_config = {"timeperiod": 1}  # Below min
+    with pytest.raises(ValueError):
+        _evaluate_configuration(invalid_config, data, indicator_def)
+
+def test_optimize_parameters_bayesian(optimization_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test Bayesian optimization."""
+    data, indicator_def = optimization_data
+    
+    # Test optimization
+    best_config, best_score = optimize_parameters_bayesian(data, indicator_def, n_trials=5)
+    
+    # Verify results
+    assert isinstance(best_config, dict)
+    assert "timeperiod" in best_config
+    assert best_config["timeperiod"] >= 2
+    assert best_config["timeperiod"] <= 100
+    
+    assert isinstance(best_score, float)
+    assert not np.isnan(best_score)
+    assert not np.isinf(best_score)
+    
+    # Test with invalid data
+    with pytest.raises(ValueError):
+        optimize_parameters_bayesian(pd.DataFrame(), indicator_def)
+    
+    # Test with invalid indicator definition
+    with pytest.raises(ValueError):
+        optimize_parameters_bayesian(data, {})
+
+def test_optimize_parameters_classical(optimization_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test classical optimization."""
+    data, indicator_def = optimization_data
+    
+    # Test optimization
+    best_config, best_score = optimize_parameters_classical(data, indicator_def)
+    
+    # Verify results
+    assert isinstance(best_config, dict)
+    assert "timeperiod" in best_config
+    assert best_config["timeperiod"] >= 2
+    assert best_config["timeperiod"] <= 100
+    
+    assert isinstance(best_score, float)
+    assert not np.isnan(best_score)
+    assert not np.isinf(best_score)
+    
+    # Test with invalid data
+    with pytest.raises(ValueError):
+        optimize_parameters_classical(pd.DataFrame(), indicator_def)
+    
+    # Test with invalid indicator definition
+    with pytest.raises(ValueError):
+        optimize_parameters_classical(data, {})
+
+def test_optimize_parameters(optimization_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test main optimization function."""
+    data, indicator_def = optimization_data
+    
+    # Test Bayesian optimization
+    best_config, best_score = optimize_parameters(data, indicator_def, method="bayesian", n_trials=5)
+    assert isinstance(best_config, dict)
+    assert isinstance(best_score, float)
+    
+    # Test classical optimization
+    best_config, best_score = optimize_parameters(data, indicator_def, method="classical")
+    assert isinstance(best_config, dict)
+    assert isinstance(best_score, float)
+    
+    # Test invalid method
+    with pytest.raises(ValueError):
+        optimize_parameters(data, indicator_def, method="invalid")
+
+def test_optimization_constraints(optimization_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test optimization constraints."""
+    data, indicator_def = optimization_data
+    
+    # Test that optimization respects parameter bounds
+    best_config, _ = optimize_parameters(data, indicator_def, method="bayesian", n_trials=5)
+    assert best_config["timeperiod"] >= indicator_def["RSI"]["params"]["timeperiod"]["min"]
+    assert best_config["timeperiod"] <= indicator_def["RSI"]["params"]["timeperiod"]["max"]
+    
+    # Test that optimization improves score
+    default_config = {"timeperiod": indicator_def["RSI"]["params"]["timeperiod"]["default"]}
+    default_score = objective_function(default_config, data, indicator_def)
+    best_config, best_score = optimize_parameters(data, indicator_def, method="bayesian", n_trials=5)
+    assert best_score >= default_score  # Optimization should not make things worse
+
+def test_optimization_consistency(optimization_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test optimization consistency."""
+    data, indicator_def = optimization_data
+    
+    # Run multiple optimizations and verify consistency
+    results = []
+    for _ in range(3):
+        best_config, best_score = optimize_parameters(data, indicator_def, method="bayesian", n_trials=5)
+        results.append((best_config, best_score))
+    
+    # Verify that results are reasonably consistent
+    scores = [score for _, score in results]
+    assert np.std(scores) < np.mean(scores)  # Standard deviation should be less than mean
+    
+    # Verify that configurations are valid
+    for config, _ in results:
+        assert config["timeperiod"] >= indicator_def["RSI"]["params"]["timeperiod"]["min"]
+        assert config["timeperiod"] <= indicator_def["RSI"]["params"]["timeperiod"]["max"]
+
+def test_error_handling(optimization_data: Tuple[pd.DataFrame, Dict[str, Any]]):
+    """Test error handling in optimization."""
+    data, indicator_def = optimization_data
+    
+    # Test with empty data
+    with pytest.raises(ValueError):
+        optimize_parameters(pd.DataFrame(), indicator_def)
+    
+    # Test with invalid indicator definition
+    with pytest.raises(ValueError):
+        optimize_parameters(data, {})
+    
+    # Test with invalid parameter ranges
+    invalid_def = indicator_def.copy()
+    invalid_def["RSI"]["params"]["timeperiod"]["min"] = 100
+    invalid_def["RSI"]["params"]["timeperiod"]["max"] = 50
+    with pytest.raises(ValueError):
+        optimize_parameters(data, invalid_def)
+    
+    # Test with missing required parameter
+    invalid_def = indicator_def.copy()
+    del invalid_def["RSI"]["params"]["timeperiod"]
+    with pytest.raises(ValueError):
+        optimize_parameters(data, invalid_def) 

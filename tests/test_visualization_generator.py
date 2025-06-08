@@ -7,6 +7,16 @@ import shutil
 from datetime import datetime, timezone
 from typing import Tuple, Dict, List, Optional, Generator, Mapping, Union, Any, cast
 from unittest.mock import patch
+import json
+from visualization_generator import (
+    generate_charts,
+    plot_indicator_performance,
+    plot_correlation_matrix,
+    plot_optimization_results,
+    plot_prediction_accuracy,
+    _format_chart_data,
+    _save_chart
+)
 
 # Import the module to test
 import visualization_generator
@@ -227,4 +237,282 @@ def test_performance_with_large_data(temp_dir: Path) -> None:
     
     # Verify reasonable execution time (adjust threshold as needed)
     execution_time = (datetime.now(timezone.utc) - start_time).total_seconds()
-    assert execution_time < 30  # Should complete within 30 seconds 
+    assert execution_time < 30  # Should complete within 30 seconds
+
+@pytest.fixture(scope="function")
+def sample_data() -> pd.DataFrame:
+    """Create sample price data for testing."""
+    dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+    np.random.seed(42)
+    data = pd.DataFrame({
+        "timestamp": dates,
+        "open": np.random.normal(100, 1, 100),
+        "high": np.random.normal(101, 1, 100),
+        "low": np.random.normal(99, 1, 100),
+        "close": np.random.normal(100, 1, 100),
+        "volume": np.random.normal(1000, 100, 100)
+    })
+    data["high"] = data[["open", "close"]].max(axis=1) + abs(np.random.normal(0, 0.1, 100))
+    data["low"] = data[["open", "close"]].min(axis=1) - abs(np.random.normal(0, 0.1, 100))
+    return data
+
+@pytest.fixture(scope="function")
+def sample_indicator_data() -> pd.DataFrame:
+    """Create sample indicator data for testing."""
+    dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+    np.random.seed(42)
+    data = pd.DataFrame({
+        "timestamp": dates,
+        "RSI": np.random.uniform(0, 100, 100),
+        "BB_upper": np.random.normal(102, 1, 100),
+        "BB_middle": np.random.normal(100, 1, 100),
+        "BB_lower": np.random.normal(98, 1, 100),
+        "MACD": np.random.normal(0, 1, 100),
+        "MACD_signal": np.random.normal(0, 1, 100),
+        "MACD_hist": np.random.normal(0, 0.5, 100)
+    })
+    return data
+
+@pytest.fixture(scope="function")
+def sample_correlation_data() -> pd.DataFrame:
+    """Create sample correlation data for testing."""
+    np.random.seed(42)
+    data = pd.DataFrame({
+        "RSI": np.random.uniform(0, 100, 100),
+        "BB_upper": np.random.normal(102, 1, 100),
+        "BB_middle": np.random.normal(100, 1, 100),
+        "BB_lower": np.random.normal(98, 1, 100),
+        "MACD": np.random.normal(0, 1, 100),
+        "MACD_signal": np.random.normal(0, 1, 100),
+        "MACD_hist": np.random.normal(0, 0.5, 100)
+    })
+    return data.corr()
+
+@pytest.fixture(scope="function")
+def sample_optimization_data() -> Dict[str, Any]:
+    """Create sample optimization data for testing."""
+    return {
+        "RSI": {
+            "timeperiod": [14, 20, 30, 40, 50],
+            "score": [0.8, 0.85, 0.75, 0.7, 0.65]
+        },
+        "BB": {
+            "timeperiod": [20, 30, 40, 50, 60],
+            "nbdevup": [2.0, 2.5, 3.0, 2.0, 2.5],
+            "nbdevdn": [2.0, 2.5, 3.0, 2.0, 2.5],
+            "score": [0.75, 0.8, 0.7, 0.65, 0.6]
+        }
+    }
+
+@pytest.fixture(scope="function")
+def sample_prediction_data() -> Tuple[pd.Series, pd.Series]:
+    """Create sample prediction data for testing."""
+    np.random.seed(42)
+    actual = pd.Series(np.random.normal(0, 1, 100))
+    predicted = actual + np.random.normal(0, 0.2, 100)  # Add some noise
+    return actual, predicted
+
+def test_format_chart_data(sample_data: pd.DataFrame, sample_indicator_data: pd.DataFrame):
+    """Test chart data formatting."""
+    # Test price data formatting
+    formatted_data = _format_chart_data(sample_data, "price")
+    assert isinstance(formatted_data, pd.DataFrame)
+    assert all(col in formatted_data.columns for col in ["open", "high", "low", "close"])
+    assert not formatted_data.empty
+    
+    # Test indicator data formatting
+    formatted_data = _format_chart_data(sample_indicator_data, "indicator")
+    assert isinstance(formatted_data, pd.DataFrame)
+    assert all(col in formatted_data.columns for col in ["RSI", "BB_upper", "BB_middle", "BB_lower"])
+    assert not formatted_data.empty
+    
+    # Test invalid data type
+    with pytest.raises(ValueError):
+        _format_chart_data(sample_data, "invalid_type")
+
+def test_save_chart(temp_dir: Path):
+    """Test chart saving functionality."""
+    import matplotlib.pyplot as plt
+    
+    # Create a simple test chart
+    fig, ax = plt.subplots()
+    ax.plot([1, 2, 3], [1, 2, 3])
+    
+    # Test saving chart
+    chart_path = temp_dir / "test_chart.png"
+    _save_chart(fig, chart_path)
+    assert chart_path.exists()
+    
+    # Test saving with different formats
+    for fmt in ["png", "jpg", "pdf", "svg"]:
+        chart_path = temp_dir / f"test_chart.{fmt}"
+        _save_chart(fig, chart_path)
+        assert chart_path.exists()
+    
+    plt.close(fig)
+
+def test_plot_indicator_performance(temp_dir: Path, sample_data: pd.DataFrame, sample_indicator_data: pd.DataFrame):
+    """Test indicator performance plotting."""
+    # Test basic plotting
+    chart_path = temp_dir / "indicator_performance.png"
+    plot_indicator_performance(sample_data, sample_indicator_data, chart_path)
+    assert chart_path.exists()
+    
+    # Test with specific indicators
+    chart_path = temp_dir / "rsi_performance.png"
+    plot_indicator_performance(sample_data, sample_indicator_data[["RSI"]], chart_path)
+    assert chart_path.exists()
+    
+    # Test with invalid data
+    with pytest.raises(ValueError):
+        plot_indicator_performance(pd.DataFrame(), sample_indicator_data, chart_path)
+    
+    # Test with missing required columns
+    invalid_data = sample_data.drop(columns=["close"])
+    with pytest.raises(ValueError):
+        plot_indicator_performance(invalid_data, sample_indicator_data, chart_path)
+
+def test_plot_correlation_matrix(temp_dir: Path, sample_correlation_data: pd.DataFrame):
+    """Test correlation matrix plotting."""
+    # Test basic plotting
+    chart_path = temp_dir / "correlation_matrix.png"
+    plot_correlation_matrix(sample_correlation_data, chart_path)
+    assert chart_path.exists()
+    
+    # Test with custom title
+    chart_path = temp_dir / "correlation_matrix_custom.png"
+    plot_correlation_matrix(sample_correlation_data, chart_path, title="Custom Title")
+    assert chart_path.exists()
+    
+    # Test with invalid data
+    with pytest.raises(ValueError):
+        plot_correlation_matrix(pd.DataFrame(), chart_path)
+    
+    # Test with non-square correlation matrix
+    invalid_data = sample_correlation_data.iloc[:, :-1]  # Remove one column
+    with pytest.raises(ValueError):
+        plot_correlation_matrix(invalid_data, chart_path)
+
+def test_plot_optimization_results(temp_dir: Path, sample_optimization_data: Dict[str, Any]):
+    """Test optimization results plotting."""
+    # Test basic plotting
+    chart_path = temp_dir / "optimization_results.png"
+    plot_optimization_results(sample_optimization_data, chart_path)
+    assert chart_path.exists()
+    
+    # Test with single parameter
+    single_param_data = {"RSI": sample_optimization_data["RSI"]}
+    chart_path = temp_dir / "single_param_optimization.png"
+    plot_optimization_results(single_param_data, chart_path)
+    assert chart_path.exists()
+    
+    # Test with invalid data
+    with pytest.raises(ValueError):
+        plot_optimization_results({}, chart_path)
+    
+    # Test with missing required fields
+    invalid_data = {"RSI": {"timeperiod": [14, 20]}}  # Missing score
+    with pytest.raises(ValueError):
+        plot_optimization_results(invalid_data, chart_path)
+
+def test_plot_prediction_accuracy(temp_dir: Path, sample_prediction_data: Tuple[pd.Series, pd.Series]):
+    """Test prediction accuracy plotting."""
+    actual, predicted = sample_prediction_data
+    
+    # Test basic plotting
+    chart_path = temp_dir / "prediction_accuracy.png"
+    plot_prediction_accuracy(actual, predicted, chart_path)
+    assert chart_path.exists()
+    
+    # Test with custom title
+    chart_path = temp_dir / "prediction_accuracy_custom.png"
+    plot_prediction_accuracy(actual, predicted, chart_path, title="Custom Title")
+    assert chart_path.exists()
+    
+    # Test with invalid data
+    with pytest.raises(ValueError):
+        plot_prediction_accuracy(pd.Series(), predicted, chart_path)
+    
+    # Test with mismatched lengths
+    with pytest.raises(ValueError):
+        plot_prediction_accuracy(actual, predicted.iloc[:-1], chart_path)
+
+def test_generate_charts(temp_dir: Path, sample_data: pd.DataFrame, sample_indicator_data: pd.DataFrame,
+                        sample_correlation_data: pd.DataFrame, sample_optimization_data: Dict[str, Any],
+                        sample_prediction_data: Tuple[pd.Series, pd.Series]):
+    """Test main chart generation function."""
+    actual, predicted = sample_prediction_data
+    
+    # Test generating all charts
+    chart_paths = generate_charts(
+        temp_dir,
+        price_data=sample_data,
+        indicator_data=sample_indicator_data,
+        correlation_data=sample_correlation_data,
+        optimization_data=sample_optimization_data,
+        actual_predictions=actual,
+        predicted_predictions=predicted
+    )
+    
+    # Verify all charts were generated
+    assert all(path.exists() for path in chart_paths.values())
+    
+    # Test generating subset of charts
+    chart_paths = generate_charts(
+        temp_dir,
+        price_data=sample_data,
+        indicator_data=sample_indicator_data
+    )
+    assert "indicator_performance" in chart_paths
+    assert "correlation_matrix" not in chart_paths
+    
+    # Test with invalid data
+    with pytest.raises(ValueError):
+        generate_charts(temp_dir)  # No data provided
+
+def test_chart_customization(temp_dir: Path, sample_data: pd.DataFrame, sample_indicator_data: pd.DataFrame):
+    """Test chart customization options."""
+    # Test custom figure size
+    chart_path = temp_dir / "custom_size.png"
+    plot_indicator_performance(sample_data, sample_indicator_data, chart_path, figsize=(12, 8))
+    assert chart_path.exists()
+    
+    # Test custom colors
+    chart_path = temp_dir / "custom_colors.png"
+    plot_indicator_performance(sample_data, sample_indicator_data, chart_path, colors=["red", "blue", "green"])
+    assert chart_path.exists()
+    
+    # Test custom style
+    chart_path = temp_dir / "custom_style.png"
+    plot_indicator_performance(sample_data, sample_indicator_data, chart_path, style="dark_background")
+    assert chart_path.exists()
+    
+    # Test custom labels
+    chart_path = temp_dir / "custom_labels.png"
+    plot_indicator_performance(
+        sample_data,
+        sample_indicator_data,
+        chart_path,
+        title="Custom Title",
+        xlabel="Custom X",
+        ylabel="Custom Y"
+    )
+    assert chart_path.exists()
+
+def test_error_handling(temp_dir: Path):
+    """Test error handling in visualization."""
+    # Test invalid file path
+    with pytest.raises(ValueError):
+        plot_indicator_performance(pd.DataFrame(), pd.DataFrame(), Path("/invalid/path/chart.png"))
+    
+    # Test invalid figure size
+    with pytest.raises(ValueError):
+        plot_indicator_performance(pd.DataFrame(), pd.DataFrame(), temp_dir / "chart.png", figsize=(0, 0))
+    
+    # Test invalid color list
+    with pytest.raises(ValueError):
+        plot_indicator_performance(pd.DataFrame(), pd.DataFrame(), temp_dir / "chart.png", colors=["invalid"])
+    
+    # Test invalid style
+    with pytest.raises(ValueError):
+        plot_indicator_performance(pd.DataFrame(), pd.DataFrame(), temp_dir / "chart.png", style="invalid_style") 

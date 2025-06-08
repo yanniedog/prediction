@@ -9,6 +9,9 @@ from typing import Generator
 import logging_setup
 import config
 import warnings
+from datetime import datetime, timedelta
+import time
+from unittest.mock import patch, MagicMock
 
 @pytest.fixture(scope="function")
 def temp_dir() -> Generator[Path, None, None]:
@@ -27,7 +30,6 @@ def temp_dir() -> Generator[Path, None, None]:
         shutil.rmtree(temp_dir)
     except PermissionError:
         # If we still can't delete, wait a moment and try again
-        import time
         time.sleep(0.1)
         try:
             shutil.rmtree(temp_dir)
@@ -51,6 +53,24 @@ def reset_logging() -> Generator[None, None, None]:
     # Restore original state
     logging.getLogger().handlers = original_handlers
     logging.getLogger().level = original_level
+
+@pytest.fixture(scope="function")
+def temp_log_dir():
+    """Create a temporary directory for test logs."""
+    temp_dir = tempfile.mkdtemp()
+    yield Path(temp_dir)
+    shutil.rmtree(temp_dir)
+
+@pytest.fixture(scope="function")
+def setup_logging(temp_log_dir):
+    """Set up logging with temporary directory."""
+    with patch('logging_setup.LOG_DIR', temp_log_dir):
+        logging_setup.setup_logging()
+        yield
+        # Clean up logging handlers
+        root_logger = logging.getLogger()
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
 
 def test_setup_logging_basic(temp_dir: Path) -> None:
     """Test basic logging setup functionality."""
@@ -298,3 +318,184 @@ def test_log_formatting(temp_dir: Path) -> None:
                     pass
             logger.handlers = []
             config.LOG_DIR = original_log_dir 
+
+def test_logger_initialization(setup_logging, temp_log_dir):
+    """Test logger initialization and basic configuration."""
+    # Get root logger
+    logger = logging.getLogger()
+    
+    # Verify logger has handlers
+    assert len(logger.handlers) > 0
+    
+    # Verify log file was created
+    log_files = list(temp_log_dir.glob('*.log'))
+    assert len(log_files) > 0
+    
+    # Verify log file is writable
+    log_file = log_files[0]
+    assert log_file.stat().st_size == 0  # Should be empty initially
+    
+    # Test logging
+    test_message = "Test log message"
+    logger.info(test_message)
+    
+    # Verify message was written
+    with open(log_file, 'r') as f:
+        content = f.read()
+        assert test_message in content
+
+def test_log_rotation(setup_logging, temp_log_dir):
+    """Test log rotation functionality."""
+    logger = logging.getLogger()
+    
+    # Find the file handler
+    file_handler = None
+    for handler in logger.handlers:
+        if isinstance(handler, logging.handlers.RotatingFileHandler):
+            file_handler = handler
+            break
+    
+    assert file_handler is not None
+    
+    # Test log rotation by writing large amounts of data
+    large_message = "x" * 1000  # 1KB message
+    for _ in range(1000):  # Write 1MB of data
+        logger.info(large_message)
+    
+    # Verify rotation occurred
+    log_files = list(temp_log_dir.glob('*.log*'))
+    assert len(log_files) > 1  # Should have rotated files
+
+def test_log_levels(setup_logging):
+    """Test different log levels."""
+    logger = logging.getLogger()
+    
+    # Test all log levels
+    test_messages = {
+        logging.DEBUG: "Debug message",
+        logging.INFO: "Info message",
+        logging.WARNING: "Warning message",
+        logging.ERROR: "Error message",
+        logging.CRITICAL: "Critical message"
+    }
+    
+    for level, message in test_messages.items():
+        logger.log(level, message)
+    
+    # Verify messages were written
+    log_file = next(Path(logging_setup.LOG_DIR).glob('*.log'))
+    with open(log_file, 'r') as f:
+        content = f.read()
+        for message in test_messages.values():
+            assert message in content
+
+def test_log_formatting(setup_logging):
+    """Test log message formatting."""
+    logger = logging.getLogger()
+    
+    # Test logging with different types of data
+    test_data = {
+        'string': 'test string',
+        'number': 42,
+        'list': [1, 2, 3],
+        'dict': {'key': 'value'},
+        'exception': Exception('test exception')
+    }
+    
+    # Log each type
+    logger.info("String: %s", test_data['string'])
+    logger.info("Number: %d", test_data['number'])
+    logger.info("List: %s", test_data['list'])
+    logger.info("Dict: %s", test_data['dict'])
+    
+    try:
+        raise test_data['exception']
+    except Exception as e:
+        logger.exception("Exception occurred")
+    
+    # Verify formatting
+    log_file = next(Path(logging_setup.LOG_DIR).glob('*.log'))
+    with open(log_file, 'r') as f:
+        content = f.read()
+        assert test_data['string'] in content
+        assert str(test_data['number']) in content
+        assert str(test_data['list']) in content
+        assert str(test_data['dict']) in content
+        assert 'Exception occurred' in content
+        assert 'test exception' in content
+
+def test_log_directory_creation(temp_log_dir):
+    """Test log directory creation."""
+    # Remove directory if it exists
+    if temp_log_dir.exists():
+        shutil.rmtree(temp_log_dir)
+    
+    # Set up logging with non-existent directory
+    with patch('logging_setup.LOG_DIR', temp_log_dir):
+        logging_setup.setup_logging()
+        
+        # Verify directory was created
+        assert temp_log_dir.exists()
+        assert temp_log_dir.is_dir()
+        
+        # Verify log file was created
+        log_files = list(temp_log_dir.glob('*.log'))
+        assert len(log_files) > 0
+
+def test_multiple_loggers(setup_logging):
+    """Test multiple logger instances."""
+    # Create multiple loggers
+    loggers = {
+        'main': logging.getLogger('main'),
+        'data': logging.getLogger('data'),
+        'analysis': logging.getLogger('analysis')
+    }
+    
+    # Log from each logger
+    for name, logger in loggers.items():
+        logger.info(f"Test message from {name} logger")
+    
+    # Verify all messages were written
+    log_file = next(Path(logging_setup.LOG_DIR).glob('*.log'))
+    with open(log_file, 'r') as f:
+        content = f.read()
+        for name in loggers:
+            assert f"Test message from {name} logger" in content
+
+def test_log_cleanup(setup_logging, temp_log_dir):
+    """Test log cleanup functionality."""
+    logger = logging.getLogger()
+    
+    # Create some test log files
+    test_files = [
+        temp_log_dir / f"test_{i}.log" for i in range(5)
+    ]
+    for file in test_files:
+        file.touch()
+    
+    # Set up logging with cleanup
+    with patch('logging_setup.LOG_DIR', temp_log_dir):
+        logging_setup.setup_logging(cleanup_old_logs=True)
+        
+        # Verify only current log file exists
+        log_files = list(temp_log_dir.glob('*.log'))
+        assert len(log_files) == 1  # Only the current log file should remain
+
+def test_error_handling(setup_logging, temp_log_dir):
+    """Test error handling in logging setup."""
+    # Test with invalid log directory
+    with patch('logging_setup.LOG_DIR', Path('/invalid/path')):
+        with pytest.raises(OSError):
+            logging_setup.setup_logging()
+    
+    # Test with read-only directory
+    os.chmod(temp_log_dir, 0o444)  # Make directory read-only
+    with patch('logging_setup.LOG_DIR', temp_log_dir):
+        with pytest.raises(OSError):
+            logging_setup.setup_logging()
+    os.chmod(temp_log_dir, 0o755)  # Restore permissions
+    
+    # Test with invalid log level
+    with patch('logging_setup.LOG_LEVEL', 'INVALID_LEVEL'):
+        with pytest.raises(ValueError):
+            logging_setup.setup_logging() 

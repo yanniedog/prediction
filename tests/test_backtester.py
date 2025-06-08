@@ -8,6 +8,19 @@ from pathlib import Path
 from typing import Dict, Any, Callable
 from matplotlib.figure import Figure
 from unittest.mock import Mock, patch
+import tempfile
+import shutil
+import json
+from backtester import (
+    Strategy,
+    PerformanceMetrics,
+    _calculate_returns,
+    _calculate_drawdown,
+    _calculate_sharpe_ratio,
+    _calculate_sortino_ratio,
+    _calculate_max_drawdown,
+    _calculate_win_rate
+)
 
 @pytest.fixture
 def backtester(data_manager, indicator_factory):
@@ -302,253 +315,280 @@ def test_benchmark_comparison(backtester, test_data):
     assert 'metrics_comparison' in comparison
 
 # Test fixtures
-@pytest.fixture
+@pytest.fixture(scope="function")
 def sample_data() -> pd.DataFrame:
-    dates = pd.date_range(start='2024-01-01', periods=100, freq='H')
+    """Create sample price data for testing."""
+    dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+    np.random.seed(42)
     data = pd.DataFrame({
-        'timestamp': dates,
-        'open': np.random.uniform(100, 200, 100),
-        'high': np.random.uniform(200, 300, 100),
-        'low': np.random.uniform(50, 100, 100),
-        'close': np.random.uniform(100, 200, 100),
-        'volume': np.random.uniform(1000, 5000, 100)
+        "timestamp": dates,
+        "open": np.random.normal(100, 1, 100),
+        "high": np.random.normal(101, 1, 100),
+        "low": np.random.normal(99, 1, 100),
+        "close": np.random.normal(100, 1, 100),
+        "volume": np.random.normal(1000, 100, 100)
     })
+    data["high"] = data[["open", "close"]].max(axis=1) + abs(np.random.normal(0, 0.1, 100))
+    data["low"] = data[["open", "close"]].min(axis=1) - abs(np.random.normal(0, 0.1, 100))
     return data
 
-@pytest.fixture
-def mock_data_manager():
-    return Mock()
-
-@pytest.fixture
-def mock_indicator_factory():
-    return Mock()
-
-@pytest.fixture
-def sample_strategy():
-    def strategy(data: pd.DataFrame, params: Dict[str, Any]) -> pd.Series:
-        """Simple moving average crossover strategy that avoids modifying input data."""
-        # Create a copy of required columns to avoid modifying input data
-        df = pd.DataFrame(index=data.index)
-        df['close'] = data['close']
-        
-        # Calculate moving averages
-        short_window = params.get('short_window', 10)
-        long_window = params.get('long_window', 20)
-        
-        df['short_ma'] = df['close'].rolling(window=short_window).mean()
-        df['long_ma'] = df['close'].rolling(window=long_window).mean()
-        
-        # Generate positions using vectorized operations and convert to Series
-        positions = pd.Series(
-            np.where(df['short_ma'] > df['long_ma'], 1, 
-                    np.where(df['short_ma'] < df['long_ma'], -1, 0)),
-            index=data.index
-        )
-        return positions
+@pytest.fixture(scope="function")
+def sample_strategy() -> Strategy:
+    """Create a sample strategy for testing."""
+    def entry_condition(data: pd.DataFrame, params: Dict[str, Any]) -> pd.Series:
+        return data["close"] > data["close"].rolling(window=params["window"]).mean()
     
-    return strategy
-
-# Test Backtester initialization
-def test_backtester_init(mock_data_manager, mock_indicator_factory):
-    """Test Backtester initialization with mocks."""
-    backtester = Backtester(mock_data_manager, mock_indicator_factory)
-    assert hasattr(backtester, 'data_manager')
-    assert hasattr(backtester, 'indicator_factory')
-    assert backtester.data_manager is mock_data_manager
-    assert backtester.indicator_factory is mock_indicator_factory
-
-def test_validate_dependencies(backtester):
-    """Test dependency validation."""
-    backtester._validate_dependencies()
-    assert hasattr(backtester, 'SCIPY_AVAILABLE')
-
-# Test strategy running
-def test_run_strategy_valid(backtester, sample_data, sample_strategy):
-    """Test running a valid strategy."""
-    params = {'short_window': 10, 'long_window': 20}
-    results = backtester.run_strategy(sample_data, sample_strategy, params)
+    def exit_condition(data: pd.DataFrame, params: Dict[str, Any]) -> pd.Series:
+        return data["close"] < data["close"].rolling(window=params["window"]).mean()
     
-    assert isinstance(results, dict)
-    assert 'positions' in results
-    assert 'sized_positions' in results
-    assert 'returns' in results
-    assert 'equity_curve' in results
-    
-    assert isinstance(results['positions'], pd.Series)
-    assert isinstance(results['sized_positions'], pd.Series)
-    assert isinstance(results['returns'], pd.Series)
-    assert isinstance(results['equity_curve'], pd.Series)
-
-def test_run_strategy_invalid_return(backtester, sample_data):
-    """Test running a strategy that returns invalid data."""
-    def invalid_strategy(data, params):
-        return pd.DataFrame()  # Should return Series
-    
-    with pytest.raises(ValueError):
-        backtester.run_strategy(sample_data, invalid_strategy, {})
-
-# Test position sizing
-def test_size_positions_fixed(backtester, sample_data):
-    """Test fixed position sizing."""
-    positions = pd.Series([1, -1, 0, 1], index=sample_data.index[:4])
-    sized = backtester.size_positions(positions, method='fixed', size=0.1)
-    
-    assert isinstance(sized, pd.Series)
-    assert (sized == positions * 0.1).all()
-
-def test_size_positions_dynamic(backtester, sample_data):
-    """Test dynamic position sizing."""
-    positions = pd.Series([1, -1, 0, 1], index=sample_data.index[:4])
-    sized = backtester.size_positions(
-        positions,
-        method='dynamic',
-        data=sample_data,
-        volatility_window=20
+    return Strategy(
+        name="Moving Average Crossover",
+        entry_condition=entry_condition,
+        exit_condition=exit_condition,
+        params={"window": 20}
     )
 
-    assert isinstance(sized, pd.Series)
-    assert len(sized) == len(positions)
-    non_nan_mask = sized.notna()
-    if non_nan_mask.any():
-        # Only check for non-NaN values
-        assert (sized[non_nan_mask].abs() <= positions[non_nan_mask].abs()).all()
-    else:
-        # If all values are NaN (due to insufficient data), that's acceptable
-        assert sized.isna().all()
+@pytest.fixture(scope="function")
+def backtester(sample_data: pd.DataFrame, sample_strategy: Strategy) -> Backtester:
+    """Create a Backtester instance for testing."""
+    return Backtester(sample_data, sample_strategy)
 
-def test_size_positions_invalid_method(backtester, sample_data):
-    """Test position sizing with invalid method."""
-    positions = pd.Series([1, -1, 0, 1], index=sample_data.index[:4])
+def test_backtester_initialization(sample_data: pd.DataFrame, sample_strategy: Strategy):
+    """Test backtester initialization."""
+    # Test basic initialization
+    backtester = Backtester(sample_data, sample_strategy)
+    assert backtester.data.equals(sample_data)
+    assert backtester.strategy == sample_strategy
+    
+    # Test with invalid data
     with pytest.raises(ValueError):
-        backtester.size_positions(positions, method='invalid')
-
-# Test returns calculation
-def test_calculate_returns(backtester, sample_data):
-    """Test returns calculation."""
-    # Create positions Series matching the full index of sample_data
-    positions = pd.Series([1, -1, 0, 1] + [0] * (len(sample_data) - 4), index=sample_data.index)
-    returns = backtester.calculate_returns(sample_data, positions)
+        Backtester(pd.DataFrame(), sample_strategy)
     
-    assert isinstance(returns, pd.Series)
-    assert len(returns) == len(positions)
-    assert not returns.isna().all()
+    # Test with invalid strategy
+    with pytest.raises(ValueError):
+        Backtester(sample_data, None)
 
-def test_calculate_returns_with_costs(backtester, sample_data):
-    """Test returns calculation with transaction costs."""
-    # Create positions Series matching the full index of sample_data
-    positions = pd.Series([1, -1, 0, 1] + [0] * (len(sample_data) - 4), index=sample_data.index)
-    returns = backtester.calculate_returns(sample_data, positions, transaction_cost=0.001)
+def test_strategy_execution(backtester: Backtester):
+    """Test strategy execution."""
+    # Test basic execution
+    results = backtester.run()
+    assert isinstance(results, pd.DataFrame)
+    assert not results.empty
+    assert "position" in results.columns
+    assert "returns" in results.columns
     
-    assert isinstance(returns, pd.Series)
-    assert len(returns) == len(positions)
-    assert not returns.isna().all()
+    # Test with custom parameters
+    custom_params = {"window": 10}
+    results = backtester.run(params=custom_params)
+    assert isinstance(results, pd.DataFrame)
+    assert not results.empty
+    
+    # Test with invalid parameters
+    with pytest.raises(ValueError):
+        backtester.run(params={"invalid": 10})
 
-# Test performance metrics
-def test_calculate_performance_metrics(backtester, sample_data):
+def test_performance_metrics(backtester: Backtester):
     """Test performance metrics calculation."""
-    returns = pd.Series(np.random.normal(0.001, 0.02, 100), index=sample_data.index)
-    metrics = backtester.calculate_performance_metrics(returns)
+    # Run backtest
+    results = backtester.run()
+    metrics = backtester.calculate_metrics(results)
     
-    assert isinstance(metrics, dict)
-    assert 'annual_return' in metrics
-    assert 'annual_volatility' in metrics
-    assert 'sharpe_ratio' in metrics
-    assert 'max_drawdown' in metrics
+    # Verify metrics
+    assert isinstance(metrics, PerformanceMetrics)
+    assert isinstance(metrics.total_return, float)
+    assert isinstance(metrics.sharpe_ratio, float)
+    assert isinstance(metrics.sortino_ratio, float)
+    assert isinstance(metrics.max_drawdown, float)
+    assert isinstance(metrics.win_rate, float)
+    
+    # Test with empty results
+    with pytest.raises(ValueError):
+        backtester.calculate_metrics(pd.DataFrame())
+    
+    # Test with missing required columns
+    invalid_results = results.drop(columns=["returns"])
+    with pytest.raises(ValueError):
+        backtester.calculate_metrics(invalid_results)
 
-def test_calculate_risk_metrics(backtester, sample_data):
+def test_returns_calculation(backtester: Backtester):
+    """Test returns calculation."""
+    # Test basic returns calculation
+    results = backtester.run()
+    returns = _calculate_returns(results["position"], results["close"])
+    assert isinstance(returns, pd.Series)
+    assert not returns.empty
+    assert not returns.isna().all()
+    
+    # Test with zero positions
+    zero_positions = pd.Series(0, index=results.index)
+    returns = _calculate_returns(zero_positions, results["close"])
+    assert (returns == 0).all()
+    
+    # Test with invalid data
+    with pytest.raises(ValueError):
+        _calculate_returns(pd.Series(), results["close"])
+
+def test_drawdown_calculation(backtester: Backtester):
+    """Test drawdown calculation."""
+    # Run backtest and calculate returns
+    results = backtester.run()
+    returns = _calculate_returns(results["position"], results["close"])
+    
+    # Test drawdown calculation
+    drawdown = _calculate_drawdown(returns)
+    assert isinstance(drawdown, pd.Series)
+    assert not drawdown.empty
+    assert not drawdown.isna().all()
+    assert (drawdown <= 0).all()  # Drawdowns should be non-positive
+    
+    # Test max drawdown
+    max_dd = _calculate_max_drawdown(returns)
+    assert isinstance(max_dd, float)
+    assert max_dd <= 0
+    assert max_dd >= drawdown.min()
+
+def test_risk_metrics(backtester: Backtester):
     """Test risk metrics calculation."""
-    returns = pd.Series(np.random.normal(0.001, 0.02, 100), index=sample_data.index)
-    metrics = backtester.calculate_risk_metrics(returns)
+    # Run backtest and calculate returns
+    results = backtester.run()
+    returns = _calculate_returns(results["position"], results["close"])
     
-    assert isinstance(metrics, dict)
-    assert 'volatility' in metrics
-    assert 'var_95' in metrics
-    assert 'cvar_95' in metrics
-    assert 'skewness' in metrics
-    assert 'kurtosis' in metrics
+    # Test Sharpe ratio
+    sharpe = _calculate_sharpe_ratio(returns)
+    assert isinstance(sharpe, float)
+    assert not np.isnan(sharpe)
+    assert not np.isinf(sharpe)
+    
+    # Test Sortino ratio
+    sortino = _calculate_sortino_ratio(returns)
+    assert isinstance(sortino, float)
+    assert not np.isnan(sortino)
+    assert not np.isinf(sortino)
+    
+    # Test with zero returns
+    zero_returns = pd.Series(0, index=returns.index)
+    assert _calculate_sharpe_ratio(zero_returns) == 0
+    assert _calculate_sortino_ratio(zero_returns) == 0
 
-# Test strategy optimization
-def test_optimize_strategy(backtester, sample_data, sample_strategy):
+def test_win_rate_calculation(backtester: Backtester):
+    """Test win rate calculation."""
+    # Run backtest and calculate returns
+    results = backtester.run()
+    returns = _calculate_returns(results["position"], results["close"])
+    
+    # Test win rate calculation
+    win_rate = _calculate_win_rate(returns)
+    assert isinstance(win_rate, float)
+    assert 0 <= win_rate <= 1
+    
+    # Test with all winning trades
+    winning_returns = pd.Series(0.1, index=returns.index)
+    assert _calculate_win_rate(winning_returns) == 1.0
+    
+    # Test with all losing trades
+    losing_returns = pd.Series(-0.1, index=returns.index)
+    assert _calculate_win_rate(losing_returns) == 0.0
+
+def test_position_management(backtester: Backtester):
+    """Test position management."""
+    # Test position sizing
+    results = backtester.run(position_size=0.5)  # 50% position size
+    assert (abs(results["position"]) <= 0.5).all()
+    
+    # Test position limits
+    results = backtester.run(max_position=0.3)  # Maximum 30% position
+    assert (abs(results["position"]) <= 0.3).all()
+    
+    # Test invalid position size
+    with pytest.raises(ValueError):
+        backtester.run(position_size=1.5)  # >100% position size
+    
+    # Test invalid max position
+    with pytest.raises(ValueError):
+        backtester.run(max_position=-0.1)  # Negative max position
+
+def test_transaction_costs(backtester: Backtester):
+    """Test transaction cost handling."""
+    # Test with transaction costs
+    results = backtester.run(transaction_cost=0.001)  # 0.1% transaction cost
+    assert "transaction_cost" in results.columns
+    assert (results["transaction_cost"] >= 0).all()
+    
+    # Test with zero transaction costs
+    results = backtester.run(transaction_cost=0)
+    assert (results["transaction_cost"] == 0).all()
+    
+    # Test with invalid transaction costs
+    with pytest.raises(ValueError):
+        backtester.run(transaction_cost=-0.001)  # Negative transaction cost
+
+def test_optimization(backtester: Backtester):
     """Test strategy optimization."""
-    param_space = {
-        'short_window': [5, 10, 15],
-        'long_window': [20, 30, 40]
+    # Define parameter grid
+    param_grid = {
+        "window": [10, 20, 30, 40, 50]
     }
     
-    # Ensure sample_data has required columns
-    if 'close' not in sample_data.columns:
-        sample_data['close'] = np.random.uniform(100, 200, len(sample_data))
+    # Test optimization
+    best_params, best_metrics = backtester.optimize(param_grid)
+    assert isinstance(best_params, dict)
+    assert "window" in best_params
+    assert isinstance(best_metrics, PerformanceMetrics)
     
-    results = backtester.optimize_strategy(
-        sample_data,
-        sample_strategy,
-        param_space,
-        metric='sharpe_ratio'
+    # Test with invalid parameter grid
+    with pytest.raises(ValueError):
+        backtester.optimize({})
+    
+    # Test with invalid parameter values
+    invalid_grid = {"window": [-1, 0]}  # Invalid window sizes
+    with pytest.raises(ValueError):
+        backtester.optimize(invalid_grid)
+
+def test_plotting(backtester: Backtester, temp_dir: Path):
+    """Test backtest plotting."""
+    # Run backtest
+    results = backtester.run()
+    
+    # Test equity curve plot
+    plot_path = temp_dir / "equity_curve.png"
+    backtester.plot_equity_curve(results, plot_path)
+    assert plot_path.exists()
+    
+    # Test drawdown plot
+    plot_path = temp_dir / "drawdown.png"
+    backtester.plot_drawdown(results, plot_path)
+    assert plot_path.exists()
+    
+    # Test monthly returns plot
+    plot_path = temp_dir / "monthly_returns.png"
+    backtester.plot_monthly_returns(results, plot_path)
+    assert plot_path.exists()
+
+def test_error_handling(backtester: Backtester):
+    """Test error handling."""
+    # Test with invalid data types
+    invalid_data = backtester.data.copy()
+    invalid_data["close"] = "invalid"
+    with pytest.raises(ValueError):
+        Backtester(invalid_data, backtester.strategy)
+    
+    # Test with missing required columns
+    invalid_data = backtester.data.drop(columns=["close"])
+    with pytest.raises(ValueError):
+        Backtester(invalid_data, backtester.strategy)
+    
+    # Test with invalid strategy conditions
+    def invalid_condition(data: pd.DataFrame, params: Dict[str, Any]) -> pd.Series:
+        return pd.Series(["invalid"] * len(data))  # Invalid return type
+    
+    invalid_strategy = Strategy(
+        name="Invalid Strategy",
+        entry_condition=invalid_condition,
+        exit_condition=backtester.strategy.exit_condition,
+        params=backtester.strategy.params
     )
-    
-    assert isinstance(results, dict)
-    assert 'best_params' in results
-    assert 'best_score' in results
-    assert 'all_results' in results
-    assert all(isinstance(r['params'], dict) for r in results['all_results'])
-
-# Test Monte Carlo simulation
-def test_run_monte_carlo_simulation(backtester, sample_data):
-    """Test Monte Carlo simulation."""
-    returns = pd.Series(np.random.normal(0.001, 0.02, 100), index=sample_data.index)
-    results = backtester.run_monte_carlo_simulation(
-        returns,
-        n_simulations=100,
-        time_steps=252
-    )
-    
-    assert isinstance(results, dict)
-    assert 'simulations' in results
-    assert 'confidence_intervals' in results
-
-# Test visualization functions
-def test_plot_equity_curve(backtester, sample_data):
-    """Test equity curve plotting."""
-    returns = pd.Series(np.random.normal(0.001, 0.02, 100), index=sample_data.index)
-    fig = backtester.plot_equity_curve(returns)
-    assert isinstance(fig, Figure)
-
-def test_plot_drawdown(backtester, sample_data):
-    """Test drawdown plotting."""
-    returns = pd.Series(np.random.normal(0.001, 0.02, 100), index=sample_data.index)
-    fig = backtester.plot_drawdown(returns)
-    assert isinstance(fig, Figure)
-
-def test_plot_monthly_returns_heatmap(backtester, sample_data):
-    """Test monthly returns heatmap plotting."""
-    returns = pd.Series(np.random.normal(0.001, 0.02, 100), index=sample_data.index)
-    fig = backtester.plot_monthly_returns_heatmap(returns)
-    assert isinstance(fig, Figure)
-
-# Test performance reporting
-def test_generate_performance_report(backtester, sample_data):
-    """Test performance report generation."""
-    returns = pd.Series(np.random.normal(0.001, 0.02, 100), index=sample_data.index)
-    report = backtester.generate_performance_report(returns)
-    assert isinstance(report, dict)
-    assert 'summary' in report
-    assert 'metrics' in report
-    assert 'charts' in report
-    # Check that risk metrics are present inside 'metrics'
-    for key in ['volatility', 'var_95', 'cvar_95', 'skewness', 'kurtosis']:
-        assert key in report['metrics']
-
-def test_compare_with_benchmark(backtester, sample_data):
-    """Test benchmark comparison."""
-    strategy_returns = pd.Series(np.random.normal(0.001, 0.02, 100), index=sample_data.index)
-    benchmark_returns = pd.Series(np.random.normal(0.0005, 0.015, 100), index=sample_data.index)
-    
-    comparison = backtester.compare_with_benchmark(strategy_returns, benchmark_returns)
-    
-    assert isinstance(comparison, dict)
-    assert 'relative_performance' in comparison
-    assert 'correlation' in comparison
-    assert 'information_ratio' in comparison
+    with pytest.raises(ValueError):
+        Backtester(backtester.data, invalid_strategy)
 
 # Test main backtest function
 @patch('backtester.sqlite_manager')

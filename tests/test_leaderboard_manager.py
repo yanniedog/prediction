@@ -1,70 +1,92 @@
 import pytest
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
 from pathlib import Path
+import tempfile
+import shutil
+import sqlite3
+from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional
 from leaderboard_manager import LeaderboardManager
 import json
+from unittest.mock import patch
 
-@pytest.fixture
-def leaderboard_manager():
-    """Provide a LeaderboardManager instance for testing."""
-    return LeaderboardManager()
+@pytest.fixture(scope="function")
+def temp_db_dir():
+    """Create a temporary directory for test database."""
+    temp_dir = tempfile.mkdtemp()
+    yield Path(temp_dir)
+    shutil.rmtree(temp_dir)
 
-@pytest.fixture
+@pytest.fixture(scope="function")
+def leaderboard_manager(temp_db_dir):
+    """Create a LeaderboardManager instance with temporary database."""
+    with patch('leaderboard_manager.LEADERBOARD_DB_PATH', temp_db_dir / "leaderboard.db"):
+        manager = LeaderboardManager()
+        yield manager
+
+@pytest.fixture(scope="function")
 def test_data():
-    """Provide test data for leaderboard operations."""
+    """Create sample test data."""
     return {
-        'lag': 5,
-        'correlation_value': 0.85,
-        'indicator_name': 'Test Indicator',
-        'params': {'window': 20, 'threshold': 0.5},
-        'config_id': 1,
         'symbol': 'BTCUSDT',
         'timeframe': '1h',
-        'data_daterange': '2023-01-01 to 2023-12-31',
+        'data_daterange': '2024-01-01_2024-01-31',
         'source_db_name': 'test.db'
     }
 
-def test_leaderboard_manager_initialization(leaderboard_manager):
-    """Test LeaderboardManager initialization."""
-    assert leaderboard_manager is not None
-    assert hasattr(leaderboard_manager, 'create_connection')
-    assert hasattr(leaderboard_manager, 'load_leaderboard')
-
-def test_check_and_update_single_lag(leaderboard_manager, test_data):
-    """Test checking and updating a single lag."""
-    # Test positive correlation update
-    result = leaderboard_manager.check_and_update_single_lag(
-        lag=test_data['lag'],
-        correlation_value=test_data['correlation_value'],
-        indicator_name=test_data['indicator_name'],
-        params=test_data['params'],
-        config_id=test_data['config_id'],
-        symbol=test_data['symbol'],
-        timeframe=test_data['timeframe'],
-        data_daterange=test_data['data_daterange'],
-        source_db_name=test_data['source_db_name']
-    )
-    assert isinstance(result, bool)
+def test_leaderboard_initialization(leaderboard_manager):
+    """Test leaderboard database initialization."""
+    # Verify database was created
+    assert leaderboard_manager.create_connection() is not None
     
-    # Test negative correlation update
-    result = leaderboard_manager.check_and_update_single_lag(
-        lag=test_data['lag'],
-        correlation_value=-test_data['correlation_value'],
-        indicator_name=test_data['indicator_name'],
-        params=test_data['params'],
-        config_id=test_data['config_id'],
-        symbol=test_data['symbol'],
-        timeframe=test_data['timeframe'],
-        data_daterange=test_data['data_daterange'],
-        source_db_name=test_data['source_db_name']
-    )
-    assert isinstance(result, bool)
+    # Verify tables were created
+    conn = leaderboard_manager.create_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = {row[0] for row in cursor.fetchall()}
+    assert 'leaderboard' in tables
+    assert 'metadata' in tables
+    conn.close()
 
-def test_update_leaderboard(leaderboard_manager, test_data):
-    """Test updating the leaderboard with multiple correlations."""
-    # Create test correlations
+def test_update_single_lag(leaderboard_manager, test_data):
+    """Test updating a single lag in the leaderboard."""
+    # Test updating with valid data
+    success = leaderboard_manager.check_and_update_single_lag(
+        lag=5,
+        correlation_value=0.85,
+        indicator_name='RSI',
+        params={'timeperiod': 14},
+        config_id=1,
+        **test_data
+    )
+    assert success
+    
+    # Verify the update
+    leaderboard = leaderboard_manager.load_leaderboard()
+    key = (1, 'positive')  # (config_id, correlation_type)
+    assert key in leaderboard
+    assert leaderboard[key]['correlation_value'] == 0.85
+    assert leaderboard[key]['indicator_name'] == 'RSI'
+    
+    # Test updating with lower correlation (should not update)
+    success = leaderboard_manager.check_and_update_single_lag(
+        lag=5,
+        correlation_value=0.75,  # Lower than 0.85
+        indicator_name='RSI',
+        params={'timeperiod': 14},
+        config_id=1,
+        **test_data
+    )
+    assert not success  # Should not update
+    
+    # Verify the value didn't change
+    leaderboard = leaderboard_manager.load_leaderboard()
+    assert leaderboard[key]['correlation_value'] == 0.85
+
+def test_update_leaderboard_bulk(leaderboard_manager, test_data):
+    """Test bulk leaderboard updates."""
+    # Create test correlations and configs
     correlations = {
         5: [0.85, 0.75, 0.65],  # lag 5
         10: [0.70, 0.60, 0.50]  # lag 10
@@ -73,98 +95,168 @@ def test_update_leaderboard(leaderboard_manager, test_data):
     indicator_configs = [
         {
             'config_id': 1,
-            'indicator_name': 'Test Indicator 1',
-            'params': {'window': 20}
+            'indicator_name': 'RSI',
+            'params': {'timeperiod': 14}
         },
         {
             'config_id': 2,
-            'indicator_name': 'Test Indicator 2',
-            'params': {'window': 30}
+            'indicator_name': 'BB',
+            'params': {'timeperiod': 20, 'nbdevup': 2, 'nbdevdn': 2}
         }
     ]
     
+    # Update leaderboard
     leaderboard_manager.update_leaderboard(
         current_run_correlations=correlations,
         indicator_configs=indicator_configs,
         max_lag=10,
-        symbol=test_data['symbol'],
-        timeframe=test_data['timeframe'],
-        data_daterange=test_data['data_daterange'],
-        source_db_name=test_data['source_db_name']
+        **test_data
     )
     
-    # Verify leaderboard data
-    leaderboard_data = leaderboard_manager.load_leaderboard()
-    assert isinstance(leaderboard_data, dict)
-    assert len(leaderboard_data) > 0
+    # Verify updates
+    leaderboard = leaderboard_manager.load_leaderboard()
+    assert len(leaderboard) > 0
+    
+    # Check specific entries
+    for config in indicator_configs:
+        config_id = config['config_id']
+        key_pos = (config_id, 'positive')
+        key_neg = (config_id, 'negative')
+        assert key_pos in leaderboard or key_neg in leaderboard
 
-def test_export_leaderboard_to_text(leaderboard_manager, tmp_path):
-    """Test exporting leaderboard to text file."""
-    # First add some data
-    test_data = {
-        'lag': 5,
-        'correlation_value': 0.85,
-        'indicator_name': 'Test Indicator',
-        'params': {'window': 20},
-        'config_id': 1,
-        'symbol': 'BTCUSDT',
-        'timeframe': '1h',
-        'data_daterange': '2023-01-01 to 2023-12-31',
-        'source_db_name': 'test.db'
-    }
-    
-    leaderboard_manager.check_and_update_single_lag(**test_data)
-    
-    # Export to text
-    result = leaderboard_manager.export_leaderboard_to_text()
-    assert result is True
-
-def test_find_best_predictor_for_lag(leaderboard_manager, test_data):
-    """Test finding the best predictor for a lag."""
-    # First add some data
-    leaderboard_manager.check_and_update_single_lag(**test_data)
-    
-    # Find best predictor
-    best_predictor = leaderboard_manager.find_best_predictor_for_lag(test_data['lag'])
-    assert best_predictor is None or isinstance(best_predictor, dict)
-
-def test_generate_leading_indicator_report(leaderboard_manager, test_data):
-    """Test generating leading indicator report."""
-    # First add some data
-    leaderboard_manager.check_and_update_single_lag(**test_data)
-    
-    # Generate report
-    result = leaderboard_manager.generate_leading_indicator_report()
-    assert isinstance(result, bool)
-
-def test_generate_consistency_report(leaderboard_manager, test_data, tmp_path):
-    """Test generating consistency report."""
-    # Create test data
-    correlations = {
-        1: [0.85, 0.75, 0.65],
-        2: [0.70, 0.60, 0.50]
-    }
-    
-    indicator_configs = [
+def test_find_best_predictor(leaderboard_manager, test_data):
+    """Test finding best predictor for a lag."""
+    # First add some test data
+    test_configs = [
         {
             'config_id': 1,
-            'indicator_name': 'Test Indicator 1',
-            'params': {'window': 20}
+            'indicator_name': 'RSI',
+            'params': {'timeperiod': 14}
         },
         {
             'config_id': 2,
-            'indicator_name': 'Test Indicator 2',
-            'params': {'window': 30}
+            'indicator_name': 'BB',
+            'params': {'timeperiod': 20}
         }
     ]
     
-    # Generate report
-    result = leaderboard_manager.generate_consistency_report(
-        correlations_by_config_id=correlations,
-        indicator_configs_processed=indicator_configs,
-        max_lag=2,
-        output_dir=tmp_path,
+    # Add correlations
+    for config in test_configs:
+        leaderboard_manager.check_and_update_single_lag(
+            lag=5,
+            correlation_value=0.85 if config['config_id'] == 1 else 0.75,
+            **config,
+            **test_data
+        )
+    
+    # Test finding best predictor
+    predictor = leaderboard_manager.find_best_predictor_for_lag(5)
+    assert predictor is not None
+    assert predictor['indicator_name'] == 'RSI'  # Should be RSI with 0.85 correlation
+    assert predictor['correlation_value'] == 0.85
+    
+    # Test with non-existent lag
+    predictor = leaderboard_manager.find_best_predictor_for_lag(999)
+    assert predictor is None
+
+def test_export_leaderboard(leaderboard_manager, test_data, temp_db_dir):
+    """Test exporting leaderboard to text file."""
+    # First add some test data
+    leaderboard_manager.check_and_update_single_lag(
+        lag=5,
+        correlation_value=0.85,
+        indicator_name='RSI',
+        params={'timeperiod': 14},
+        config_id=1,
+        **test_data
+    )
+    
+    # Export leaderboard
+    success = leaderboard_manager.export_leaderboard_to_text()
+    assert success
+    
+    # Verify export file exists
+    export_path = Path('leaderboard_export.txt')
+    assert export_path.exists()
+    assert export_path.stat().st_size > 0
+    
+    # Clean up
+    export_path.unlink()
+
+def test_generate_reports(leaderboard_manager, test_data, temp_db_dir):
+    """Test generating various reports."""
+    # First add some test data
+    test_configs = [
+        {
+            'config_id': 1,
+            'indicator_name': 'RSI',
+            'params': {'timeperiod': 14}
+        },
+        {
+            'config_id': 2,
+            'indicator_name': 'BB',
+            'params': {'timeperiod': 20}
+        }
+    ]
+    
+    # Add correlations for both configs
+    for config in test_configs:
+        leaderboard_manager.check_and_update_single_lag(
+            lag=5,
+            correlation_value=0.85 if config['config_id'] == 1 else 0.75,
+            **config,
+            **test_data
+        )
+    
+    # Test leading indicator report
+    success = leaderboard_manager.generate_leading_indicator_report()
+    assert success
+    
+    # Test consistency report
+    correlations_by_config = {
+        1: [0.85, 0.80, 0.75],  # RSI correlations
+        2: [0.75, 0.70, 0.65]   # BB correlations
+    }
+    
+    success = leaderboard_manager.generate_consistency_report(
+        correlations_by_config_id=correlations_by_config,
+        indicator_configs_processed=test_configs,
+        max_lag=5,
+        output_dir=temp_db_dir,
         file_prefix='test_consistency',
         abs_corr_threshold=0.15
     )
-    assert isinstance(result, bool) 
+    assert success
+    
+    # Verify report files exist
+    assert (temp_db_dir / 'test_consistency_report.txt').exists()
+    assert (temp_db_dir / 'test_consistency_heatmap.png').exists()
+
+def test_error_handling(leaderboard_manager, test_data):
+    """Test error handling in various scenarios."""
+    # Test with invalid database connection
+    with patch('leaderboard_manager._create_leaderboard_connection', return_value=None):
+        with pytest.raises(Exception):
+            leaderboard_manager.load_leaderboard()
+    
+    # Test with invalid correlation value
+    with pytest.raises(ValueError):
+        leaderboard_manager.check_and_update_single_lag(
+            lag=5,
+            correlation_value=1.5,  # Invalid correlation > 1
+            indicator_name='RSI',
+            params={'timeperiod': 14},
+            config_id=1,
+            **test_data
+        )
+    
+    # Test with missing required data
+    with pytest.raises(KeyError):
+        leaderboard_manager.check_and_update_single_lag(
+            lag=5,
+            correlation_value=0.85,
+            indicator_name='RSI',
+            params={'timeperiod': 14},
+            config_id=1,
+            symbol='BTCUSDT'  # Missing other required fields
+        ) 

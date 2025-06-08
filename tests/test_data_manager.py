@@ -6,6 +6,167 @@ from data_manager import _fetch_klines, _process_klines, _save_to_sqlite
 from pathlib import Path
 import sqlite3
 import os
+import tempfile
+import shutil
+import json
+from data_manager import (
+    DataManager,
+    _load_csv,
+    _save_csv,
+    _validate_data,
+    _merge_data,
+    _filter_data,
+    _resample_data,
+    _fill_missing_data,
+    _normalize_data,
+    _split_data
+)
+
+@pytest.fixture(scope="function")
+def temp_dir() -> Path:
+    temp_dir = Path(tempfile.mkdtemp())
+    yield temp_dir
+    shutil.rmtree(temp_dir)
+
+@pytest.fixture(scope="function")
+def sample_data() -> pd.DataFrame:
+    dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+    np.random.seed(42)
+    data = pd.DataFrame({
+        "timestamp": dates,
+        "open": np.random.normal(100, 1, 100),
+        "high": np.random.normal(101, 1, 100),
+        "low": np.random.normal(99, 1, 100),
+        "close": np.random.normal(100, 1, 100),
+        "volume": np.random.normal(1000, 100, 100)
+    })
+    data["high"] = data[["open", "close"]].max(axis=1) + abs(np.random.normal(0, 0.1, 100))
+    data["low"] = data[["open", "close"]].min(axis=1) - abs(np.random.normal(0, 0.1, 100))
+    return data
+
+@pytest.fixture(scope="function")
+def data_manager(temp_dir: Path) -> DataManager:
+    return DataManager(data_dir=temp_dir)
+
+def test_data_manager_initialization(temp_dir: Path):
+    manager = DataManager(data_dir=temp_dir)
+    assert manager.data_dir == temp_dir
+    assert temp_dir.exists()
+    with pytest.raises(ValueError):
+        DataManager(data_dir="/invalid/path")
+
+def test_load_and_save_csv(data_manager: DataManager, sample_data: pd.DataFrame, temp_dir: Path):
+    csv_path = temp_dir / "test.csv"
+    _save_csv(sample_data, csv_path)
+    assert csv_path.exists()
+    loaded = _load_csv(csv_path)
+    pd.testing.assert_frame_equal(loaded, sample_data)
+    with pytest.raises(ValueError):
+        _load_csv(temp_dir / "nonexistent.csv")
+
+def test_validate_data(sample_data: pd.DataFrame):
+    assert _validate_data(sample_data)
+    invalid = sample_data.drop(columns=["close"])
+    with pytest.raises(ValueError):
+        _validate_data(invalid)
+    nan_data = sample_data.copy()
+    nan_data.loc[0, "close"] = np.nan
+    with pytest.raises(ValueError):
+        _validate_data(nan_data)
+
+def test_merge_data(sample_data: pd.DataFrame):
+    merged = _merge_data([sample_data, sample_data])
+    assert isinstance(merged, pd.DataFrame)
+    assert len(merged) == 2 * len(sample_data)
+    with pytest.raises(ValueError):
+        _merge_data([])
+
+def test_filter_data(sample_data: pd.DataFrame):
+    filtered = _filter_data(sample_data, start=sample_data["timestamp"][10], end=sample_data["timestamp"][20])
+    assert isinstance(filtered, pd.DataFrame)
+    assert filtered["timestamp"].min() >= sample_data["timestamp"][10]
+    assert filtered["timestamp"].max() <= sample_data["timestamp"][20]
+    with pytest.raises(ValueError):
+        _filter_data(sample_data, start="2100-01-01", end="2100-01-02")
+
+def test_resample_data(sample_data: pd.DataFrame):
+    resampled = _resample_data(sample_data, rule="D")
+    assert isinstance(resampled, pd.DataFrame)
+    assert len(resampled) < len(sample_data)
+    with pytest.raises(ValueError):
+        _resample_data(sample_data, rule="invalid")
+
+def test_fill_missing_data(sample_data: pd.DataFrame):
+    data = sample_data.copy()
+    data.loc[0, "close"] = np.nan
+    filled = _fill_missing_data(data)
+    assert not filled["close"].isna().any()
+    with pytest.raises(ValueError):
+        _fill_missing_data(pd.DataFrame())
+
+def test_normalize_data(sample_data: pd.DataFrame):
+    normalized = _normalize_data(sample_data, columns=["open", "close"])
+    assert np.allclose(normalized[["open", "close"]].mean(), 0, atol=1e-1)
+    assert np.allclose(normalized[["open", "close"]].std(), 1, atol=1e-1)
+    with pytest.raises(ValueError):
+        _normalize_data(sample_data, columns=["nonexistent"])
+
+def test_split_data(sample_data: pd.DataFrame):
+    train, test = _split_data(sample_data, test_size=0.2)
+    assert isinstance(train, pd.DataFrame)
+    assert isinstance(test, pd.DataFrame)
+    assert len(train) + len(test) == len(sample_data)
+    with pytest.raises(ValueError):
+        _split_data(sample_data, test_size=1.5)
+
+def test_data_manager_methods(data_manager: DataManager, sample_data: pd.DataFrame, temp_dir: Path):
+    # Save and load
+    path = temp_dir / "data.csv"
+    data_manager.save_data(sample_data, path)
+    loaded = data_manager.load_data(path)
+    pd.testing.assert_frame_equal(loaded, sample_data)
+    # Validate
+    assert data_manager.validate_data(sample_data)
+    # Merge
+    merged = data_manager.merge_data([sample_data, sample_data])
+    assert len(merged) == 2 * len(sample_data)
+    # Filter
+    filtered = data_manager.filter_data(sample_data, start=sample_data["timestamp"][10], end=sample_data["timestamp"][20])
+    assert filtered["timestamp"].min() >= sample_data["timestamp"][10]
+    # Resample
+    resampled = data_manager.resample_data(sample_data, rule="D")
+    assert len(resampled) < len(sample_data)
+    # Fill missing
+    data = sample_data.copy()
+    data.loc[0, "close"] = np.nan
+    filled = data_manager.fill_missing_data(data)
+    assert not filled["close"].isna().any()
+    # Normalize
+    normalized = data_manager.normalize_data(sample_data, columns=["open", "close"])
+    assert np.allclose(normalized[["open", "close"]].mean(), 0, atol=1e-1)
+    # Split
+    train, test = data_manager.split_data(sample_data, test_size=0.2)
+    assert len(train) + len(test) == len(sample_data)
+
+def test_error_handling(data_manager: DataManager, temp_dir: Path):
+    with pytest.raises(ValueError):
+        data_manager.load_data(temp_dir / "nonexistent.csv")
+    with pytest.raises(ValueError):
+        data_manager.save_data(pd.DataFrame(), temp_dir / "empty.csv")
+    with pytest.raises(ValueError):
+        data_manager.validate_data(pd.DataFrame())
+    with pytest.raises(ValueError):
+        data_manager.merge_data([])
+    with pytest.raises(ValueError):
+        data_manager.filter_data(pd.DataFrame(), start="2100-01-01", end="2100-01-02")
+    with pytest.raises(ValueError):
+        data_manager.resample_data(pd.DataFrame(), rule="D")
+    with pytest.raises(ValueError):
+        data_manager.fill_missing_data(pd.DataFrame())
+    with pytest.raises(ValueError):
+        data_manager.normalize_data(pd.DataFrame(), columns=["open"])
+    with pytest.raises(ValueError):
+        data_manager.split_data(pd.DataFrame(), test_size=0.2)
 
 def test_data_manager_initialization(data_manager):
     """Test DataManager initialization."""

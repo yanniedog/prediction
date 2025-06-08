@@ -11,6 +11,20 @@ from matplotlib.figure import Figure
 from conftest import assert_timeout, skip_if_missing_dependency
 from typing import Dict, List, Any, Optional, Tuple
 import sqlite_manager
+from pathlib import Path
+import tempfile
+import shutil
+import json
+from correlation_calculator import (
+    _calculate_correlation,
+    _calculate_lag_correlation,
+    _calculate_rolling_correlation,
+    _calculate_cross_correlation,
+    _calculate_autocorrelation,
+    _calculate_partial_correlation,
+    _calculate_spearman_correlation,
+    _calculate_kendall_correlation
+)
 
 def timeout(seconds):
     """Decorator to add timeout to test functions using threading."""
@@ -403,35 +417,310 @@ def test_correlation_regimes(correlation_calculator, test_data):
     assert len(result['regimes']) == 2
     assert result['transition_matrix'].shape == (2, 2)
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def sample_data() -> pd.DataFrame:
-    dates = pd.date_range(start='2024-01-01', periods=100, freq='H')
+    """Create sample data for testing."""
+    dates = pd.date_range(start="2023-01-01", periods=100, freq="H")
+    np.random.seed(42)
     data = pd.DataFrame({
-        'timestamp': dates,
-        'open': np.random.uniform(100, 200, 100),
-        'high': np.random.uniform(200, 300, 100),
-        'low': np.random.uniform(50, 100, 100),
-        'close': np.random.uniform(100, 200, 100),
-        'volume': np.random.uniform(1000, 5000, 100),
-        'RSI_14': np.random.uniform(0, 100, 100),  # Sample indicator
-        'MACD_12_26_9': np.random.uniform(-10, 10, 100)  # Sample indicator
+        "timestamp": dates,
+        "price": np.random.normal(100, 1, 100).cumsum(),
+        "volume": np.random.normal(1000, 100, 100),
+        "indicator1": np.random.normal(0, 1, 100),
+        "indicator2": np.random.normal(0, 1, 100)
     })
+    # Add some correlation between indicators
+    data["indicator2"] = 0.7 * data["indicator1"] + 0.3 * np.random.normal(0, 1, 100)
     return data
 
-@pytest.fixture
-def sample_indicator_configs() -> List[Dict[str, Any]]:
-    return [
-        {
-            'config_id': 1,
-            'indicator_name': 'RSI',
-            'params': {'period': 14}
-        },
-        {
-            'config_id': 2,
-            'indicator_name': 'MACD',
-            'params': {'fast': 12, 'slow': 26, 'signal': 9}
-        }
-    ]
+@pytest.fixture(scope="function")
+def correlation_calculator(sample_data: pd.DataFrame) -> CorrelationCalculator:
+    """Create a CorrelationCalculator instance for testing."""
+    return CorrelationCalculator(sample_data)
+
+def test_correlation_calculator_initialization(sample_data: pd.DataFrame):
+    """Test correlation calculator initialization."""
+    # Test basic initialization
+    calculator = CorrelationCalculator(sample_data)
+    assert calculator.data.equals(sample_data)
+    
+    # Test with invalid data
+    with pytest.raises(ValueError):
+        CorrelationCalculator(pd.DataFrame())
+    
+    # Test with missing required columns
+    invalid_data = sample_data.drop(columns=["timestamp"])
+    with pytest.raises(ValueError):
+        CorrelationCalculator(invalid_data)
+
+def test_calculate_correlation(correlation_calculator: CorrelationCalculator):
+    """Test basic correlation calculation."""
+    # Test correlation between indicators
+    corr = _calculate_correlation(
+        correlation_calculator.data["indicator1"],
+        correlation_calculator.data["indicator2"]
+    )
+    assert isinstance(corr, float)
+    assert -1 <= corr <= 1
+    assert abs(corr - 0.7) < 0.1  # Should be close to 0.7 due to our data generation
+    
+    # Test with identical series
+    corr = _calculate_correlation(
+        correlation_calculator.data["indicator1"],
+        correlation_calculator.data["indicator1"]
+    )
+    assert corr == 1.0
+    
+    # Test with opposite series
+    corr = _calculate_correlation(
+        correlation_calculator.data["indicator1"],
+        -correlation_calculator.data["indicator1"]
+    )
+    assert corr == -1.0
+    
+    # Test with invalid data
+    with pytest.raises(ValueError):
+        _calculate_correlation(pd.Series(), pd.Series())
+
+def test_calculate_lag_correlation(correlation_calculator: CorrelationCalculator):
+    """Test lag correlation calculation."""
+    # Test with different lags
+    lags = range(-5, 6)
+    correlations = _calculate_lag_correlation(
+        correlation_calculator.data["price"],
+        correlation_calculator.data["indicator1"],
+        lags
+    )
+    assert isinstance(correlations, pd.Series)
+    assert len(correlations) == len(lags)
+    assert all(-1 <= corr <= 1 for corr in correlations)
+    
+    # Test with zero lag
+    corr = _calculate_lag_correlation(
+        correlation_calculator.data["price"],
+        correlation_calculator.data["indicator1"],
+        [0]
+    )
+    assert len(corr) == 1
+    assert -1 <= corr[0] <= 1
+    
+    # Test with invalid lags
+    with pytest.raises(ValueError):
+        _calculate_lag_correlation(
+            correlation_calculator.data["price"],
+            correlation_calculator.data["indicator1"],
+            [1000]  # Lag too large
+        )
+
+def test_calculate_rolling_correlation(correlation_calculator: CorrelationCalculator):
+    """Test rolling correlation calculation."""
+    # Test with different windows
+    windows = [10, 20, 30]
+    for window in windows:
+        corr = _calculate_rolling_correlation(
+            correlation_calculator.data["price"],
+            correlation_calculator.data["indicator1"],
+            window
+        )
+        assert isinstance(corr, pd.Series)
+        assert len(corr) == len(correlation_calculator.data)
+        assert corr.isna().sum() == window - 1  # First window-1 values should be NaN
+        assert all(-1 <= x <= 1 for x in corr.dropna())
+    
+    # Test with invalid window
+    with pytest.raises(ValueError):
+        _calculate_rolling_correlation(
+            correlation_calculator.data["price"],
+            correlation_calculator.data["indicator1"],
+            0  # Invalid window size
+        )
+
+def test_calculate_cross_correlation(correlation_calculator: CorrelationCalculator):
+    """Test cross correlation calculation."""
+    # Test cross correlation
+    cross_corr = _calculate_cross_correlation(
+        correlation_calculator.data["price"],
+        correlation_calculator.data["indicator1"]
+    )
+    assert isinstance(cross_corr, pd.Series)
+    assert len(cross_corr) == 2 * len(correlation_calculator.data) - 1
+    assert all(-1 <= x <= 1 for x in cross_corr)
+    
+    # Test with identical series
+    cross_corr = _calculate_cross_correlation(
+        correlation_calculator.data["indicator1"],
+        correlation_calculator.data["indicator1"]
+    )
+    assert cross_corr[len(correlation_calculator.data) - 1] == 1.0  # Zero lag correlation
+    
+    # Test with invalid data
+    with pytest.raises(ValueError):
+        _calculate_cross_correlation(pd.Series(), pd.Series())
+
+def test_calculate_autocorrelation(correlation_calculator: CorrelationCalculator):
+    """Test autocorrelation calculation."""
+    # Test autocorrelation
+    auto_corr = _calculate_autocorrelation(
+        correlation_calculator.data["price"],
+        max_lag=10
+    )
+    assert isinstance(auto_corr, pd.Series)
+    assert len(auto_corr) == 11  # 0 to max_lag inclusive
+    assert auto_corr[0] == 1.0  # Lag 0 autocorrelation is always 1
+    assert all(-1 <= x <= 1 for x in auto_corr)
+    
+    # Test with random data (should have low autocorrelation)
+    random_data = pd.Series(np.random.normal(0, 1, 100))
+    auto_corr = _calculate_autocorrelation(random_data, max_lag=5)
+    assert all(abs(x) < 0.3 for x in auto_corr[1:])  # Low autocorrelation for random data
+    
+    # Test with invalid max_lag
+    with pytest.raises(ValueError):
+        _calculate_autocorrelation(
+            correlation_calculator.data["price"],
+            max_lag=-1
+        )
+
+def test_calculate_partial_correlation(correlation_calculator: CorrelationCalculator):
+    """Test partial correlation calculation."""
+    # Test partial correlation
+    partial_corr = _calculate_partial_correlation(
+        correlation_calculator.data["price"],
+        correlation_calculator.data["indicator1"],
+        correlation_calculator.data["indicator2"]
+    )
+    assert isinstance(partial_corr, float)
+    assert -1 <= partial_corr <= 1
+    
+    # Test with uncorrelated control variable
+    random_control = pd.Series(np.random.normal(0, 1, len(correlation_calculator.data)))
+    partial_corr = _calculate_partial_correlation(
+        correlation_calculator.data["indicator1"],
+        correlation_calculator.data["indicator2"],
+        random_control
+    )
+    assert abs(partial_corr - 0.7) < 0.1  # Should be close to original correlation
+    
+    # Test with invalid data
+    with pytest.raises(ValueError):
+        _calculate_partial_correlation(
+            pd.Series(),
+            correlation_calculator.data["indicator1"],
+            correlation_calculator.data["indicator2"]
+        )
+
+def test_calculate_spearman_correlation(correlation_calculator: CorrelationCalculator):
+    """Test Spearman correlation calculation."""
+    # Test Spearman correlation
+    spearman_corr = _calculate_spearman_correlation(
+        correlation_calculator.data["price"],
+        correlation_calculator.data["indicator1"]
+    )
+    assert isinstance(spearman_corr, float)
+    assert -1 <= spearman_corr <= 1
+    
+    # Test with monotonic relationship
+    x = pd.Series(range(100))
+    y = x ** 2
+    spearman_corr = _calculate_spearman_correlation(x, y)
+    assert spearman_corr == 1.0  # Perfect monotonic relationship
+    
+    # Test with invalid data
+    with pytest.raises(ValueError):
+        _calculate_spearman_correlation(pd.Series(), pd.Series())
+
+def test_calculate_kendall_correlation(correlation_calculator: CorrelationCalculator):
+    """Test Kendall correlation calculation."""
+    # Test Kendall correlation
+    kendall_corr = _calculate_kendall_correlation(
+        correlation_calculator.data["price"],
+        correlation_calculator.data["indicator1"]
+    )
+    assert isinstance(kendall_corr, float)
+    assert -1 <= kendall_corr <= 1
+    
+    # Test with perfect concordance
+    x = pd.Series(range(100))
+    y = x
+    kendall_corr = _calculate_kendall_correlation(x, y)
+    assert kendall_corr == 1.0  # Perfect concordance
+    
+    # Test with perfect discordance
+    y = -x
+    kendall_corr = _calculate_kendall_correlation(x, y)
+    assert kendall_corr == -1.0  # Perfect discordance
+    
+    # Test with invalid data
+    with pytest.raises(ValueError):
+        _calculate_kendall_correlation(pd.Series(), pd.Series())
+
+def test_correlation_matrix(correlation_calculator: CorrelationCalculator):
+    """Test correlation matrix calculation."""
+    # Test correlation matrix
+    matrix = correlation_calculator.calculate_correlation_matrix(
+        ["price", "volume", "indicator1", "indicator2"]
+    )
+    assert isinstance(matrix, pd.DataFrame)
+    assert matrix.shape == (4, 4)
+    assert all(-1 <= x <= 1 for x in matrix.values.flatten())
+    assert all(matrix.index == matrix.columns)
+    
+    # Test with invalid columns
+    with pytest.raises(ValueError):
+        correlation_calculator.calculate_correlation_matrix(["invalid_column"])
+    
+    # Test with empty column list
+    with pytest.raises(ValueError):
+        correlation_calculator.calculate_correlation_matrix([])
+
+def test_correlation_significance(correlation_calculator: CorrelationCalculator):
+    """Test correlation significance testing."""
+    # Test significance calculation
+    corr, p_value = correlation_calculator.calculate_correlation_with_significance(
+        "price",
+        "indicator1"
+    )
+    assert isinstance(corr, float)
+    assert isinstance(p_value, float)
+    assert -1 <= corr <= 1
+    assert 0 <= p_value <= 1
+    
+    # Test with highly correlated data
+    x = pd.Series(range(100))
+    y = x + np.random.normal(0, 0.1, 100)
+    corr, p_value = correlation_calculator.calculate_correlation_with_significance(
+        pd.Series(x),
+        pd.Series(y)
+    )
+    assert abs(corr) > 0.9  # High correlation
+    assert p_value < 0.05  # Significant
+    
+    # Test with uncorrelated data
+    x = pd.Series(np.random.normal(0, 1, 100))
+    y = pd.Series(np.random.normal(0, 1, 100))
+    corr, p_value = correlation_calculator.calculate_correlation_with_significance(x, y)
+    assert abs(corr) < 0.3  # Low correlation
+    assert p_value > 0.05  # Not significant
+
+def test_error_handling(correlation_calculator: CorrelationCalculator):
+    """Test error handling."""
+    # Test with invalid data types
+    invalid_data = correlation_calculator.data.copy()
+    invalid_data["price"] = "invalid"
+    with pytest.raises(ValueError):
+        CorrelationCalculator(invalid_data)
+    
+    # Test with missing values
+    invalid_data = correlation_calculator.data.copy()
+    invalid_data.loc[0, "price"] = np.nan
+    with pytest.raises(ValueError):
+        CorrelationCalculator(invalid_data)
+    
+    # Test with infinite values
+    invalid_data = correlation_calculator.data.copy()
+    invalid_data.loc[0, "price"] = np.inf
+    with pytest.raises(ValueError):
+        CorrelationCalculator(invalid_data)
 
 def test_calculate_correlation_valid(sample_data):
     """Test correlation calculation with valid data."""

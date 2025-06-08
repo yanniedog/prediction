@@ -6,6 +6,36 @@ from sqlite_manager_class import SQLiteManager
 import time
 from unittest.mock import patch
 import sqlite3
+import tempfile
+import shutil
+from pathlib import Path
+from sqlite_manager import (
+    _connect,
+    _execute,
+    _fetchall,
+    _fetchone,
+    _commit,
+    _close,
+    _create_table,
+    _drop_table,
+    _insert,
+    _update,
+    _delete,
+    _select
+)
+
+@pytest.fixture(scope="function")
+def temp_db(tmp_path):
+    db_path = tmp_path / "test.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
+    conn.commit()
+    conn.close()
+    return db_path
+
+@pytest.fixture(scope="function")
+def sqlite_manager(temp_db):
+    return SQLiteManager(str(temp_db))
 
 @pytest.mark.timeout(10)  # 10 second timeout for each test
 def test_sqlite_manager_initialization(temp_db):
@@ -300,4 +330,85 @@ def test_backup_and_restore(temp_db, tmp_path):
             try:
                 backup_path.unlink()
             except Exception:
-                pass 
+                pass
+
+def test_connect_and_close(temp_db):
+    conn = _connect(str(temp_db))
+    assert isinstance(conn, sqlite3.Connection)
+    _close(conn)
+    # Closing twice should not raise
+    _close(conn)
+
+def test_execute_and_commit(temp_db):
+    conn = _connect(str(temp_db))
+    _execute(conn, "INSERT INTO test (value) VALUES (?)", ("abc",))
+    _commit(conn)
+    result = _fetchall(conn, "SELECT value FROM test")
+    assert result[0][0] == "abc"
+    _close(conn)
+
+def test_fetchone_and_fetchall(temp_db):
+    conn = _connect(str(temp_db))
+    _execute(conn, "INSERT INTO test (value) VALUES (?)", ("abc",))
+    _commit(conn)
+    one = _fetchone(conn, "SELECT value FROM test")
+    assert one[0] == "abc"
+    all_ = _fetchall(conn, "SELECT value FROM test")
+    assert all_[0][0] == "abc"
+    _close(conn)
+
+def test_create_and_drop_table(temp_db):
+    conn = _connect(str(temp_db))
+    _create_table(conn, "newtable", "id INTEGER PRIMARY KEY, value TEXT")
+    _execute(conn, "INSERT INTO newtable (value) VALUES (?)", ("test",))
+    _commit(conn)
+    result = _fetchone(conn, "SELECT value FROM newtable")
+    assert result[0] == "test"
+    _drop_table(conn, "newtable")
+    _commit(conn)
+    with pytest.raises(sqlite3.OperationalError):
+        _fetchone(conn, "SELECT value FROM newtable")
+    _close(conn)
+
+def test_insert_update_delete_select(sqlite_manager):
+    # Insert
+    sqlite_manager.insert("test", {"value": "foo"})
+    rows = sqlite_manager.select("test", ["id", "value"])
+    assert rows[0][1] == "foo"
+    # Update
+    sqlite_manager.update("test", {"value": "bar"}, where="value = 'foo'")
+    rows = sqlite_manager.select("test", ["id", "value"])
+    assert rows[0][1] == "bar"
+    # Delete
+    sqlite_manager.delete("test", where="value = 'bar'")
+    rows = sqlite_manager.select("test", ["id", "value"])
+    assert rows == []
+
+def test_error_handling(temp_db):
+    conn = _connect(str(temp_db))
+    # Invalid SQL
+    with pytest.raises(sqlite3.OperationalError):
+        _execute(conn, "SELECT * FROM non_existent_table")
+    # Invalid table for insert
+    with pytest.raises(sqlite3.OperationalError):
+        _execute(conn, "INSERT INTO non_existent_table (value) VALUES ('x')")
+    _close(conn)
+
+def test_sqlite_manager_methods(sqlite_manager):
+    # Insert and select
+    sqlite_manager.insert("test", {"value": "baz"})
+    rows = sqlite_manager.select("test", ["id", "value"])
+    assert rows[0][1] == "baz"
+    # Update
+    sqlite_manager.update("test", {"value": "qux"}, where="value = 'baz'")
+    rows = sqlite_manager.select("test", ["id", "value"])
+    assert rows[0][1] == "qux"
+    # Delete
+    sqlite_manager.delete("test", where="value = 'qux'")
+    rows = sqlite_manager.select("test", ["id", "value"])
+    assert rows == []
+    # Drop table
+    sqlite_manager.create_table("t2", "id INTEGER PRIMARY KEY, value TEXT")
+    sqlite_manager.drop_table("t2")
+    with pytest.raises(sqlite3.OperationalError):
+        sqlite_manager.select("t2", ["id", "value"]) 

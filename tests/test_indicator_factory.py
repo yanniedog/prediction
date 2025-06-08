@@ -4,40 +4,195 @@ import numpy as np
 from indicator_factory import IndicatorFactory
 import json
 from pathlib import Path
+import tempfile
+import shutil
+from unittest.mock import patch, MagicMock
+import matplotlib.pyplot as plt
 
 @pytest.fixture(scope="module")
 def factory():
+    """Create a factory instance for testing."""
     return IndicatorFactory()
 
-@pytest.fixture(scope="module")
-def indicator_defs():
-    with open(Path(__file__).parent.parent / "indicator_params.json", "r") as f:
-        return json.load(f)
-
-@pytest.fixture
-def sample_data():
-    # Minimal DataFrame with required columns for most indicators
-    n = 50
-    return pd.DataFrame({
-        "close": np.arange(1, n+1),
-        "open": np.arange(1, n+1),
-        "high": np.arange(2, n+2),
-        "low": np.arange(0, n),
-        "volume": np.arange(100, 100+n)
-    })
-
-@pytest.fixture
+@pytest.fixture(scope="function")
 def test_data():
-    """Create sample test data."""
-    dates = pd.date_range(start='2020-01-01', end='2020-02-19', freq='D')
+    """Create sample price data for testing."""
+    dates = pd.date_range(start='2024-01-01', periods=100, freq='H')
     data = pd.DataFrame({
-        'open': np.random.uniform(1000, 6000, len(dates)),
-        'high': np.random.uniform(1000, 6000, len(dates)),
-        'low': np.random.uniform(1000, 6000, len(dates)),
-        'close': np.random.uniform(1000, 6000, len(dates)),
-        'volume': np.random.uniform(10000, 100000, len(dates))
-    }, index=dates)
+        'date': dates,
+        'open': np.random.uniform(100, 200, 100),
+        'high': np.random.uniform(200, 300, 100),
+        'low': np.random.uniform(50, 100, 100),
+        'close': np.random.uniform(100, 200, 100),
+        'volume': np.random.uniform(1000, 5000, 100)
+    })
     return data
+
+@pytest.fixture(scope="function")
+def temp_params_file():
+    """Create a temporary parameters file for testing."""
+    temp_dir = tempfile.mkdtemp()
+    params_file = Path(temp_dir) / "indicator_params.json"
+    params = {
+        "RSI": {
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {"timeperiod": 14}
+        },
+        "BB": {
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {"timeperiod": 20, "nbdevup": 2, "nbdevdn": 2}
+        }
+    }
+    with open(params_file, 'w') as f:
+        json.dump(params, f)
+    yield params_file
+    shutil.rmtree(temp_dir)
+
+def test_factory_initialization(factory):
+    """Test factory initialization and parameter loading."""
+    assert isinstance(factory, IndicatorFactory)
+    assert isinstance(factory.indicator_params, dict)
+    assert len(factory.indicator_params) > 0
+
+def test_compute_indicators_basic(factory, test_data):
+    """Test basic indicator computation."""
+    # Test computing a single indicator
+    result = factory.compute_indicators(test_data, indicators=['RSI'])
+    assert isinstance(result, pd.DataFrame)
+    assert 'RSI' in result.columns
+    assert len(result) == len(test_data)
+    
+    # Test computing multiple indicators
+    result = factory.compute_indicators(test_data, indicators=['RSI', 'BB'])
+    assert isinstance(result, pd.DataFrame)
+    assert 'RSI' in result.columns
+    assert any(col.startswith('BB_') for col in result.columns)
+    assert len(result) == len(test_data)
+
+def test_compute_indicators_validation(factory, test_data):
+    """Test input validation for compute_indicators."""
+    # Test with None data
+    with pytest.raises(ValueError):
+        factory.compute_indicators(None)
+    
+    # Test with empty DataFrame
+    with pytest.raises(ValueError):
+        factory.compute_indicators(pd.DataFrame())
+    
+    # Test with invalid indicator name
+    with pytest.raises(ValueError):
+        factory.compute_indicators(test_data, indicators=['INVALID_INDICATOR'])
+    
+    # Test with missing required columns
+    invalid_data = test_data.drop('close', axis=1)
+    with pytest.raises(ValueError):
+        factory.compute_indicators(invalid_data, indicators=['RSI'])
+
+def test_compute_single_indicator(factory, test_data):
+    """Test single indicator computation."""
+    # Test RSI computation
+    rsi_config = {
+        'indicator_name': 'RSI',
+        'params': {'timeperiod': 14},
+        'config_id': 1
+    }
+    result = factory._compute_single_indicator(test_data, 'RSI', rsi_config)
+    assert isinstance(result, pd.DataFrame)
+    assert 'RSI' in result.columns
+    assert len(result) == len(test_data)
+    assert not result['RSI'].isna().all()  # Should have some valid values
+    
+    # Test BB computation
+    bb_config = {
+        'indicator_name': 'BB',
+        'params': {'timeperiod': 20, 'nbdevup': 2, 'nbdevdn': 2},
+        'config_id': 2
+    }
+    result = factory._compute_single_indicator(test_data, 'BB', bb_config)
+    assert isinstance(result, pd.DataFrame)
+    assert all(col in result.columns for col in ['BB_upper', 'BB_middle', 'BB_lower'])
+    assert len(result) == len(test_data)
+
+def test_indicator_plotting(factory, test_data, temp_dir):
+    """Test indicator plotting functionality."""
+    # Test RSI plotting
+    output_path = temp_dir / "rsi_plot.png"
+    factory.plot_indicator('RSI', test_data, {'timeperiod': 14}, str(output_path))
+    assert output_path.exists()
+    
+    # Test BB plotting
+    output_path = temp_dir / "bb_plot.png"
+    factory.plot_indicator('BB', test_data, {'timeperiod': 20, 'nbdevup': 2, 'nbdevdn': 2}, str(output_path))
+    assert output_path.exists()
+    
+    # Test plotting with invalid indicator
+    with pytest.raises(ValueError):
+        factory.plot_indicator('INVALID', test_data, {}, str(output_path))
+    
+    # Clean up plots
+    plt.close('all')
+
+def test_parameter_validation(factory, temp_params_file):
+    """Test parameter validation."""
+    # Test with valid parameters
+    factory.params_file = temp_params_file
+    factory.indicator_params = factory._load_params()
+    factory._validate_params()  # Should not raise
+    
+    # Test with invalid indicator type
+    invalid_params = {
+        "INVALID": {
+            "type": "invalid_type",
+            "required_inputs": ["close"],
+            "params": {"timeperiod": 14}
+        }
+    }
+    with patch.object(factory, 'indicator_params', invalid_params):
+        with pytest.raises(ValueError):
+            factory._validate_params()
+    
+    # Test with missing required inputs
+    invalid_params = {
+        "RSI": {
+            "type": "talib",
+            "required_inputs": [],  # Empty required inputs
+            "params": {"timeperiod": 14}
+        }
+    }
+    with patch.object(factory, 'indicator_params', invalid_params):
+        with pytest.raises(ValueError):
+            factory._validate_params()
+
+def test_get_available_indicators(factory):
+    """Test getting available indicators."""
+    indicators = factory.get_available_indicators()
+    assert isinstance(indicators, list)
+    assert len(indicators) > 0
+    assert all(isinstance(ind, str) for ind in indicators)
+    
+    # Test alias method
+    indicators2 = factory.get_all_indicator_names()
+    assert indicators == indicators2
+
+def test_error_handling(factory, test_data):
+    """Test error handling in various scenarios."""
+    # Test with invalid indicator computation
+    with patch.object(factory, '_compute_single_indicator', return_value=None):
+        result = factory.compute_indicators(test_data, indicators=['RSI'])
+        assert isinstance(result, pd.DataFrame)
+        assert 'RSI' not in result.columns
+    
+    # Test with plotting error
+    with patch('matplotlib.pyplot.savefig', side_effect=Exception("Plot error")):
+        with pytest.raises(Exception):
+            factory.plot_indicator('RSI', test_data, {'timeperiod': 14})
+    
+    # Test with invalid parameter file
+    with patch('builtins.open', side_effect=FileNotFoundError()):
+        with pytest.raises(FileNotFoundError):
+            factory._load_params()
 
 def test_indicator_factory_initialization(indicator_factory):
     """Test IndicatorFactory initialization."""
