@@ -357,4 +357,227 @@ def test_ema_convergence(indicator_factory):
         correlation = ema_series.corr(pd.Series(trend, index=data.index))
         assert correlation > 0.89  # High correlation with trend
         # EMA should be smoother than raw data
-        assert ema_series.std() < data['close'].std() 
+        assert ema_series.std() < data['close'].std()
+
+@pytest.fixture
+def indicator_factory():
+    return IndicatorFactory()
+
+@pytest.fixture
+def valid_params_file(tmp_path):
+    params = {
+        "RSI": {
+            "name": "RSI",
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {
+                "timeperiod": {
+                    "type": "int",
+                    "min": 2,
+                    "max": 200,
+                    "default": 14,
+                    "description": "RSI period"
+                }
+            },
+            "conditions": []
+        }
+    }
+    params_file = tmp_path / "indicator_params.json"
+    with open(params_file, 'w') as f:
+        json.dump(params, f)
+    return params_file
+
+@pytest.fixture
+def invalid_params_file(tmp_path):
+    params = {
+        "RSI": {
+            "name": "RSI",
+            "type": "invalid_type",  # Invalid type
+            "required_inputs": "close",  # Should be list
+            "params": {
+                "timeperiod": {
+                    "type": "int",
+                    "min": 200,  # min > max
+                    "max": 2,
+                    "default": 14
+                }
+            },
+            "conditions": []
+        }
+    }
+    params_file = tmp_path / "invalid_params.json"
+    with open(params_file, 'w') as f:
+        json.dump(params, f)
+    return params_file
+
+def test_load_valid_params(indicator_factory, valid_params_file):
+    """Test loading valid indicator parameters"""
+    indicator_factory.params_file = valid_params_file
+    params = indicator_factory._load_params()
+    assert isinstance(params, dict)
+    assert "RSI" in params
+    assert params["RSI"]["type"] == "talib"
+    assert isinstance(params["RSI"]["required_inputs"], list)
+    assert "timeperiod" in params["RSI"]["params"]
+
+def test_load_invalid_params(indicator_factory, invalid_params_file):
+    """Test loading invalid indicator parameters"""
+    indicator_factory.params_file = invalid_params_file
+    with pytest.raises(ValueError) as exc_info:
+        indicator_factory._load_params()
+    assert "Invalid indicator type" in str(exc_info.value)
+
+def test_validate_params(indicator_factory, valid_params_file):
+    """Test validating valid indicator parameters"""
+    indicator_factory.params_file = valid_params_file
+    params = indicator_factory._load_params()
+    indicator_factory.indicator_params = params
+    indicator_factory._validate_params()  # Should not raise
+
+def test_validate_invalid_params(indicator_factory, invalid_params_file):
+    """Test validating invalid indicator parameters"""
+    indicator_factory.params_file = invalid_params_file
+    with pytest.raises(ValueError):
+        indicator_factory._load_params()
+
+def test_missing_params_file(indicator_factory, tmp_path):
+    """Test handling missing parameters file"""
+    indicator_factory.params_file = tmp_path / "nonexistent.json"
+    with pytest.raises(FileNotFoundError):
+        indicator_factory._load_params()
+
+def test_empty_params_file(indicator_factory, tmp_path):
+    """Test handling empty parameters file"""
+    params_file = tmp_path / "empty_params.json"
+    with open(params_file, 'w') as f:
+        json.dump({}, f)
+    indicator_factory.params_file = params_file
+    with pytest.raises(ValueError) as exc_info:
+        indicator_factory._load_params()
+    assert "Empty indicator parameters" in str(exc_info.value)
+
+def test_invalid_json_file(indicator_factory, tmp_path):
+    """Test handling invalid JSON file"""
+    params_file = tmp_path / "invalid_json.json"
+    with open(params_file, 'w') as f:
+        f.write("invalid json content")
+    indicator_factory.params_file = params_file
+    with pytest.raises(json.JSONDecodeError):
+        indicator_factory._load_params()
+
+def test_parameter_conditions(indicator_factory, tmp_path):
+    """Test parameter conditions validation"""
+    params = {
+        "MACD": {
+            "name": "MACD",
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {
+                "fastperiod": {
+                    "type": "int",
+                    "min": 2,
+                    "max": 200,
+                    "default": 12
+                },
+                "slowperiod": {
+                    "type": "int",
+                    "min": 2,
+                    "max": 200,
+                    "default": 26
+                }
+            },
+            "conditions": [
+                {
+                    "fastperiod": {
+                        "lt": "slowperiod"
+                    }
+                }
+            ]
+        }
+    }
+    params_file = tmp_path / "params_with_conditions.json"
+    with open(params_file, 'w') as f:
+        json.dump(params, f)
+    indicator_factory.params_file = params_file
+    params = indicator_factory._load_params()
+    indicator_factory.indicator_params = params
+    indicator_factory._validate_params()  # Should not raise
+
+def test_invalid_parameter_conditions(indicator_factory, tmp_path):
+    """Test invalid parameter conditions"""
+    params = {
+        "MACD": {
+            "name": "MACD",
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {
+                "fastperiod": {
+                    "type": "int",
+                    "min": 2,
+                    "max": 200,
+                    "default": 12
+                }
+            },
+            "conditions": [
+                {
+                    "nonexistent_param": {  # Invalid parameter
+                        "lt": "fastperiod"
+                    }
+                }
+            ]
+        }
+    }
+    params_file = tmp_path / "invalid_conditions.json"
+    with open(params_file, 'w') as f:
+        json.dump(params, f)
+    indicator_factory.params_file = params_file
+    params = indicator_factory._load_params()
+    indicator_factory.indicator_params = params
+    with pytest.raises(ValueError) as exc_info:
+        indicator_factory._validate_params()
+    assert "Invalid condition parameter" in str(exc_info.value)
+
+def test_parameter_ranges(indicator_factory, tmp_path):
+    """Test parameter range validation"""
+    params = {
+        "RSI": {
+            "name": "RSI",
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {
+                "timeperiod": {
+                    "type": "int",
+                    "min": 2,
+                    "max": 200,
+                    "default": 1  # Invalid default < min
+                }
+            },
+            "conditions": []
+        }
+    }
+    params_file = tmp_path / "invalid_ranges.json"
+    with open(params_file, 'w') as f:
+        json.dump(params, f)
+    indicator_factory.params_file = params_file
+    params = indicator_factory._load_params()
+    indicator_factory.indicator_params = params
+    with pytest.raises(ValueError) as exc_info:
+        indicator_factory._validate_params()
+    assert "Invalid default value" in str(exc_info.value)
+
+def test_required_keys(indicator_factory, tmp_path):
+    """Test required keys validation"""
+    params = {
+        "RSI": {
+            "name": "RSI",
+            "type": "talib"
+            # Missing required_inputs and params
+        }
+    }
+    params_file = tmp_path / "missing_keys.json"
+    with open(params_file, 'w') as f:
+        json.dump(params, f)
+    indicator_factory.params_file = params_file
+    with pytest.raises(ValueError) as exc_info:
+        indicator_factory._load_params()
+    assert "Missing required keys" in str(exc_info.value) 

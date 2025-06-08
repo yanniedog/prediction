@@ -350,147 +350,102 @@ def _run_backtest_check_mode(timestamp_str: str) -> None:
     logger.info("Finished historical check.")
 
 
-def _select_data_source_and_lag() -> Tuple[Path, str, str, pd.DataFrame, int, int, int, str]:
-    """Handles data source selection/download and max lag input."""
+def _initialize_database(db_path: Path, symbol: str, timeframe: str) -> bool:
+    """Initialize database with proper schema and format.
+    
+    Args:
+        db_path: Path to database file
+        symbol: Trading symbol (e.g. BTCUSDT)
+        timeframe: Timeframe (e.g. 1h)
+        
+    Returns:
+        bool: True if initialization successful
+    """
     logger = logging.getLogger(__name__)
-    conn = None
+    
+    # Validate symbol and timeframe format
+    if not utils.is_valid_symbol(symbol):
+        logger.error(f"Invalid symbol format: {symbol}")
+        return False
+    if not utils.is_valid_timeframe(timeframe):
+        logger.error(f"Invalid timeframe format: {timeframe}")
+        return False
+        
+    # Create proper database name
+    proper_db_name = f"{symbol}_{timeframe}.db"
+    if db_path.name != proper_db_name:
+        logger.error(f"Database name '{db_path.name}' does not match required format SYMBOL_TIMEFRAME.db")
+        return False
+        
+    # Initialize database schema
+    if not sqlite_manager.initialize_database(str(db_path)):
+        logger.error(f"Failed to initialize database schema for {db_path}")
+        return False
+        
+    # Initialize leaderboard
+    if not leaderboard_manager.initialize_leaderboard_db():
+        logger.error("Failed to initialize leaderboard database")
+        return False
+        
+    return True
+
+def _select_data_source_and_lag() -> Tuple[Path, str, str, pd.DataFrame, int, int, int, str]:
+    """Select data source and lag period.
+    
+    Returns:
+        Tuple containing:
+        - Path to database
+        - Symbol
+        - Timeframe
+        - DataFrame with data
+        - Max lag
+        - Symbol ID
+        - Timeframe ID
+        - Data date range string
+    """
+    logger = logging.getLogger(__name__)
+    
+    # Get database path and validate format
+    db_path, symbol, timeframe = data_manager.manage_data_source()
+    if not db_path or not symbol or not timeframe:
+        raise ValueError("Invalid data source selection")
+        
+    # Initialize database with proper schema
+    if not _initialize_database(db_path, symbol, timeframe):
+        raise ValueError(f"Failed to initialize database {db_path}")
+        
+    # Load data
+    data = data_manager.load_data(db_path)
+    if data is None or data.empty:
+        raise ValueError(f"Failed to load data from {db_path}")
+        
+    # Get symbol and timeframe IDs
+    conn = sqlite_manager.create_connection(str(db_path))
+    if not conn:
+        raise ValueError(f"Failed to connect to {db_path}")
+        
     try:
-        data_source_info = data_manager.manage_data_source()
-        if data_source_info is None:
-            logger.info("Exiting: No data source.")
-            sys.exit(0)
-        
-        db_path, symbol, timeframe = data_source_info
-        logger.info(f"Using data source: {db_path.name}")
-        
-        if not (db_path and symbol and timeframe):
-            logger.critical("Data source info invalid.")
-            raise ValueError("Data source information missing after selection.")
-        
-        data = data_manager.load_data(db_path)
-        if data is None or data.empty:
-            logger.critical(f"Failed load data {db_path}.")
-            raise ValueError(f"Failed to load data from {db_path}")
-        
-        if not ('date' in data.columns and 'close' in data.columns):
-            logger.critical("Data missing required 'date' or 'close' columns.")
-            raise ValueError("Dataframe must contain 'date' and 'close' columns.")
-        
-        try:
-            min_date_dt = data['date'].min()
-            max_date_dt = data['date'].max()
-            if pd.isna(min_date_dt) or pd.isna(max_date_dt):
-                raise ValueError("Invalid min/max dates in data.")
-            if min_date_dt.tzinfo is None:
-                min_date_dt = min_date_dt.tz_localize('UTC')
-            if max_date_dt.tzinfo is None:
-                max_date_dt = max_date_dt.tz_localize('UTC')
-            data_daterange_str = f"{min_date_dt.strftime('%Y%m%d')}-{max_date_dt.strftime('%Y%m%d')}"
-            if min_date_dt < data_manager.EARLIEST_VALID_DATE:
-                raise ValueError(f"Data starts too early ({min_date_dt}). Minimum allowed is {data_manager.EARLIEST_VALID_DATE}.")
-        except Exception as e:
-            logger.critical(f"Invalid date range: {e}", exc_info=True)
-            sys.exit(1)
-        
-        logger.info(f"Data date range: {data_daterange_str}")
-        min_points_needed = max(config.DEFAULTS["min_data_points_for_lag"], config.DEFAULTS["min_regression_points"])
-        estimated_nan_rows = min(100, int(len(data)*0.05))
-        effective_data_len = max(0, len(data)-estimated_nan_rows)
-        max_possible_lag = max(0, effective_data_len - min_points_needed - 1)
-        
-        if max_possible_lag <= 0:
-            logger.critical(f"Insufficient data ({len(data)} rows).")
-            print(f"\nERROR: Insufficient data points ({effective_data_len} effective) for analysis.")
-            sys.exit(1)
-        
-        default_lag = config.DEFAULTS.get("max_lag", 7)
-        suggested_lag = min(max_possible_lag, max(30, int(effective_data_len*0.1)), 500)
-        suggested_lag = min(suggested_lag, default_lag)
-        max_lag = 0
-        
-        # Limit retries to prevent infinite loops
-        max_retries = 3
-        retry_count = 0
-        while max_lag <= 0 and retry_count < max_retries:
-            try:
-                lag_input = input(f"\nEnter max correlation lag ({timeframe}) [Suggest: {suggested_lag}, Max: {max_possible_lag}]: ").strip()
-                max_lag = suggested_lag if not lag_input else int(lag_input)
-                
-                if max_lag <= 0:
-                    print("Lag must be positive.")
-                    max_lag = 0
-                    retry_count += 1
-                    continue
-                
-                if max_lag > max_possible_lag:
-                    print(f"Warning: Requested lag {max_lag} exceeds maximum possible ({max_possible_lag}) based on data length and minimum points needed.")
-                    if input("Continue anyway? [y/N]: ").strip().lower() != 'y':
-                        max_lag = 0
-                        retry_count += 1
-                        continue
-                elif max_lag > suggested_lag:
-                    print(f"Note: Lag {max_lag} > Suggested {suggested_lag}.")
-                
-                print(f"Using Max Lag = {max_lag}")
-                break
-            except ValueError:
-                print("Invalid input. Please enter a number.")
-                max_lag = 0
-                retry_count += 1
-        
-        if max_lag <= 0:
-            logger.critical("Failed to get valid lag after maximum retries.")
-            print("\nERROR: Could not get valid lag input after maximum retries.")
-            sys.exit(1)
-        
-        if effective_data_len < (max_lag + min_points_needed):
-            logger.critical(f"Insufficient effective data length ({effective_data_len}) for lag {max_lag} and min points {min_points_needed}.")
-            print(f"\nERROR: Not enough data rows ({effective_data_len} effective) to support the chosen lag {max_lag}.")
-            sys.exit(1)
-        
-        symbol_id = -1
-        timeframe_id = -1
-        
-        try:
-            conn = sqlite_manager.create_connection(str(db_path))
-            if not conn:
-                raise ConnectionError("DB connect fail.")
-            
-            try:
-                conn.execute("BEGIN;")
-                symbol_id = sqlite_manager._get_or_create_id(conn, 'symbols', 'symbol', symbol)
-                timeframe_id = sqlite_manager._get_or_create_id(conn, 'timeframes', 'timeframe', timeframe)
-                conn.commit()
-            except Exception as id_err:
-                logger.critical(f"Failed get/create DB IDs: {id_err}", exc_info=True)
-                if conn:
-                    try:
-                        conn.rollback()
-                        logger.warning("Rolled back DB transaction due to ID error.")
-                    except Exception as rb_err:
-                        logger.error(f"Rollback attempt failed: {rb_err}")
-                raise ConnectionError("Failed to obtain database IDs for symbol/timeframe.")
-            
-            logger.info(f"Using DB IDs - Symbol: {symbol_id}, Timeframe: {timeframe_id}")
-            return db_path, symbol, timeframe, data, max_lag, symbol_id, timeframe_id, data_daterange_str
-            
-        except Exception as e:
-            if conn:
-                try:
-                    conn.rollback()
-                except Exception:
-                    pass
-            raise ConnectionError(f"Database operation failed: {str(e)}")
-            
-    except Exception as e:
-        logger.critical(f"Error in data source selection: {e}", exc_info=True)
-        raise
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
+        symbol_id = cursor.fetchone()[0]
+        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
+        timeframe_id = cursor.fetchone()[0]
+    except (sqlite3.Error, TypeError) as e:
+        logger.error(f"Error getting symbol/timeframe IDs: {e}")
+        raise ValueError(f"Failed to get symbol/timeframe IDs from {db_path}")
     finally:
-        if conn:
-            try:
-                conn.close()
-            except Exception:
-                pass
+        conn.close()
+        
+    # Get max lag
+    max_lag = utils.get_max_lag(data)
+    if max_lag <= 0:
+        raise ValueError("Invalid max lag calculated")
+        
+    # Get date range
+    data_daterange = utils.get_data_date_range(data)
+    
+    return db_path, symbol, timeframe, data, max_lag, symbol_id, timeframe_id, data_daterange
+
 def _prepare_configurations(
     _display_progress_func: ProgressDisplayFunc,
     current_step: int,

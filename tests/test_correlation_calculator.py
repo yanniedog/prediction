@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from conftest import assert_timeout, skip_if_missing_dependency
 from typing import Dict, List, Any, Optional, Tuple
+import sqlite_manager
 
 def timeout(seconds):
     """Decorator to add timeout to test functions using threading."""
@@ -566,11 +567,20 @@ def test_process_correlations_valid(
         'low': np.random.uniform(50, 100, n_rows),
         'close': np.random.uniform(100, 200, n_rows),
         'volume': np.random.uniform(1000, 5000, n_rows),
-        'RSI_14': np.random.uniform(0, 100, n_rows),
-        'MACD_12_26_9': np.random.uniform(-10, 10, n_rows)
+        'RSI_1': np.random.uniform(0, 100, n_rows),  # config_id=1
+        'MACD_2': np.random.uniform(-10, 10, n_rows)  # config_id=2
     })
     # Create test database
     db_path = str(tmp_path / "test.db")
+    # Initialize DB schema
+    sqlite_manager.initialize_database(db_path)
+    # Insert required symbol, timeframe, and indicator configs
+    conn = sqlite_manager.create_connection(db_path)
+    symbol_id = sqlite_manager._get_or_create_id(conn, 'symbols', 'symbol', 'BTCUSDT')
+    timeframe_id = sqlite_manager._get_or_create_id(conn, 'timeframes', 'timeframe', '1h')
+    for cfg in sample_indicator_configs:
+        sqlite_manager.get_or_create_indicator_config_id(conn, cfg['indicator_name'], cfg['params'])
+    conn.close()
     # Mock display progress function
     mock_display = lambda *args, **kwargs: None
     # Mock periodic report function
@@ -715,8 +725,15 @@ def test_analyze_correlation_stability(correlation_calculator, sample_data):
         window_size=20
     )
     assert isinstance(result, dict)
-    assert 'stability_scores' in result
+    assert 'stability_score' in result
     assert 'volatility' in result
+    assert 'trend' in result
+    assert isinstance(result['stability_score'], float)
+    assert isinstance(result['volatility'], float)
+    assert isinstance(result['trend'], str)
+    assert 0 <= result['stability_score'] <= 1
+    assert result['volatility'] >= 0
+    assert result['trend'] in ['increasing', 'decreasing', 'stable']
 
 def test_forecast_correlations(correlation_calculator, sample_data):
     """Test correlation forecasting."""

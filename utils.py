@@ -522,3 +522,89 @@ def run_interim_reports(
 
     logger.info(f"--- Finished {stage_name} Reports ---")
 # --- End of Interim Report Function ---
+
+def is_valid_symbol(symbol: str) -> bool:
+    """Validate trading symbol format.
+    
+    Args:
+        symbol: Trading symbol to validate
+        
+    Returns:
+        bool: True if valid symbol format
+    """
+    if not isinstance(symbol, str):
+        return False
+    # Basic validation - should be uppercase alphanumeric
+    return bool(re.match(r'^[A-Z0-9]+$', symbol))
+
+def is_valid_timeframe(timeframe: str) -> bool:
+    """Validate timeframe format.
+    
+    Args:
+        timeframe: Timeframe to validate (e.g. 1h, 4h, 1d)
+        
+    Returns:
+        bool: True if valid timeframe format
+    """
+    if not isinstance(timeframe, str):
+        return False
+    # Valid formats: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
+    return bool(re.match(r'^(1|3|5|15|30)m|(1|2|4|6|8|12)h|(1|3)d|1w|1M$', timeframe))
+
+def get_max_lag(data: pd.DataFrame) -> int:
+    """Calculate maximum valid lag based on data length.
+    
+    Args:
+        data: DataFrame with price data
+        
+    Returns:
+        int: Maximum valid lag value
+    """
+    if data is None or data.empty:
+        return 0
+        
+    # Minimum points needed for regression
+    min_points = app_config.DEFAULTS.get("min_regression_points", 30)
+    
+    # Estimate NaN rows (up to 5% of data)
+    estimated_nan_rows = min(100, int(len(data) * 0.05))
+    effective_data_len = max(0, len(data) - estimated_nan_rows)
+    
+    # Calculate max possible lag
+    max_possible_lag = max(0, effective_data_len - min_points - 1)
+    
+    # Limit to reasonable value
+    default_max = app_config.DEFAULTS.get("max_lag", 7)
+    suggested_max = min(max_possible_lag, max(30, int(effective_data_len * 0.1)), 500)
+    
+    return min(suggested_max, default_max)
+
+def get_data_date_range(data: pd.DataFrame) -> str:
+    """Get date range string from data.
+    
+    Args:
+        data: DataFrame with date column
+        
+    Returns:
+        str: Date range string in YYYYMMDD-YYYYMMDD format
+    """
+    if data is None or data.empty or 'date' not in data.columns:
+        return "Unknown"
+        
+    try:
+        min_date = data['date'].min()
+        max_date = data['date'].max()
+        
+        if pd.isna(min_date) or pd.isna(max_date):
+            return "Invalid"
+            
+        # Ensure UTC timezone
+        if min_date.tzinfo is None:
+            min_date = min_date.tz_localize('UTC')
+        if max_date.tzinfo is None:
+            max_date = max_date.tz_localize('UTC')
+            
+        return f"{min_date.strftime('%Y%m%d')}-{max_date.strftime('%Y%m%d')}"
+    except Exception as e:
+        logger.error(f"Error getting date range: {e}")
+        return "Error"

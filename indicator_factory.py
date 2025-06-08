@@ -26,23 +26,98 @@ class IndicatorFactory:
     def _load_params(self) -> Dict[str, Any]:
         """Load indicator parameters from JSON file."""
         try:
+            if not os.path.exists(self.params_file):
+                logger.error(f"Indicator parameters file not found: {self.params_file}")
+                raise FileNotFoundError(f"Indicator parameters file not found: {self.params_file}")
+            
             with open(self.params_file, 'r') as f:
                 params = json.load(f)
-            logger.info(f"Loaded {len(params)} indicator configurations from {self.params_file}")
+            
+            if not isinstance(params, dict):
+                logger.error("Invalid indicator parameters format - must be a dictionary")
+                raise ValueError("Invalid indicator parameters format")
+            
+            if not params:
+                logger.error("No indicator parameters found in file")
+                raise ValueError("Empty indicator parameters")
+            
+            # Validate each indicator definition
+            for name, config in params.items():
+                if not isinstance(config, dict):
+                    logger.error(f"Invalid config format for indicator {name}")
+                    raise ValueError(f"Invalid config format for indicator {name}")
+                
+                required_keys = ['name', 'type', 'required_inputs', 'params']
+                missing_keys = [k for k in required_keys if k not in config]
+                if missing_keys:
+                    logger.error(f"Missing required keys {missing_keys} for indicator {name}")
+                    raise ValueError(f"Missing required keys for indicator {name}")
+                
+                if config['type'] not in ['talib', 'custom', 'ta-lib', 'pandas-ta']:
+                    logger.error(f"Invalid indicator type {config['type']} for {name}")
+                    raise ValueError(f"Invalid indicator type for {name}")
+                
+                if not isinstance(config['required_inputs'], list):
+                    logger.error(f"Invalid required_inputs format for indicator {name}")
+                    raise ValueError(f"Invalid required_inputs format for {name}")
+                
+                if not isinstance(config['params'], dict):
+                    logger.error(f"Invalid params format for indicator {name}")
+                    raise ValueError(f"Invalid params format for {name}")
+                
+            logger.info(f"Successfully loaded and validated {len(params)} indicator configurations")
             return params
+        
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in indicator parameters file: {e}")
+            raise
         except Exception as e:
             logger.error(f"Error loading indicator parameters: {e}", exc_info=True)
             raise
 
     def _validate_params(self) -> None:
-        """Validate indicator parameters."""
-        required_keys = ['name', 'type', 'params']
+        """Validate indicator parameters and their conditions."""
         for name, config in self.indicator_params.items():
-            missing = [k for k in required_keys if k not in config]
-            if missing:
-                raise ValueError(f"Missing required keys {missing} for indicator {name}")
-            if config['type'] not in ['talib', 'custom', 'ta-lib', 'pandas-ta']:
-                raise ValueError(f"Invalid indicator type {config['type']} for {name}")
+            # Validate parameter ranges and conditions
+            params = config.get('params', {})
+            conditions = config.get('conditions', [])
+            
+            # Check parameter ranges
+            for param_name, param_def in params.items():
+                if isinstance(param_def, dict):
+                    if 'min' in param_def and 'max' in param_def:
+                        if param_def['min'] >= param_def['max']:
+                            logger.error(f"Invalid parameter range for {name}.{param_name}: min >= max")
+                            raise ValueError(f"Invalid parameter range for {name}.{param_name}")
+                        
+                    if 'default' in param_def:
+                        default = param_def['default']
+                        if 'min' in param_def and default < param_def['min']:
+                            logger.error(f"Default value {default} below minimum for {name}.{param_name}")
+                            raise ValueError(f"Invalid default value for {name}.{param_name}")
+                        if 'max' in param_def and default > param_def['max']:
+                            logger.error(f"Default value {default} above maximum for {name}.{param_name}")
+                            raise ValueError(f"Invalid default value for {name}.{param_name}")
+                        
+            # Validate conditions
+            for condition in conditions:
+                if not isinstance(condition, dict):
+                    logger.error(f"Invalid condition format for {name}")
+                    raise ValueError(f"Invalid condition format for {name}")
+                
+                for param, rules in condition.items():
+                    if param not in params:
+                        logger.error(f"Condition references unknown parameter {param} for {name}")
+                        raise ValueError(f"Invalid condition parameter for {name}")
+                    
+                    for rule, value in rules.items():
+                        if rule not in ['gte', 'lte', 'gt', 'lt', 'eq']:
+                            logger.error(f"Invalid condition operator {rule} for {name}.{param}")
+                            raise ValueError(f"Invalid condition operator for {name}.{param}")
+                        
+                        if isinstance(value, str) and value not in params:
+                            logger.error(f"Condition references unknown parameter {value} for {name}.{param}")
+                            raise ValueError(f"Invalid condition reference for {name}.{param}")
 
     def _get_ta_lib_output_suffixes(self, func_name: str) -> List[str]:
         """Get output names for TA-Lib function. Default to function name."""
