@@ -329,7 +329,9 @@ def compute_returns(data: pd.DataFrame, period: int = 1) -> pd.Series:
     if not isinstance(period, int) or period < 1:
         raise InvalidParameterError(f"Invalid period: {period}")
     if len(data) < period + 1:
-        raise ValueError(f"Not enough data to compute returns with period {period}.")
+        # Not enough data, return a Series of NaN with correct index
+        returns = pd.Series([np.nan] * len(data), index=data.index, name=f"returns_{period}")
+        return returns
     returns = data['close'].pct_change(periods=period)
     returns.name = f"returns_{period}"
     return returns
@@ -342,7 +344,9 @@ def compute_volatility(data: pd.DataFrame, period: int = 20) -> pd.Series:
     if not isinstance(period, int) or period < 1:
         raise InvalidParameterError(f"Invalid period: {period}")
     if len(data) < period + 1:
-        raise ValueError(f"Not enough data to compute volatility with period {period}.")
+        # Not enough data, return a Series of NaN with correct index
+        volatility = pd.Series([np.nan] * len(data), index=data.index, name=f"volatility_{period}")
+        return volatility
     returns = data['close'].pct_change()
     volatility = returns.rolling(window=period).std()
     volatility.name = f"volatility_{period}"

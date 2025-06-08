@@ -581,30 +581,44 @@ def get_max_lag(data: pd.DataFrame) -> int:
 
 def get_data_date_range(data: pd.DataFrame) -> str:
     """Get date range string from data.
-    
     Args:
-        data: DataFrame with date column
-        
+        data: DataFrame with date column or DatetimeIndex
     Returns:
-        str: Date range string in YYYYMMDD-YYYYMMDD format
+        str: Date range string in YYYY-MM-DD-YYYY-MM-DD format
+    Raises:
+        ValueError: If the date range is invalid (e.g., non-monotonic or contains future dates)
     """
-    if data is None or data.empty or 'date' not in data.columns:
+    if data is None or data.empty:
         return "Unknown"
-        
     try:
-        min_date = data['date'].min()
-        max_date = data['date'].max()
-        
+        # Prefer 'date' column if present, else use DatetimeIndex
+        if 'date' in data.columns:
+            min_date = data['date'].min()
+            max_date = data['date'].max()
+            date_series = data['date']
+        elif isinstance(data.index, pd.DatetimeIndex):
+            min_date = data.index.min()
+            max_date = data.index.max()
+            date_series = data.index
+        else:
+            return "Unknown"
         if pd.isna(min_date) or pd.isna(max_date):
-            return "Invalid"
-            
+            raise ValueError("Invalid date range: NaN values present")
         # Ensure UTC timezone
-        if min_date.tzinfo is None:
+        if hasattr(min_date, 'tzinfo') and min_date.tzinfo is None:
             min_date = min_date.tz_localize('UTC')
-        if max_date.tzinfo is None:
+        if hasattr(max_date, 'tzinfo') and max_date.tzinfo is None:
             max_date = max_date.tz_localize('UTC')
-            
-        return f"{min_date.strftime('%Y%m%d')}-{max_date.strftime('%Y%m%d')}"
+        # Check for non-monotonic dates
+        if hasattr(date_series, 'is_monotonic_increasing') and not date_series.is_monotonic_increasing:
+            raise ValueError("Invalid date range: Dates must be monotonically increasing")
+        # Check for future dates
+        now = pd.Timestamp.now(tz='UTC')
+        if max_date > now:
+            raise ValueError("Invalid date range: Contains future dates")
+        return f"{min_date.strftime('%Y-%m-%d')}-{max_date.strftime('%Y-%m-%d')}"
+    except ValueError:
+        raise
     except Exception as e:
         logger.error(f"Error getting date range: {e}")
         return "Error"

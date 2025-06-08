@@ -117,21 +117,23 @@ def test_correlation_report_generation(correlation_calculator, test_data):
     assert corr_matrix.shape[0] == corr_matrix.shape[1]  # Square matrix
     assert corr_matrix.index.equals(corr_matrix.columns)  # Symmetric
     
-    # Validate analysis section
+    # Validate analysis section - can be None if sklearn is not available
     analysis = report['analysis']
-    assert isinstance(analysis, dict)
-    assert 'decomposition' in analysis
-    assert 'stability' in analysis
-    assert isinstance(analysis['decomposition'], dict)
-    assert isinstance(analysis['stability'], dict)
+    if correlation_calculator.SKLEARN_AVAILABLE:
+        assert isinstance(analysis, dict)
+        assert 'decomposition' in analysis
+        assert 'stability' in analysis
+        assert isinstance(analysis['decomposition'], dict)
+        assert isinstance(analysis['stability'], dict)
+    else:
+        assert analysis is None
     
     # Validate visualizations if available
     visualizations = report['visualizations']
     assert isinstance(visualizations, dict)
-    if 'correlation_matrix_plot' in visualizations:
-        assert isinstance(visualizations['correlation_matrix_plot'], Figure)
-    if 'correlation_heatmap' in visualizations:
-        assert isinstance(visualizations['correlation_heatmap'], Figure)
+    if 'heatmap' in visualizations:
+        assert isinstance(visualizations['heatmap'], Figure)
+        plt.close(visualizations['heatmap'])  # Clean up
 
 @pytest.mark.timeout(20)
 def test_correlation_calculation(correlation_calculator, test_data):
