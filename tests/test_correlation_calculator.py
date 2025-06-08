@@ -53,6 +53,25 @@ def correlation_calculator():
     """Create a CorrelationCalculator instance."""
     return CorrelationCalculator()
 
+@pytest.fixture
+def test_data() -> pd.DataFrame:
+    """Create test data for correlation calculations."""
+    dates = pd.date_range(start='2024-01-01', periods=100, freq='H')
+    data = pd.DataFrame({
+        'timestamp': dates,
+        'open': np.random.uniform(100, 200, 100),
+        'high': np.random.uniform(200, 300, 100),
+        'low': np.random.uniform(50, 100, 100),
+        'close': np.random.uniform(100, 200, 100),
+        'volume': np.random.uniform(1000, 5000, 100),
+        'RSI_14': np.random.uniform(0, 100, 100),
+        'MACD_12_26_9': np.random.uniform(-10, 10, 100),
+        'returns': np.random.normal(0, 0.02, 100).cumsum(),
+        'ma20': np.random.uniform(100, 200, 100),
+        'ma50': np.random.uniform(100, 200, 100)
+    })
+    return data
+
 def test_correlation_calculator_initialization(correlation_calculator):
     """Test CorrelationCalculator initialization."""
     assert correlation_calculator is not None
