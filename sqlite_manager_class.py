@@ -424,3 +424,99 @@ class SQLiteManager:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
         self.close()
+
+    def create_table(self, table_name: str, columns: Dict[str, str]) -> None:
+        """Create a table with the given name and columns."""
+        if not table_name or not isinstance(table_name, str) or not columns or not isinstance(columns, dict):
+            raise ValueError("Invalid table name or columns for create_table.")
+        columns_def = ', '.join([f'{col} {col_type}' for col, col_type in columns.items()])
+        sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({columns_def});"
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(sql)
+            self.connection.commit()
+        except sqlite3.Error as e:
+            logger.error(f"Error creating table {table_name}: {e}", exc_info=True)
+            try:
+                self.connection.rollback()
+            except Exception as rb_err:
+                logger.error(f"Rollback failed during create_table: {rb_err}")
+            raise
+
+    def table_exists(self, table_name: str) -> bool:
+        """Check if a table exists in the database."""
+        if not table_name or not isinstance(table_name, str):
+            return False
+        cursor = self.connection.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?;", (table_name,))
+        return cursor.fetchone() is not None
+
+    def insert_data(self, table_name: str, data: Dict[str, Any]) -> None:
+        """Insert a single row into the specified table."""
+        if not table_name or not isinstance(table_name, str) or not data or not isinstance(data, dict):
+            raise ValueError("Invalid table name or data for insert_data.")
+        columns = ', '.join(data.keys())
+        placeholders = ', '.join(['?' for _ in data])
+        values = tuple(data.values())
+        sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders});"
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(sql, values)
+            self.connection.commit()
+        except sqlite3.Error as e:
+            logger.error(f"Error inserting data into {table_name}: {e}", exc_info=True)
+            try:
+                self.connection.rollback()
+            except Exception as rb_err:
+                logger.error(f"Rollback failed during insert_data: {rb_err}")
+            raise
+
+    def insert_many(self, table_name: str, data_list: List[Dict[str, Any]]) -> None:
+        """Insert multiple rows into the specified table."""
+        if not table_name or not isinstance(table_name, str) or not data_list or not isinstance(data_list, list):
+            raise ValueError("Invalid table name or data_list for insert_many.")
+        if not all(isinstance(d, dict) for d in data_list):
+            raise ValueError("All items in data_list must be dicts.")
+        columns = ', '.join(data_list[0].keys())
+        placeholders = ', '.join(['?' for _ in data_list[0]])
+        values = [tuple(d.values()) for d in data_list]
+        sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders});"
+        try:
+            cursor = self.connection.cursor()
+            cursor.executemany(sql, values)
+            self.connection.commit()
+        except sqlite3.Error as e:
+            logger.error(f"Error inserting many rows into {table_name}: {e}", exc_info=True)
+            try:
+                self.connection.rollback()
+            except Exception as rb_err:
+                logger.error(f"Rollback failed during insert_many: {rb_err}")
+            raise
+
+    def query(self, sql: str, params: Optional[Tuple[Any, ...]] = None) -> List[Tuple[Any, ...]]:
+        """Execute a SQL query and return the results as a list of tuples."""
+        cursor = self.connection.cursor()
+        try:
+            if params:
+                cursor.execute(sql, params)
+            else:
+                cursor.execute(sql)
+            return cursor.fetchall()
+        except sqlite3.Error as e:
+            logger.error(f"Error executing query: {e}", exc_info=True)
+            raise
+
+    def query_to_dataframe(self, sql: str, params: Optional[Tuple[Any, ...]] = None) -> pd.DataFrame:
+        """Execute a SQL query and return the results as a pandas DataFrame."""
+        cursor = self.connection.cursor()
+        try:
+            if params:
+                cursor.execute(sql, params)
+            else:
+                cursor.execute(sql)
+            columns = [desc[0] for desc in cursor.description]
+            rows = cursor.fetchall()
+            return pd.DataFrame(rows, columns=columns)
+        except sqlite3.Error as e:
+            logger.error(f"Error executing query_to_dataframe: {e}", exc_info=True)
+            raise
