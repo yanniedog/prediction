@@ -1,21 +1,20 @@
 import pytest
-from indicator_factory_class import SQLiteManager
+from indicator_factory_class import IndicatorFactory
+import json
+from pathlib import Path
 
-def test_sqlite_manager_init(tmp_path):
-    db_path = tmp_path / "test.db"
-    manager = SQLiteManager(str(db_path))
-    assert manager.db_path == str(db_path)
-    assert manager.connection is not None
-    manager.close()
-    assert manager.connection is None
+def test_indicator_factory_loads_json(tmp_path, monkeypatch):
+    params = {"test": {"a": 1}}
+    json_path = tmp_path / "indicator_params.json"
+    json_path.write_text(json.dumps(params))
+    monkeypatch.chdir(tmp_path)
+    factory = IndicatorFactory()
+    assert factory.indicator_params == params
+    assert isinstance(factory.indicators, dict)
 
-def test_sqlite_manager_create_and_drop_table(tmp_path):
-    db_path = tmp_path / "test.db"
-    manager = SQLiteManager(str(db_path))
-    table_name = "test_table"
-    columns = {"id": "INTEGER PRIMARY KEY", "name": "TEXT"}
-    manager.create_table(table_name, columns)
-    assert manager.table_exists(table_name)
-    manager.drop_table(table_name)
-    assert not manager.table_exists(table_name)
-    manager.close() 
+def test_indicator_factory_fallback(monkeypatch):
+    # Remove indicator_params.json and patch indicator_definitions
+    monkeypatch.setattr('indicator_factory_class.indicator_definitions', {"fallback": {"b": 2}})
+    monkeypatch.setattr('builtins.open', lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError()))
+    factory = IndicatorFactory()
+    assert factory.indicator_params == {"fallback": {"b": 2}} 
