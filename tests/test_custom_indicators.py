@@ -10,6 +10,18 @@ import custom_indicators as ci
 import utils
 import config
 import logging
+from contextlib import contextmanager
+
+@contextmanager
+def suppress_expected_errors():
+    """Context manager to temporarily suppress expected error messages during tests."""
+    logger = logging.getLogger('custom_indicators')
+    original_level = logger.level
+    try:
+        logger.setLevel(logging.CRITICAL)  # Only show critical errors
+        yield
+    finally:
+        logger.setLevel(original_level)
 
 @pytest.fixture(scope="function")
 def temp_dir() -> Generator[Path, None, None]:
@@ -98,65 +110,67 @@ def test_compute_obv_price_divergence_methods(sample_data: pd.DataFrame) -> None
     price_types = ["close", "open", "high", "low", "hl/2", "ohlc/4"]
     ma_methods = ["SMA", "EMA", "NONE"]
     
-    for method in methods:
-        for price_type in price_types:
-            for ma_method in ma_methods:
-                result = ci.compute_obv_price_divergence(
-                    sample_data,
-                    method=method,
-                    obv_method=ma_method,
-                    obv_period=14,
-                    price_input_type=price_type,
-                    price_method=ma_method,
-                    price_period=14
-                )
-                
-                if result is not None:
-                    assert isinstance(result, pd.DataFrame)
-                    assert ci.OBV_PRICE_DIVERGENCE in result.columns
-                    assert not result[ci.OBV_PRICE_DIVERGENCE].isna().all()
-                else:
-                    # If result is None, it should be due to an unsupported method or input
-                    assert method not in ["Difference", "Ratio"]  # Only supported methods should return DataFrame
+    with suppress_expected_errors():
+        for method in methods:
+            for price_type in price_types:
+                for ma_method in ma_methods:
+                    result = ci.compute_obv_price_divergence(
+                        sample_data,
+                        method=method,
+                        obv_method=ma_method,
+                        obv_period=14,
+                        price_input_type=price_type,
+                        price_method=ma_method,
+                        price_period=14
+                    )
+                    
+                    if result is not None:
+                        assert isinstance(result, pd.DataFrame)
+                        assert ci.OBV_PRICE_DIVERGENCE in result.columns
+                        assert not result[ci.OBV_PRICE_DIVERGENCE].isna().all()
+                    else:
+                        # If result is None, it should be due to an unsupported method or input
+                        assert method not in ["Difference", "Ratio"]  # Only supported methods should return DataFrame
 
 def test_compute_obv_price_divergence_invalid_inputs(sample_data: pd.DataFrame) -> None:
     """Test OBV/Price divergence with invalid inputs."""
-    # Test with invalid method
-    result = ci.compute_obv_price_divergence(
-        sample_data,
-        method="InvalidMethod",
-        obv_method="SMA",
-        obv_period=14,
-        price_input_type="close",
-        price_method="SMA",
-        price_period=14
-    )
-    assert result is None
-    
-    # Test with invalid price type
-    result = ci.compute_obv_price_divergence(
-        sample_data,
-        method="Difference",
-        obv_method="SMA",
-        obv_period=14,
-        price_input_type="InvalidType",
-        price_method="SMA",
-        price_period=14
-    )
-    assert result is None
-    
-    # Test with missing columns
-    data_missing_cols = sample_data.drop('volume', axis=1)
-    result = ci.compute_obv_price_divergence(
-        data_missing_cols,
-        method="Difference",
-        obv_method="SMA",
-        obv_period=14,
-        price_input_type="close",
-        price_method="SMA",
-        price_period=14
-    )
-    assert result is None
+    with suppress_expected_errors():
+        # Test with invalid method
+        result = ci.compute_obv_price_divergence(
+            sample_data,
+            method="InvalidMethod",
+            obv_method="SMA",
+            obv_period=14,
+            price_input_type="close",
+            price_method="SMA",
+            price_period=14
+        )
+        assert result is None
+        
+        # Test with invalid price type
+        result = ci.compute_obv_price_divergence(
+            sample_data,
+            method="Difference",
+            obv_method="SMA",
+            obv_period=14,
+            price_input_type="InvalidType",
+            price_method="SMA",
+            price_period=14
+        )
+        assert result is None
+        
+        # Test with missing columns
+        data_missing_cols = sample_data.drop('volume', axis=1)
+        result = ci.compute_obv_price_divergence(
+            data_missing_cols,
+            method="Difference",
+            obv_method="SMA",
+            obv_period=14,
+            price_input_type="close",
+            price_method="SMA",
+            price_period=14
+        )
+        assert result is None
 
 def test_compute_obv_price_divergence_edge_cases(sample_data_with_extremes: pd.DataFrame) -> None:
     """Test OBV/Price divergence with edge cases."""
@@ -186,17 +200,18 @@ def test_compute_volume_oscillator_basic(sample_data: pd.DataFrame) -> None:
 
 def test_compute_volume_oscillator_invalid_inputs(sample_data: pd.DataFrame) -> None:
     """Test Volume Oscillator with invalid inputs."""
-    # Test with invalid window
-    result = ci.compute_volume_oscillator(sample_data, window=1)
-    assert result is None
-    
-    result = ci.compute_volume_oscillator(sample_data, window=-1)
-    assert result is None
-    
-    # Test with missing volume column
-    data_missing_volume = sample_data.drop('volume', axis=1)
-    result = ci.compute_volume_oscillator(data_missing_volume, window=20)
-    assert result is None
+    with suppress_expected_errors():
+        # Test with invalid window
+        result = ci.compute_volume_oscillator(sample_data, window=1)
+        assert result is None
+        
+        result = ci.compute_volume_oscillator(sample_data, window=-1)
+        assert result is None
+        
+        # Test with missing volume column
+        data_missing_volume = sample_data.drop('volume', axis=1)
+        result = ci.compute_volume_oscillator(data_missing_volume, window=20)
+        assert result is None
 
 def test_compute_volume_oscillator_edge_cases(sample_data_with_extremes: pd.DataFrame) -> None:
     """Test Volume Oscillator with edge cases."""
