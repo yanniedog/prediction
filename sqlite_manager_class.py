@@ -8,6 +8,7 @@ import numpy as np
 from pathlib import Path
 import utils
 from contextlib import contextmanager
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -353,27 +354,41 @@ class SQLiteManager:
         try:
             if not self.connection:
                 raise ValueError("No active database connection")
-                
-            # Ensure the backup directory exists
+            # Commit any open transaction
+            try:
+                self.connection.commit()
+            except Exception:
+                pass
             backup_dir = Path(backup_path).parent
             backup_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Create backup connection
-            backup_conn = sqlite3.connect(backup_path)
-            try:
-                # Copy the database
-                self.connection.backup(backup_conn)
-                backup_conn.close()
-                logger.info(f"Database backup created: {backup_path}")
-                return True
-            except Exception as e:
-                logger.error(f"Error during backup: {e}", exc_info=True)
+            max_retries = 5
+            retry_delay = 0.2
+            for attempt in range(max_retries):
                 try:
-                    backup_conn.close()
-                except Exception:
-                    pass
-                return False
-                
+                    backup_conn = sqlite3.connect(backup_path, timeout=10.0)
+                    backup_conn.execute("PRAGMA busy_timeout = 10000;")
+                    try:
+                        self.connection.backup(backup_conn)
+                        backup_conn.close()
+                        logger.info(f"Database backup created: {backup_path}")
+                        return True
+                    except sqlite3.OperationalError as e:
+                        if "database is locked" in str(e) or "database is busy" in str(e):
+                            backup_conn.close()
+                            if attempt < max_retries - 1:
+                                time.sleep(retry_delay)
+                                continue
+                        logger.error(f"Error during backup: {e}", exc_info=True)
+                        try:
+                            backup_conn.close()
+                        except Exception:
+                            pass
+                        return False
+                except Exception as e:
+                    logger.error(f"Error preparing backup: {e}", exc_info=True)
+                    return False
+            logger.error(f"Failed to create backup after {max_retries} attempts.")
+            return False
         except Exception as e:
             logger.error(f"Error preparing backup: {e}", exc_info=True)
             return False
@@ -383,27 +398,36 @@ class SQLiteManager:
         try:
             if not self.connection:
                 raise ValueError("No active database connection")
-                
-            # Verify backup exists
             if not Path(backup_path).exists():
                 raise FileNotFoundError(f"Backup file not found: {backup_path}")
-                
-            # Create backup connection
-            backup_conn = sqlite3.connect(backup_path)
-            try:
-                # Restore from backup
-                backup_conn.backup(self.connection)
-                backup_conn.close()
-                logger.info(f"Database restored from: {backup_path}")
-                return True
-            except Exception as e:
-                logger.error(f"Error during restore: {e}", exc_info=True)
+            max_retries = 5
+            retry_delay = 0.2
+            for attempt in range(max_retries):
                 try:
-                    backup_conn.close()
-                except Exception:
-                    pass
-                return False
-                
+                    backup_conn = sqlite3.connect(backup_path, timeout=10.0)
+                    backup_conn.execute("PRAGMA busy_timeout = 10000;")
+                    try:
+                        backup_conn.backup(self.connection)
+                        backup_conn.close()
+                        logger.info(f"Database restored from: {backup_path}")
+                        return True
+                    except sqlite3.OperationalError as e:
+                        if "database is locked" in str(e) or "database is busy" in str(e):
+                            backup_conn.close()
+                            if attempt < max_retries - 1:
+                                time.sleep(retry_delay)
+                                continue
+                        logger.error(f"Error during restore: {e}", exc_info=True)
+                        try:
+                            backup_conn.close()
+                        except Exception:
+                            pass
+                        return False
+                except Exception as e:
+                    logger.error(f"Error preparing restore: {e}", exc_info=True)
+                    return False
+            logger.error(f"Failed to restore database after {max_retries} attempts.")
+            return False
         except Exception as e:
             logger.error(f"Error preparing restore: {e}", exc_info=True)
             return False

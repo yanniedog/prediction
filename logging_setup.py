@@ -3,6 +3,7 @@ import logging
 import sys
 from datetime import datetime
 import config # Assuming config.py defines LOG_DIR
+import os
 
 # Global variable to hold the console handler reference
 _console_handler = None
@@ -15,6 +16,9 @@ _file_log_level = logging.WARNING # Default to WARNING
 def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_mode='w'):
     """Configures logging with levels for console/file, overwriting log file by default."""
     global _console_handler, _default_console_level, _file_log_level
+    # Force WARNING for console if running under pytest
+    if 'PYTEST_CURRENT_TEST' in os.environ:
+        console_level = logging.WARNING
     _default_console_level = console_level # Update default if changed
     _file_log_level = file_level        # Update file level if changed
 

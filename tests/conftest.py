@@ -157,9 +157,9 @@ def pytest_configure(config):
     file_handler.setFormatter(file_formatter)
     root_logger.addHandler(file_handler)
 
-    # Stream handler: simple format (just the message)
+    # Stream handler: simple format (just the message) – force WARNING (or lower) so that critical, error, and warning logs are shown
     stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(logging.INFO)
+    stream_handler.setLevel(logging.WARNING)  # (or lower, e.g. logging.DEBUG if you want all logs)
     stream_formatter = logging.Formatter('%(message)s')
     stream_handler.setFormatter(stream_formatter)
     root_logger.addHandler(stream_handler)
@@ -167,8 +167,8 @@ def pytest_configure(config):
     # Set higher log level for leaderboard manager to reduce output
     logging.getLogger('leaderboard_manager').setLevel(logging.WARNING)
 
-    root_logger.setLevel(logging.INFO)
-    # Now, console output will be clean and respect pytest verbosity, while test.log is detailed.
+    # Force root logger level to WARNING (or lower) so that critical, error, and warning logs are shown
+    root_logger.setLevel(logging.WARNING)  # (or lower, e.g. logging.DEBUG if you want all logs)
 
 # --- Global Fixtures ---
 @pytest.fixture(autouse=True)

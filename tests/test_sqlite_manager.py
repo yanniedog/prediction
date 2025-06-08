@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from sqlite_manager_class import SQLiteManager
 import time
 from unittest.mock import patch
+import sqlite3
 
 @pytest.mark.timeout(10)  # 10 second timeout for each test
 def test_sqlite_manager_initialization(temp_db):
@@ -224,12 +225,20 @@ def test_data_validation(temp_db):
     valid_data = {'name': 'test', 'value': 1.0}
     temp_db.insert_data(table_name, valid_data)
     
-    # Test invalid data
-    with pytest.raises(Exception):
-        temp_db.insert_data(table_name, {'name': None, 'value': 1.0})
+    # Test invalid data - NULL name
+    with patch('sqlite_manager_class.logger.error'):
+        with pytest.raises(sqlite3.IntegrityError, match="NOT NULL constraint failed"):
+            temp_db.insert_data(table_name, {'name': None, 'value': 1.0})
     
-    with pytest.raises(Exception):
-        temp_db.insert_data(table_name, {'name': 'test', 'value': -1.0})
+    # Test invalid data - negative value
+    with patch('sqlite_manager_class.logger.error'):
+        with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"):
+            temp_db.insert_data(table_name, {'name': 'test', 'value': -1.0})
+    
+    # Test invalid data - missing required column
+    with patch('sqlite_manager_class.logger.error'):
+        with pytest.raises(sqlite3.IntegrityError):
+            temp_db.insert_data(table_name, {'value': 1.0})
 
 @pytest.mark.timeout(15)  # Longer timeout for backup/restore
 def test_backup_and_restore(temp_db, tmp_path):
