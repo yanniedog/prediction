@@ -9,6 +9,7 @@ import threading
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from conftest import assert_timeout, skip_if_missing_dependency
+from typing import Dict, List, Any, Optional, Tuple
 
 def timeout(seconds):
     """Decorator to add timeout to test functions using threading."""
@@ -415,4 +416,362 @@ def test_correlation_regimes(correlation_calculator, test_data):
     assert isinstance(result['regimes'], list)
     assert isinstance(result['transition_matrix'], np.ndarray)
     assert len(result['regimes']) == 2
-    assert result['transition_matrix'].shape == (2, 2) 
+    assert result['transition_matrix'].shape == (2, 2)
+
+@pytest.fixture
+def sample_data() -> pd.DataFrame:
+    dates = pd.date_range(start='2024-01-01', periods=100, freq='H')
+    data = pd.DataFrame({
+        'timestamp': dates,
+        'open': np.random.uniform(100, 200, 100),
+        'high': np.random.uniform(200, 300, 100),
+        'low': np.random.uniform(50, 100, 100),
+        'close': np.random.uniform(100, 200, 100),
+        'volume': np.random.uniform(1000, 5000, 100),
+        'RSI_14': np.random.uniform(0, 100, 100),  # Sample indicator
+        'MACD_12_26_9': np.random.uniform(-10, 10, 100)  # Sample indicator
+    })
+    return data
+
+@pytest.fixture
+def sample_indicator_configs() -> List[Dict[str, Any]]:
+    return [
+        {
+            'config_id': 1,
+            'indicator_name': 'RSI',
+            'params': {'period': 14}
+        },
+        {
+            'config_id': 2,
+            'indicator_name': 'MACD',
+            'params': {'fast': 12, 'slow': 26, 'signal': 9}
+        }
+    ]
+
+def test_calculate_correlation_valid(sample_data):
+    """Test correlation calculation with valid data."""
+    result = calculate_correlation_indicator_vs_future_price(
+        data=sample_data,
+        indicator_col='RSI_14',
+        lag=1
+    )
+    assert isinstance(result, (float, type(None)))
+    if result is not None:
+        assert -1 <= result <= 1
+
+def test_calculate_correlation_missing_column(sample_data):
+    """Test correlation calculation with missing column."""
+    result = calculate_correlation_indicator_vs_future_price(
+        data=sample_data,
+        indicator_col='nonexistent',
+        lag=1
+    )
+    assert result is None
+
+def test_calculate_correlation_invalid_lag(sample_data):
+    """Test correlation calculation with invalid lag."""
+    result = calculate_correlation_indicator_vs_future_price(
+        data=sample_data,
+        indicator_col='RSI_14',
+        lag=0
+    )
+    assert result is None
+
+def test_calculate_correlation_all_nan(sample_data):
+    """Test correlation calculation with all NaN values."""
+    data = sample_data.copy()
+    data['RSI_14'] = np.nan
+    result = calculate_correlation_indicator_vs_future_price(
+        data=data,
+        indicator_col='RSI_14',
+        lag=1
+    )
+    assert pd.isna(result)
+
+def test_calculate_correlation_constant_value(sample_data):
+    """Test correlation calculation with constant value."""
+    data = sample_data.copy()
+    data['RSI_14'] = 50  # Constant value
+    result = calculate_correlation_indicator_vs_future_price(
+        data=data,
+        indicator_col='RSI_14',
+        lag=1
+    )
+    assert pd.isna(result)
+
+def test_calculate_correlations_for_single_indicator(sample_data):
+    """Test calculating correlations for single indicator."""
+    indicator_col = 'RSI_14'
+    indicator_series = sample_data[indicator_col]
+    shifted_closes = {
+        lag: sample_data['close'].shift(-lag)
+        for lag in range(1, 4)
+    }
+    
+    results = _calculate_correlations_for_single_indicator(
+        indicator_col_name=indicator_col,
+        indicator_series=indicator_series,
+        shifted_closes_future=shifted_closes,
+        max_lag=3,
+        symbol_id=1,
+        timeframe_id=1,
+        config_id=1
+    )
+    
+    assert isinstance(results, list)
+    assert len(results) == 3  # One result per lag
+    
+    for result in results:
+        assert len(result) == 5  # (symbol_id, timeframe_id, config_id, lag, correlation)
+        assert isinstance(result[0], int)  # symbol_id
+        assert isinstance(result[1], int)  # timeframe_id
+        assert isinstance(result[2], int)  # config_id
+        assert isinstance(result[3], int)  # lag
+        assert isinstance(result[4], (float, type(None)))  # correlation
+
+def test_calculate_correlations_all_nan(sample_data):
+    """Test calculating correlations with all NaN values."""
+    indicator_col = 'RSI_14'
+    indicator_series = pd.Series(np.nan, index=sample_data.index)
+    shifted_closes = {
+        lag: sample_data['close'].shift(-lag)
+        for lag in range(1, 4)
+    }
+    
+    results = _calculate_correlations_for_single_indicator(
+        indicator_col_name=indicator_col,
+        indicator_series=indicator_series,
+        shifted_closes_future=shifted_closes,
+        max_lag=3,
+        symbol_id=1,
+        timeframe_id=1,
+        config_id=1
+    )
+    
+    assert len(results) == 3
+    assert all(result[4] is None for result in results)
+
+def test_process_correlations_valid(
+    sample_data,
+    sample_indicator_configs,
+    tmp_path
+):
+    """Test processing correlations with valid data."""
+    # Create test database
+    db_path = str(tmp_path / "test.db")
+    
+    # Mock display progress function
+    mock_display = lambda *args, **kwargs: None
+    
+    # Mock periodic report function
+    mock_periodic_report = lambda *args, **kwargs: None
+    
+    result = process_correlations(
+        data=sample_data,
+        db_path=db_path,
+        symbol_id=1,
+        timeframe_id=1,
+        indicator_configs_processed=sample_indicator_configs,
+        max_lag=3,
+        analysis_start_time_global=time.time(),
+        total_analysis_steps_global=10,
+        current_step_base=1,
+        total_steps_in_phase=5,
+        display_progress_func=mock_display,
+        periodic_report_func=mock_periodic_report
+    )
+    
+    assert isinstance(result, bool)
+    assert result is True
+
+def test_process_correlations_invalid_data(
+    sample_indicator_configs,
+    tmp_path
+):
+    """Test processing correlations with invalid data."""
+    # Create empty DataFrame
+    data = pd.DataFrame()
+    
+    # Create test database
+    db_path = str(tmp_path / "test.db")
+    
+    # Mock display progress function
+    mock_display = lambda *args, **kwargs: None
+    
+    # Mock periodic report function
+    mock_periodic_report = lambda *args, **kwargs: None
+    
+    result = process_correlations(
+        data=data,
+        db_path=db_path,
+        symbol_id=1,
+        timeframe_id=1,
+        indicator_configs_processed=sample_indicator_configs,
+        max_lag=3,
+        analysis_start_time_global=time.time(),
+        total_analysis_steps_global=10,
+        current_step_base=1,
+        total_steps_in_phase=5,
+        display_progress_func=mock_display,
+        periodic_report_func=mock_periodic_report
+    )
+    
+    assert isinstance(result, bool)
+    assert result is False
+
+def test_correlation_calculator_init(correlation_calculator):
+    """Test CorrelationCalculator initialization."""
+    assert isinstance(correlation_calculator, CorrelationCalculator)
+
+def test_calculate_correlation(correlation_calculator, sample_data):
+    """Test basic correlation calculation."""
+    result = correlation_calculator.calculate_correlation(
+        data1=sample_data['RSI_14'],
+        data2=sample_data['close'],
+        method='pearson'
+    )
+    assert isinstance(result, float)
+    assert -1 <= result <= 1
+
+def test_calculate_rolling_correlation(correlation_calculator, sample_data):
+    """Test rolling correlation calculation."""
+    result = correlation_calculator.calculate_rolling_correlation(
+        data1=sample_data['RSI_14'],
+        data2=sample_data['close'],
+        window=20
+    )
+    assert isinstance(result, pd.Series)
+    assert len(result) == len(sample_data)
+    assert result.notna().any()
+
+def test_calculate_correlation_matrix(correlation_calculator, sample_data):
+    """Test correlation matrix calculation."""
+    result = correlation_calculator.calculate_correlation_matrix(
+        data=sample_data[['RSI_14', 'MACD_12_26_9', 'close']]
+    )
+    assert isinstance(result, pd.DataFrame)
+    assert result.shape == (3, 3)
+    assert result.index.equals(result.columns)
+
+def test_test_correlation_significance(correlation_calculator, sample_data):
+    """Test correlation significance testing."""
+    result = correlation_calculator.test_correlation_significance(
+        data1=sample_data['RSI_14'],
+        data2=sample_data['close']
+    )
+    assert isinstance(result, dict)
+    assert 'correlation' in result
+    assert 'p_value' in result
+    assert 'significant' in result
+
+def test_plot_correlation_heatmap(correlation_calculator, sample_data):
+    """Test correlation heatmap plotting."""
+    fig = correlation_calculator.plot_correlation_heatmap(
+        data=sample_data[['RSI_14', 'MACD_12_26_9', 'close']]
+    )
+    assert isinstance(fig, Figure)
+
+def test_plot_correlation_scatter(correlation_calculator, sample_data):
+    """Test correlation scatter plot."""
+    fig = correlation_calculator.plot_correlation_scatter(
+        data1=sample_data['RSI_14'],
+        data2=sample_data['close']
+    )
+    assert isinstance(fig, Figure)
+
+def test_decompose_correlation(correlation_calculator, sample_data):
+    """Test correlation decomposition."""
+    result = correlation_calculator.decompose_correlation(
+        data=sample_data[['RSI_14', 'MACD_12_26_9', 'close']],
+        n_components=2
+    )
+    assert isinstance(result, dict)
+    assert 'components' in result
+    assert 'explained_variance' in result
+
+def test_cluster_correlations(correlation_calculator, sample_data):
+    """Test correlation clustering."""
+    result = correlation_calculator.cluster_correlations(
+        data=sample_data[['RSI_14', 'MACD_12_26_9', 'close']],
+        n_clusters=2
+    )
+    assert isinstance(result, dict)
+    assert 'labels' in result
+    assert 'centers' in result
+    assert 'silhouette_score' in result
+
+def test_analyze_correlation_stability(correlation_calculator, sample_data):
+    """Test correlation stability analysis."""
+    result = correlation_calculator.analyze_correlation_stability(
+        data=sample_data[['RSI_14', 'MACD_12_26_9', 'close']],
+        window_size=20
+    )
+    assert isinstance(result, dict)
+    assert 'stability_scores' in result
+    assert 'volatility' in result
+
+def test_forecast_correlations(correlation_calculator, sample_data):
+    """Test correlation forecasting."""
+    result = correlation_calculator.forecast_correlations(
+        data=sample_data[['RSI_14', 'MACD_12_26_9', 'close']],
+        forecast_horizon=5
+    )
+    assert isinstance(result, dict)
+    assert 'forecast' in result
+    assert 'confidence_intervals' in result
+
+def test_detect_correlation_regimes(correlation_calculator, sample_data):
+    """Test correlation regime detection."""
+    result = correlation_calculator.detect_correlation_regimes(
+        data=sample_data[['RSI_14', 'MACD_12_26_9', 'close']],
+        n_regimes=2
+    )
+    assert isinstance(result, dict)
+    assert 'regime_labels' in result
+    assert 'regime_characteristics' in result
+
+def test_analyze_correlation_network(correlation_calculator, sample_data):
+    """Test correlation network analysis."""
+    result = correlation_calculator.analyze_correlation_network(
+        data=sample_data[['RSI_14', 'MACD_12_26_9', 'close']],
+        threshold=0.5
+    )
+    assert isinstance(result, dict)
+    assert 'network' in result
+    assert 'centrality' in result
+
+def test_detect_correlation_anomalies(correlation_calculator, sample_data):
+    """Test correlation anomaly detection."""
+    result = correlation_calculator.detect_correlation_anomalies(
+        data=sample_data[['RSI_14', 'MACD_12_26_9', 'close']],
+        window_size=20,
+        threshold=2.0
+    )
+    assert isinstance(result, dict)
+    assert 'anomalies' in result
+    assert 'scores' in result
+
+def test_generate_correlation_report(correlation_calculator, sample_data):
+    """Test correlation report generation."""
+    result = correlation_calculator.generate_correlation_report(
+        data=sample_data[['RSI_14', 'MACD_12_26_9', 'close']]
+    )
+    assert isinstance(result, dict)
+    assert 'summary' in result
+    assert 'correlations' in result
+    assert 'significance' in result
+
+def test_visualize_correlation(correlation_calculator, sample_data):
+    """Test correlation visualization."""
+    fig = correlation_calculator.visualize_correlation(
+        data1=sample_data['RSI_14'],
+        data2=sample_data['close']
+    )
+    assert isinstance(fig, Figure)
+
+def test_visualize_correlation_matrix(correlation_calculator, sample_data):
+    """Test correlation matrix visualization."""
+    fig = correlation_calculator.visualize_correlation_matrix(
+        data=sample_data[['RSI_14', 'MACD_12_26_9', 'close']]
+    )
+    assert isinstance(fig, Figure) 

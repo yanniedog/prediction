@@ -7,6 +7,13 @@ import shutil
 import json
 import parameter_generator
 import utils
+from parameter_generator import (
+    generate_param_grid,
+    _evaluate_single_condition,
+    evaluate_conditions,
+    generate_configurations,
+    _generate_random_valid_config
+)
 
 @pytest.fixture(scope="function")
 def sample_indicator_definition() -> Dict[str, Any]:
@@ -416,4 +423,185 @@ def test_condition_references() -> None:
     invalid_definition = definition.copy()
     invalid_definition["parameters"].pop("param2")
     configs = parameter_generator.generate_configurations(invalid_definition)
-    assert len(configs) == 0  # Should fail due to missing reference 
+    assert len(configs) == 0  # Should fail due to missing reference
+
+# Test generate_param_grid
+def test_generate_param_grid_empty():
+    """Test generating parameter grid with empty input."""
+    params = {}
+    grid = list(generate_param_grid(params))
+    assert len(grid) == 1
+    assert grid[0] == {}
+
+def test_generate_param_grid_single_param():
+    """Test generating parameter grid with single parameter."""
+    params = {'a': [1, 2, 3]}
+    grid = list(generate_param_grid(params))
+    assert len(grid) == 3
+    assert grid == [{'a': 1}, {'a': 2}, {'a': 3}]
+
+def test_generate_param_grid_multiple_params():
+    """Test generating parameter grid with multiple parameters."""
+    params = {'a': [1, 2], 'b': ['x', 'y']}
+    grid = list(generate_param_grid(params))
+    assert len(grid) == 4
+    assert {'a': 1, 'b': 'x'} in grid
+    assert {'a': 1, 'b': 'y'} in grid
+    assert {'a': 2, 'b': 'x'} in grid
+    assert {'a': 2, 'b': 'y'} in grid
+
+# Test _evaluate_single_condition
+def test_evaluate_single_condition_numeric():
+    """Test evaluating single condition with numeric values."""
+    assert _evaluate_single_condition(5, 'gt', 3) is True
+    assert _evaluate_single_condition(5, 'gte', 5) is True
+    assert _evaluate_single_condition(5, 'lt', 7) is True
+    assert _evaluate_single_condition(5, 'lte', 5) is True
+    assert _evaluate_single_condition(5, 'eq', 5) is True
+    assert _evaluate_single_condition(5, 'neq', 3) is True
+
+def test_evaluate_single_condition_invalid_operator():
+    """Test evaluating single condition with invalid operator."""
+    assert _evaluate_single_condition(5, 'invalid', 3) is False
+
+def test_evaluate_single_condition_type_mismatch():
+    """Test evaluating single condition with type mismatch."""
+    assert _evaluate_single_condition('5', 'gt', 3) is False
+    assert _evaluate_single_condition(5, 'gt', '3') is False
+
+def test_evaluate_single_condition_none_values():
+    """Test evaluating single condition with None values."""
+    assert _evaluate_single_condition(None, 'eq', None) is True
+    assert _evaluate_single_condition(None, 'neq', 3) is True
+    assert _evaluate_single_condition(5, 'neq', None) is True
+
+# Test evaluate_conditions
+def test_evaluate_conditions_valid(sample_parameter_definitions, sample_conditions):
+    """Test evaluating conditions with valid parameter combination."""
+    params = {
+        'fast': 12,
+        'slow': 26,
+        'period': 14,
+        'factor': 0.5,
+        'scalar': 2.0
+    }
+    assert evaluate_conditions(params, sample_conditions) is True
+
+def test_evaluate_conditions_invalid(sample_parameter_definitions, sample_conditions):
+    """Test evaluating conditions with invalid parameter combination."""
+    params = {
+        'fast': 30,  # Invalid: fast > slow
+        'slow': 26,
+        'period': 14,
+        'factor': 0.5,
+        'scalar': 2.0
+    }
+    assert evaluate_conditions(params, sample_conditions) is False
+
+def test_evaluate_conditions_empty():
+    """Test evaluating conditions with empty conditions list."""
+    params = {'a': 1, 'b': 2}
+    assert evaluate_conditions(params, []) is True
+
+def test_evaluate_conditions_invalid_format():
+    """Test evaluating conditions with invalid condition format."""
+    params = {'a': 1, 'b': 2}
+    invalid_conditions = [{'a': 'invalid'}]  # Not a dict of operations
+    assert evaluate_conditions(params, invalid_conditions) is True  # Should skip invalid conditions
+
+# Test generate_configurations
+def test_generate_configurations_basic(sample_indicator_definition):
+    """Test generating configurations with basic parameters."""
+    configs = generate_configurations(sample_indicator_definition)
+    assert isinstance(configs, list)
+    assert len(configs) > 0
+    
+    # Verify all generated configs are valid
+    for config in configs:
+        assert isinstance(config, dict)
+        assert 'period' in config
+        assert 'fast' in config
+        assert 'slow' in config
+        assert 'factor' in config
+        assert 'scalar' in config
+        assert 'bool_param' in config
+        assert 'str_param' in config
+        assert 'none_param' in config
+
+def test_generate_configurations_respects_bounds(sample_indicator_definition):
+    """Test that generated configurations respect parameter bounds."""
+    configs = generate_configurations(sample_indicator_definition)
+    
+    for config in configs:
+        assert 2 <= config['period'] <= 50
+        assert 2 <= config['fast'] <= 30
+        assert 5 <= config['slow'] <= 50
+        assert 0.1 <= config['factor'] <= 1.0
+        assert 0.1 <= config['scalar'] <= 5.0
+        assert config['bool_param'] is True
+        assert config['str_param'] == 'value'
+        assert config['none_param'] is None
+
+def test_generate_configurations_respects_conditions(sample_indicator_definition):
+    """Test that generated configurations respect conditions."""
+    configs = generate_configurations(sample_indicator_definition)
+    
+    for config in configs:
+        assert config['fast'] < config['slow']
+        assert config['period'] >= 2
+        assert 0.1 < config['factor'] < 1.0
+        assert config['scalar'] > 0.1
+
+def test_generate_configurations_no_parameters():
+    """Test generating configurations with no parameters."""
+    indicator_def = {
+        'name': 'EmptyIndicator',
+        'parameters': {},
+        'conditions': [],
+        'range_steps_default': 2
+    }
+    configs = generate_configurations(indicator_def)
+    assert len(configs) == 1
+    assert configs[0] == {}
+
+# Test _generate_random_valid_config
+def test_generate_random_valid_config(sample_parameter_definitions, sample_conditions):
+    """Test generating random valid configuration."""
+    config = _generate_random_valid_config(sample_parameter_definitions, sample_conditions)
+    assert config is not None
+    assert isinstance(config, dict)
+    
+    # Verify bounds
+    assert 2 <= config['period'] <= 50
+    assert 2 <= config['fast'] <= 30
+    assert 5 <= config['slow'] <= 50
+    assert 0.1 <= config['factor'] <= 1.0
+    assert 0.1 <= config['scalar'] <= 5.0
+    
+    # Verify conditions
+    assert config['fast'] < config['slow']
+    assert config['period'] >= 2
+    assert 0.1 < config['factor'] < 1.0
+    assert config['scalar'] > 0.1
+
+def test_generate_random_valid_config_impossible_conditions():
+    """Test generating random valid configuration with impossible conditions."""
+    impossible_conditions = [{
+        'fast': {'gt': 'slow'},  # Impossible: fast > slow
+        'slow': {'lt': 'fast'}   # Impossible: slow < fast
+    }]
+    config = _generate_random_valid_config(sample_parameter_definitions, impossible_conditions)
+    assert config is None
+
+def test_generate_random_valid_config_no_conditions():
+    """Test generating random valid configuration with no conditions."""
+    config = _generate_random_valid_config(sample_parameter_definitions, [])
+    assert config is not None
+    assert isinstance(config, dict)
+    
+    # Verify bounds only
+    assert 2 <= config['period'] <= 50
+    assert 2 <= config['fast'] <= 30
+    assert 5 <= config['slow'] <= 50
+    assert 0.1 <= config['factor'] <= 1.0
+    assert 0.1 <= config['scalar'] <= 5.0 
