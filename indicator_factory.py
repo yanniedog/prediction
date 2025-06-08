@@ -163,6 +163,12 @@ class IndicatorFactory:
 
     def compute_indicators(self, data: pd.DataFrame, indicators: Optional[List[str]] = None) -> pd.DataFrame:
         """Compute all or specified indicators for the given data."""
+        # Validate input data
+        if data is None or not isinstance(data, pd.DataFrame):
+            raise ValueError("Input data must be a pandas DataFrame")
+        if data.empty:
+            raise ValueError("Input data cannot be empty")
+        
         if indicators is None:
             indicators = list(self.indicator_params.keys())
         
@@ -207,6 +213,26 @@ class IndicatorFactory:
 
     def create_indicator(self, name: str, data: pd.DataFrame, **params):
         """Compute a standard indicator by name, using provided data and parameters."""
+        # Validate input data first
+        if data is None or not isinstance(data, pd.DataFrame):
+            raise ValueError("Input data must be a pandas DataFrame")
+        if data.empty:
+            raise ValueError("Input data cannot be empty")
+        
+        # Check for minimum data length if period/length/timeperiod is specified
+        period_param = None
+        for key in ["period", "length", "timeperiod"]:
+            if key in params:
+                period_param = params[key]
+                break
+        if period_param is not None:
+            try:
+                period_val = int(period_param)
+                if len(data) < period_val:
+                    raise ValueError(f"Input data length ({len(data)}) is less than required {key} ({period_val}) for indicator '{name}'")
+            except Exception:
+                pass
+        
         if name.lower() in self.indicator_params:
             config = self.indicator_params[name.lower()]
         elif name.upper() in self.indicator_params:
