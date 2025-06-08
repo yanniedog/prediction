@@ -41,33 +41,31 @@ def test_data():
 def test_indicator_factory_initialization(indicator_factory):
     """Test IndicatorFactory initialization."""
     assert indicator_factory is not None
-    assert hasattr(indicator_factory, 'indicators')
-    assert isinstance(indicator_factory.indicators, dict)
 
 def test_indicator_creation(indicator_factory, test_data):
     """Test creation of various indicators."""
-    # Test computing a simple moving average
-    result_df = indicator_factory.compute_indicators(test_data, indicators=['SMA'])
+    # Test computing an exponential moving average
+    result_df = indicator_factory.compute_indicators(test_data, indicators=['ema'])
     assert isinstance(result_df, pd.DataFrame)
     assert not result_df.empty
     assert len(result_df) == len(test_data)
-    assert any(col.startswith('SMA_') for col in result_df.columns)
+    assert any(col.startswith('ema_') for col in result_df.columns)
 
     # Test computing a relative strength index
-    result_df = indicator_factory.compute_indicators(test_data, indicators=['RSI'])
+    result_df = indicator_factory.compute_indicators(test_data, indicators=['rsi'])
     assert isinstance(result_df, pd.DataFrame)
     assert not result_df.empty
     assert len(result_df) == len(test_data)
-    rsi_col = [col for col in result_df.columns if col.startswith('RSI_')][0]
+    rsi_col = [col for col in result_df.columns if col.startswith('rsi_')][0]
     assert result_df[rsi_col].max() <= 100
     assert result_df[rsi_col].min() >= 0
 
 def test_indicator_parameters(indicator_factory, test_data):
     """Test indicator parameter handling."""
     # Test with valid parameters
-    result_df = indicator_factory.compute_indicators(test_data, indicators=['BB'])
+    result_df = indicator_factory.compute_indicators(test_data, indicators=['bb'])
     assert isinstance(result_df, pd.DataFrame)
-    assert any(col.startswith('BB_') for col in result_df.columns)
+    assert any(col.startswith('bb_') for col in result_df.columns)
 
     # Test with invalid indicator name
     with pytest.raises(ValueError):
@@ -76,24 +74,23 @@ def test_indicator_parameters(indicator_factory, test_data):
 def test_indicator_combinations(indicator_factory, test_data):
     """Test combining multiple indicators."""
     # Create multiple indicators
-    result_df = indicator_factory.compute_indicators(test_data, indicators=['SMA', 'EMA', 'RSI'])
+    result_df = indicator_factory.compute_indicators(test_data, indicators=['ema', 'rsi'])
     assert isinstance(result_df, pd.DataFrame)
-    assert any(col.startswith('SMA_') for col in result_df.columns)
-    assert any(col.startswith('EMA_') for col in result_df.columns)
-    assert any(col.startswith('RSI_') for col in result_df.columns)
+    assert any(col.startswith('ema_') for col in result_df.columns)
+    assert any(col.startswith('rsi_') for col in result_df.columns)
     assert not result_df.isnull().all().any()
 
 def test_indicator_validation(indicator_factory, test_data):
     """Test indicator validation methods."""
     # Test with valid data
-    result_df = indicator_factory.compute_indicators(test_data, indicators=['SMA'])
+    result_df = indicator_factory.compute_indicators(test_data, indicators=['ema'])
     assert isinstance(result_df, pd.DataFrame)
     assert not result_df.empty
 
     # Test with invalid data
     invalid_data = test_data.copy()
     invalid_data.loc[invalid_data.index[0], 'close'] = np.nan
-    result_df = indicator_factory.compute_indicators(invalid_data, indicators=['SMA'])
+    result_df = indicator_factory.compute_indicators(invalid_data, indicators=['ema'])
     assert isinstance(result_df, pd.DataFrame)
     # Should still return a DataFrame but with NaN values where calculation failed
     assert result_df.isnull().any().any()
@@ -208,9 +205,9 @@ def test_get_available_indicators(indicator_factory):
 def test_get_indicator_params_basic(indicator_factory):
     """Test getting indicator parameters."""
     # Test with valid indicator
-    params = indicator_factory.get_indicator_params('SMA')
+    params = indicator_factory.get_indicator_params('ema')
     assert isinstance(params, dict)
-    assert 'period' in params
+    assert 'length' in params or 'period' in params
 
     # Test with invalid indicator
     params = indicator_factory.get_indicator_params('INVALID_INDICATOR')

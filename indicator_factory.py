@@ -61,7 +61,6 @@ class IndicatorFactory:
             if config['type'] == 'talib':
                 func_name = config['name']
                 params = config['params']
-                
                 # Get required input columns
                 required_cols = []
                 if 'high' in params: required_cols.append('high')
@@ -69,42 +68,41 @@ class IndicatorFactory:
                 if 'close' in params: required_cols.append('close')
                 if 'volume' in params: required_cols.append('volume')
                 if 'open' in params: required_cols.append('open')
-                
                 # Validate required columns
                 missing_cols = [col for col in required_cols if col not in data.columns]
                 if missing_cols:
                     logger.error(f"Missing required columns for {name}: {missing_cols}")
                     return None
-
                 # Get TA-Lib function
-                ta_func = getattr(ta, func_name)
+                ta_func = getattr(ta, func_name, None)
                 if not ta_func:
                     raise ValueError(f"Unknown TA-Lib function: {func_name}")
-
                 # Prepare input arrays
                 inputs = {}
                 for param_name, col_name in params.items():
                     if col_name in data.columns:
                         inputs[param_name] = data[col_name].values
                     else:
-                        raise ValueError(f"Column {col_name} not found in data for {name}")
-
+                        # If the param is not a column, use as-is (for timeperiod, etc.)
+                        inputs[param_name] = col_name
                 # Get output names
                 output_names = self._get_ta_lib_output_suffixes(func_name)
-                
                 # Compute indicator
                 results = ta_func(**inputs)
-                
+                if results is None:
+                    logger.error(f"TA-Lib function {func_name} returned None for {name}")
+                    return None
                 # Handle single output
                 if not isinstance(results, tuple):
                     results = (results,)
-                
                 # Create result DataFrame
                 result_df = pd.DataFrame(index=data.index)
                 for i, output_name in enumerate(output_names):
                     if i < len(results):
                         result_df[f"{name}_{output_name}"] = results[i]
-                
+                if result_df.empty:
+                    logger.error(f"Result DataFrame is empty for {name}")
+                    return None
                 return result_df
 
             elif config['type'] == 'ta-lib':

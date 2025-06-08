@@ -749,5 +749,25 @@
         "conditions": [ { "length": { "gte": 2 } } ],
         "range_steps_default": 5,
         "name": "zscore"
+    },
+    "ema": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": {
+            "timeperiod": { "default": 14, "min": 2, "max": 200 }
+        },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "ema"
+    },
+    "sma": {
+        "type": "ta-lib",
+        "required_inputs": ["close"],
+        "params": {
+            "timeperiod": { "default": 14, "min": 2, "max": 200 }
+        },
+        "conditions": [ { "timeperiod": { "gte": 2 } } ],
+        "range_steps_default": 5,
+        "name": "sma"
     }
 }
