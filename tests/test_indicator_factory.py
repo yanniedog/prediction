@@ -133,7 +133,7 @@ def test_indicator_error_handling(indicator_factory, test_data):
     # Test with insufficient data
     small_data = test_data.iloc[:5]
     with pytest.raises(ValueError):
-        indicator_factory.create_indicator('SMA', small_data, period=20)
+        indicator_factory.create_indicator('SMA', small_data, timeperiod=20)
 
 def test_indicator_performance(indicator_factory, test_data):
     """Test indicator performance calculations."""

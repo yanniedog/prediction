@@ -219,20 +219,8 @@ class IndicatorFactory:
         if data.empty:
             raise ValueError("Input data cannot be empty")
         
-        # Check for minimum data length if period/length/timeperiod is specified
-        period_param = None
-        for key in ["period", "length", "timeperiod"]:
-            if key in params:
-                period_param = params[key]
-                break
-        if period_param is not None:
-            try:
-                period_val = int(period_param)
-                if len(data) < period_val:
-                    raise ValueError(f"Input data length ({len(data)}) is less than required {key} ({period_val}) for indicator '{name}'")
-            except Exception:
-                pass
-        
+        # Find the indicator config
+        config = None
         if name.lower() in self.indicator_params:
             config = self.indicator_params[name.lower()]
         elif name.upper() in self.indicator_params:
@@ -241,12 +229,52 @@ class IndicatorFactory:
             config = self.indicator_params[name]
         else:
             raise ValueError(f"Unknown indicator: {name}")
+        
         # Merge provided params with defaults
         merged_params = config['params'].copy()
         merged_params.update(params)
+        
+        # Check for minimum data length if period/length/timeperiod is specified (in merged_params)
+        period_param = None
+        period_key = None
+        for key in ["period", "length", "timeperiod"]:
+            if key in merged_params:
+                period_param = merged_params[key]
+                period_key = key
+                break
+        if period_param is not None:
+            try:
+                period_val = int(period_param)
+                if len(data) < period_val:
+                    raise ValueError(f"Input data length ({len(data)}) is less than required {period_key} ({period_val}) for indicator '{name}'")
+            except (ValueError, TypeError):
+                # If period_param can't be converted to int, it's invalid
+                raise ValueError(f"Invalid {period_key} value '{period_param}' for indicator '{name}'")
+        
         # Build a config dict for _compute_single_indicator
         config_for_compute = config.copy()
         config_for_compute['params'] = merged_params
+        
+        # Validate required columns before computation
+        required_cols = []
+        if config['type'] in ['talib', 'ta-lib']:
+            # Map parameter names to required columns for TA-Lib
+            if 'high' in merged_params: required_cols.append('high')
+            if 'low' in merged_params: required_cols.append('low')
+            if 'close' in merged_params: required_cols.append('close')
+            if 'volume' in merged_params: required_cols.append('volume')
+            if 'open' in merged_params: required_cols.append('open')
+        elif config['type'] == 'pandas-ta':
+            required_cols = config.get('required_inputs', [])
+        elif config['type'] == 'custom':
+            # Custom indicators have their own validation
+            pass
+            
+        if required_cols:
+            missing_cols = [col for col in required_cols if col not in data.columns]
+            if missing_cols:
+                raise ValueError(f"Missing required columns for indicator '{name}': {missing_cols}")
+        
         result = self._compute_single_indicator(data, name, config_for_compute)
         # Return as Series if only one column, else DataFrame
         if result is not None and isinstance(result, pd.DataFrame) and result.shape[1] == 1:
