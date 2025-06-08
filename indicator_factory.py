@@ -236,6 +236,20 @@ class IndicatorFactory:
         merged_params = config['params'].copy()
         merged_params.update(params)
         
+        # Handle BBANDS special case - convert period to timeperiod
+        if name.upper() in ['BB', 'BBANDS']:
+            if 'period' in merged_params:
+                period_val = merged_params.pop('period')
+                if isinstance(period_val, dict):
+                    period_val = period_val.get('default', 20)
+                merged_params['timeperiod'] = int(period_val)
+            if 'std_dev' in merged_params:
+                std_val = merged_params.pop('std_dev')
+                if isinstance(std_val, dict):
+                    std_val = std_val.get('default', 2.0)
+                merged_params['nbdevup'] = float(std_val)
+                merged_params['nbdevdn'] = float(std_val)
+        
         # Check for minimum data length if period/length/timeperiod is specified (in merged_params)
         period_param = None
         period_key = None
@@ -285,6 +299,22 @@ class IndicatorFactory:
         if result is not None and isinstance(result, pd.DataFrame) and result.shape[1] == 1:
             return result.iloc[:, 0]
         return result
+
+    def plot_indicator(self, indicator_name: str, data: pd.DataFrame, params: Dict[str, Any], 
+                      output_path: Optional[str] = None) -> None:
+        """Plot an indicator's values against the price data.
+        
+        Args:
+            indicator_name: Name of the indicator to plot
+            data: DataFrame containing price data
+            params: Parameters for the indicator
+            output_path: Optional path to save the plot
+        """
+        logger = logging.getLogger(__name__)
+        logger.info(f"Plotting indicator {indicator_name} with params {params}")
+        # TODO: Implement actual plotting logic
+        # For now, just log that plotting is not yet implemented
+        logger.warning("Plotting functionality not yet implemented")
 
 def compute_configured_indicators(data: pd.DataFrame, indicator_configs: List[Dict[str, Any]]) -> Tuple[pd.DataFrame, Set[int]]:
     """
