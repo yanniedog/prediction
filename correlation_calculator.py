@@ -569,7 +569,8 @@ class CorrelationCalculator:
                 'regime_labels': [],
                 'regimes': [],
                 'regime_correlations': [],
-                'transition_matrix': np.array([])
+                'transition_matrix': np.array([]),
+                'regime_characteristics': []
             }
             
         n_windows = len(data) - window_size + 1
@@ -589,7 +590,8 @@ class CorrelationCalculator:
                 'regime_labels': [],
                 'regimes': [],
                 'regime_correlations': [],
-                'transition_matrix': np.array([])
+                'transition_matrix': np.array([]),
+                'regime_characteristics': []
             }
         
         # Convert to array
@@ -602,20 +604,38 @@ class CorrelationCalculator:
                 'regime_labels': [0] * len(X),
                 'regimes': [0],
                 'regime_correlations': [X.mean(axis=0)],
-                'transition_matrix': np.array([[1.0]])
+                'transition_matrix': np.array([[1.0]]),
+                'regime_characteristics': [
+                    {
+                        'mean_correlation': float(X.mean()),
+                        'std_correlation': float(X.std()),
+                        'stability': float(1.0 - X.std()),
+                        'duration': len(X)
+                    }
+                ]
             }
         
         # Perform clustering
         kmeans = KMeans(n_clusters=n_regimes, random_state=42, n_init=10)
         labels = kmeans.fit_predict(X)
         
-        # Calculate regime correlations
+        # Calculate regime correlations and characteristics
         regime_correlations = []
+        regime_characteristics = []
         for regime in range(n_regimes):
             regime_indices = np.where(labels == regime)[0]
             if len(regime_indices) > 0:
-                regime_corr = np.mean(X[regime_indices], axis=0)
+                regime_data = X[regime_indices]
+                regime_corr = np.mean(regime_data, axis=0)
                 regime_correlations.append(regime_corr)
+                regime_characteristics.append({
+                    'mean_correlation': float(np.mean(regime_corr)),
+                    'std_correlation': float(np.std(regime_corr)),
+                    'stability': float(1.0 - np.std(regime_corr)),
+                    'duration': len(regime_indices),
+                    'volatility': float(np.std(regime_data)),
+                    'trend': 'increasing' if np.mean(np.diff(regime_data.mean(axis=1))) > 0 else 'decreasing'
+                })
         
         # Calculate transition matrix
         transition_matrix = np.zeros((n_regimes, n_regimes), dtype=np.float64)
@@ -632,7 +652,8 @@ class CorrelationCalculator:
             'regime_labels': labels_list,
             'regimes': unique_regimes,
             'regime_correlations': regime_correlations,
-            'transition_matrix': transition_matrix
+            'transition_matrix': transition_matrix,
+            'regime_characteristics': regime_characteristics
         }
 
     def analyze_correlation_network(self, data: pd.DataFrame, threshold: float = 0.5) -> Dict[str, Any]:
@@ -655,13 +676,18 @@ class CorrelationCalculator:
         eigenvector_centrality = nx.eigenvector_centrality(G, max_iter=1000)
         # Return edges as (source, target, weight) tuples
         edge_list = [(u, v, d['weight']) for u, v, d in G.edges(data=True)]
+        node_list = list(G.nodes())
         return {
-            'nodes': list(G.nodes()),
+            'nodes': node_list,
             'edges': edge_list,
             'centrality': {
                 'degree': degree_centrality,
                 'betweenness': betweenness_centrality,
                 'eigenvector': eigenvector_centrality
+            },
+            'network': {
+                'nodes': node_list,
+                'edges': edge_list
             }
         }
 
@@ -701,7 +727,9 @@ class CorrelationCalculator:
         return {
             'anomaly_scores': anomaly_scores,
             'anomaly_dates': anomaly_dates,
-            'anomaly_correlations': anomaly_correlations
+            'anomaly_correlations': anomaly_correlations,
+            'anomalies': anomaly_dates,
+            'scores': anomaly_scores
         }
 
     def generate_correlation_report(self, data: pd.DataFrame) -> Dict[str, Any]:
@@ -714,6 +742,15 @@ class CorrelationCalculator:
         triu_indices = np.triu_indices_from(corr_matrix, k=1)
         abs_corr_values = np.abs(corr_matrix.values[triu_indices])
         significance_threshold = 0.5
+        
+        # Calculate significance for each pair
+        significance_results = {}
+        for i, col1 in enumerate(data.columns):
+            for j, col2 in enumerate(data.columns[i+1:], i+1):
+                pair = f"{col1}_{col2}"
+                sig_test = self.test_correlation_significance(data[col1], data[col2])
+                significance_results[pair] = sig_test
+        
         summary = {
             'mean_correlation': np.mean(abs_corr_values),
             'max_correlation': np.max(abs_corr_values),
@@ -735,6 +772,8 @@ class CorrelationCalculator:
         return {
             'summary': summary,
             'correlation_matrix': corr_matrix,
+            'correlations': corr_matrix,
+            'significance': significance_results,
             'visualizations': {
                 'heatmap': heatmap
             },

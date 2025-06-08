@@ -123,14 +123,14 @@ def compute_obv_price_divergence(data: pd.DataFrame, method: str ="Difference", 
 
         # Calculate Divergence Metric
         metric = pd.Series(np.nan, index=data.index)
-        safe_method = str(method).capitalize() if method else ""
+        safe_method = str(method).strip().lower() if method else ""
         
-        if safe_method == "Difference":
+        if safe_method == "difference":
             metric = obv_change_percent - price_change_percent
-        elif safe_method == "Ratio":
+        elif safe_method == "ratio":
             denominator = price_change_percent.abs().add(max(1e-9, smoothing))
             metric = obv_change_percent.divide(denominator)
-        elif safe_method == "Log Ratio":
+        elif safe_method == "log ratio":
             obv_shifted = obv_ma.shift(1).replace(0, np.nan)
             price_shifted = price_ma.shift(1).replace(0, np.nan)
             obv_ratio = obv_ma.divide(obv_shifted).clip(lower=1e-9)
@@ -240,6 +240,11 @@ def _compute_volume_index(data: pd.DataFrame, col_name: str, volume_condition: C
     logger.debug(f"Computing {col_name}")
     result_df = pd.DataFrame(index=data.index)
     try:
+        # If all volume is zero, return all NaN
+        if 'volume' in data.columns and (data['volume'] == 0).all():
+            result_df[col_name] = np.nan
+            return result_df
+
         # Calculate differences and percentage changes
         vol_diff = data['volume'].diff()
         price_change_ratio = data['close'].pct_change().fillna(0.0)
@@ -320,8 +325,9 @@ def compute_returns(data: pd.DataFrame, period: int = 1) -> pd.Series:
     # Accept period as int or dict (from JSON params)
     if isinstance(period, dict):
         period = int(period.get('default', 1))
-    if 'close' not in data.columns:
-        raise ValueError("Missing required column 'close' for returns calculation.")
+    _check_required_cols(data, ['close'], 'Returns')
+    if not isinstance(period, int) or period < 1:
+        raise InvalidParameterError(f"Invalid period: {period}")
     if len(data) < period + 1:
         raise ValueError(f"Not enough data to compute returns with period {period}.")
     returns = data['close'].pct_change(periods=period)
@@ -332,8 +338,9 @@ def compute_volatility(data: pd.DataFrame, period: int = 20) -> pd.Series:
     """Compute rolling volatility (stddev of returns) for the given period on the 'close' column."""
     if isinstance(period, dict):
         period = int(period.get('default', 20))
-    if 'close' not in data.columns:
-        raise ValueError("Missing required column 'close' for volatility calculation.")
+    _check_required_cols(data, ['close'], 'Volatility')
+    if not isinstance(period, int) or period < 1:
+        raise InvalidParameterError(f"Invalid period: {period}")
     if len(data) < period + 1:
         raise ValueError(f"Not enough data to compute volatility with period {period}.")
     returns = data['close'].pct_change()

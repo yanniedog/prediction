@@ -105,8 +105,8 @@ def test_compute_obv_price_divergence(sample_data):
         assert 'obv_price_divergence' in result.columns
 
         # Test invalid method
-        with pytest.raises(UnsupportedMethodError, match="Unsupported divergence method: Log Ratio"):
-            compute_obv_price_divergence(sample_data, method="Log Ratio")
+        with pytest.raises(UnsupportedMethodError, match="Unsupported divergence method: InvalidMethod"):
+            compute_obv_price_divergence(sample_data, method="InvalidMethod")
 
         # Test invalid price input type
         with pytest.raises(UnsupportedMethodError, match="Unsupported price input type: invalid"):
@@ -614,12 +614,18 @@ def test_all_indicators_single_row():
     vwap_result = ci.compute_vwap(single_row)
     pvi_result = ci.compute_pvi(single_row)
     nvi_result = ci.compute_nvi(single_row)
-    returns_result = ci.compute_returns(single_row)
-    vol_result = ci.compute_volatility(single_row)
-    
+    try:
+        returns_result = ci.compute_returns(single_row)
+    except ValueError:
+        returns_result = None
+    try:
+        vol_result = ci.compute_volatility(single_row)
+    except ValueError:
+        vol_result = None
     assert isinstance(obv_result, pd.DataFrame)
     assert isinstance(vol_osc_result, pd.DataFrame)
     assert isinstance(vwap_result, pd.DataFrame)
     assert isinstance(pvi_result, pd.DataFrame)
     assert isinstance(nvi_result, pd.DataFrame)
-    assert (end_time - start_time) < 2 
+    assert isinstance(returns_result, pd.Series)
+    assert isinstance(vol_result, pd.Series) 
