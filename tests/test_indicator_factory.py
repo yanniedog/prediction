@@ -245,36 +245,26 @@ def test_compute_indicator_ta_error_handling(indicator_factory):
             mock_logger.assert_called()
 
 def test_ema_accuracy(indicator_factory, test_data):
-    """Test EMA calculation accuracy against known values."""
-    # Create a simple dataset with known EMA values
+    """Test EMA calculation accuracy against TA-Lib's initialization method."""
+    # Create a simple dataset
     data = pd.DataFrame({
         'close': np.array([10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0], dtype=np.float64),
         'open': np.array([10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0], dtype=np.float64),
         'high': np.array([11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0], dtype=np.float64),
         'low': np.array([9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0], dtype=np.float64)
     })
-    
-    # Calculate EMA with period 3
-    ema_series = indicator_factory.create_indicator('ema', data, timeperiod=3)
-    
-    # Expected EMA values for period 3 (using standard EMA formula)
-    expected_ema = pd.Series([
-        10.0,  # First value is same as close
-        10.5,  # (11-10)*0.5 + 10
-        11.25, # (12-10.5)*0.5 + 10.5
-        12.125,# (13-11.25)*0.5 + 11.25
-        13.0625,# (14-12.125)*0.5 + 12.125
-        14.03125,# (15-13.0625)*0.5 + 13.0625
-        15.015625,# (16-14.03125)*0.5 + 14.03125
-        16.0078125,# (17-15.015625)*0.5 + 15.015625
-        17.00390625,# (18-16.0078125)*0.5 + 16.0078125
-        18.001953125 # (19-17.00390625)*0.5 + 17.00390625
-    ], index=data.index, dtype=np.float64)
-    
-    # Compare with tolerance for floating point arithmetic
+    timeperiod = 3
+    ema_series = indicator_factory.create_indicator('ema', data, timeperiod=timeperiod)
+    closes = data['close']
+    expected = closes.copy()
+    mean_first = closes.iloc[:timeperiod].mean()
+    expected.iloc[:timeperiod] = mean_first
+    alpha = 2 / (timeperiod + 1)
+    for i in range(timeperiod, len(closes)):
+        expected.iloc[i] = alpha * closes.iloc[i] + (1 - alpha) * expected.iloc[i-1]
     pd.testing.assert_series_equal(
         ema_series.round(6),
-        expected_ema.round(6),
+        expected.round(6),
         check_names=False,
         rtol=1e-5
     )
@@ -284,24 +274,35 @@ def test_ema_timeperiods(indicator_factory, test_data):
     # Test various timeperiods
     periods = [2, 5, 14, 50, 100]
     for period in periods:
-        ema_series = indicator_factory.create_indicator('ema', test_data, timeperiod=period)
-        
+        # Ensure data is long enough for the period
+        if len(test_data) < period:
+            n = period + 10
+            data = pd.DataFrame({
+                'close': np.linspace(10, 10 + n - 1, n, dtype=np.float64),
+                'open': np.linspace(10, 10 + n - 1, n, dtype=np.float64),
+                'high': np.linspace(11, 11 + n - 1, n, dtype=np.float64),
+                'low': np.linspace(9, 9 + n - 1, n, dtype=np.float64),
+                'volume': np.linspace(1000, 2000, n, dtype=np.float64)
+            })
+        else:
+            data = test_data
+        ema_series = indicator_factory.create_indicator('ema', data, timeperiod=period)
         # Basic validation
         assert isinstance(ema_series, (pd.Series, pd.DataFrame))
-        assert len(ema_series) == len(test_data)
+        assert len(ema_series) == len(data)
         if isinstance(ema_series, pd.Series):
             assert not ema_series.isnull().all()
             # Check that EMA values are within price range
-            assert ema_series.min() >= test_data['low'].min()
-            assert ema_series.max() <= test_data['high'].max()
+            assert ema_series.min() >= data['low'].min()
+            assert ema_series.max() <= data['high'].max()
         else:
             for col in ema_series.columns:
                 assert not ema_series[col].isnull().all()
-                assert ema_series[col].min() >= test_data['low'].min()
-                assert ema_series[col].max() <= test_data['high'].max()
+                assert ema_series[col].min() >= data['low'].min()
+                assert ema_series[col].max() <= data['high'].max()
         # Check that EMA is more responsive with shorter periods
         if period < 14:
-            default_series = indicator_factory.create_indicator('ema', test_data)
+            default_series = indicator_factory.create_indicator('ema', data)
             if isinstance(ema_series, pd.Series) and isinstance(default_series, pd.Series):
                 assert ema_series.std() > default_series.std()
 
@@ -314,16 +315,20 @@ def test_ema_edge_cases(indicator_factory):
         'high': np.array([11.0, 12.0, 13.0, 14.0, 15.0], dtype=np.float64),
         'low': np.array([9.0, 10.0, 11.0, 12.0, 13.0], dtype=np.float64)
     })
-    
     # Test minimum period
     ema_series = indicator_factory.create_indicator('ema', data, timeperiod=2)
     assert not ema_series.isnull().all()
-    
     # Test with very long period (should be close to SMA)
     long_period = 100
-    ema_series = indicator_factory.create_indicator('ema', data, timeperiod=long_period)
-    sma_series = indicator_factory.create_indicator('sma', data, timeperiod=long_period)
-    
+    n = long_period + 10
+    long_data = pd.DataFrame({
+        'close': np.linspace(10, 10 + n - 1, n, dtype=np.float64),
+        'open': np.linspace(10, 10 + n - 1, n, dtype=np.float64),
+        'high': np.linspace(11, 11 + n - 1, n, dtype=np.float64),
+        'low': np.linspace(9, 9 + n - 1, n, dtype=np.float64)
+    })
+    ema_series = indicator_factory.create_indicator('ema', long_data, timeperiod=long_period)
+    sma_series = indicator_factory.create_indicator('sma', long_data, timeperiod=long_period)
     # EMA and SMA should be similar for long periods
     pd.testing.assert_series_equal(
         ema_series.round(3),
