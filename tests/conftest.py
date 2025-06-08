@@ -24,7 +24,7 @@ sys.path.insert(0, str(project_root))
 # Import project modules
 from config import Config
 from data_manager import DataManager
-from indicator_factory_class import IndicatorFactory
+from indicator_factory import IndicatorFactory
 from sqlite_manager_class import SQLiteManager
 
 # Import config variables directly

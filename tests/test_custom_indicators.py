@@ -219,9 +219,12 @@ def test_compute_vwap_basic(sample_data: pd.DataFrame) -> None:
     assert not result[ci.VWAP].isna().all()
     assert len(result) == len(sample_data)
     
-    # Verify VWAP is between high and low
-    assert (result[ci.VWAP] >= sample_data['low']).all()
-    assert (result[ci.VWAP] <= sample_data['high']).all()
+    # Verify VWAP is between cumulative min(low) and cumulative max(high) up to each row
+    cum_min_low = sample_data['low'].expanding().min()
+    cum_max_high = sample_data['high'].expanding().max()
+    vwap = result[ci.VWAP]
+    assert (vwap >= cum_min_low).all()
+    assert (vwap <= cum_max_high).all()
 
 def test_compute_vwap_invalid_inputs(sample_data: pd.DataFrame) -> None:
     """Test VWAP with invalid inputs."""

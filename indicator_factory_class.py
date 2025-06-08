@@ -6,6 +6,7 @@ class IndicatorFactory:
     """Class-based implementation for loading and managing indicator parameters."""
     def __init__(self):
         self.indicator_params = self.load_params()
+        self.indicators = {}  # Initialize empty dict for indicators
 
     def load_params(self) -> Dict[str, Dict[str, Any]]:
         """Load indicator parameters from indicator_params.json or indicator_definitions."""

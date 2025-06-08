@@ -146,7 +146,10 @@ def compute_vwap(data: pd.DataFrame) -> Optional[pd.DataFrame]:
         cum_vol = safe_volume.cumsum()
         cum_vol_price = (typical_price * safe_volume).cumsum()
         # Avoid division by zero
-        result_df[col_name] = cum_vol_price.divide(cum_vol.replace(0, np.nan)).replace([np.inf, -np.inf], np.nan) # Add to new DF
+        vwap = cum_vol_price.divide(cum_vol.replace(0, np.nan)).replace([np.inf, -np.inf], np.nan)
+        # Set VWAP to NaN where current volume is zero
+        vwap[data['volume'] == 0] = np.nan
+        result_df[col_name] = vwap
         return result_df
 
     except Exception as e:
