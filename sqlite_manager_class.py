@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 import utils
+from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
@@ -519,4 +520,72 @@ class SQLiteManager:
             return pd.DataFrame(rows, columns=columns)
         except sqlite3.Error as e:
             logger.error(f"Error executing query_to_dataframe: {e}", exc_info=True)
+            raise
+
+    def update_data(self, table_name: str, data: Dict[str, Any], conditions: Dict[str, Any]) -> None:
+        """Update rows in the specified table based on conditions."""
+        if not table_name or not isinstance(table_name, str) or not data or not isinstance(data, dict) or not conditions or not isinstance(conditions, dict):
+            raise ValueError("Invalid table name, data, or conditions for update_data.")
+        set_clause = ', '.join([f'{col} = ?' for col in data.keys()])
+        where_clause = ' AND '.join([f'{col} = ?' for col in conditions.keys()])
+        values = tuple(data.values()) + tuple(conditions.values())
+        sql = f"UPDATE {table_name} SET {set_clause} WHERE {where_clause};"
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(sql, values)
+            self.connection.commit()
+        except sqlite3.Error as e:
+            logger.error(f"Error updating data in {table_name}: {e}", exc_info=True)
+            try:
+                self.connection.rollback()
+            except Exception as rb_err:
+                logger.error(f"Rollback failed during update_data: {rb_err}")
+            raise
+
+    def delete_data(self, table_name: str, conditions: Dict[str, Any]) -> None:
+        """Delete rows from the specified table based on conditions."""
+        if not table_name or not isinstance(table_name, str) or not conditions or not isinstance(conditions, dict):
+            raise ValueError("Invalid table name or conditions for delete_data.")
+        where_clause = ' AND '.join([f'{col} = ?' for col in conditions.keys()])
+        values = tuple(conditions.values())
+        sql = f"DELETE FROM {table_name} WHERE {where_clause};"
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(sql, values)
+            self.connection.commit()
+        except sqlite3.Error as e:
+            logger.error(f"Error deleting data from {table_name}: {e}", exc_info=True)
+            try:
+                self.connection.rollback()
+            except Exception as rb_err:
+                logger.error(f"Rollback failed during delete_data: {rb_err}")
+            raise
+
+    def delete_all(self, table_name: str) -> None:
+        """Delete all rows from the specified table."""
+        if not table_name or not isinstance(table_name, str):
+            raise ValueError("Invalid table name for delete_all.")
+        sql = f"DELETE FROM {table_name};"
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute(sql)
+            self.connection.commit()
+        except sqlite3.Error as e:
+            logger.error(f"Error deleting all data from {table_name}: {e}", exc_info=True)
+            try:
+                self.connection.rollback()
+            except Exception as rb_err:
+                logger.error(f"Rollback failed during delete_all: {rb_err}")
+            raise
+
+    @contextmanager
+    def transaction(self):
+        """Context manager for database transactions."""
+        try:
+            self.connection.execute("BEGIN;")
+            yield
+            self.connection.commit()
+        except Exception as e:
+            self.connection.rollback()
+            logger.error(f"Transaction failed and rolled back: {e}", exc_info=True)
             raise
