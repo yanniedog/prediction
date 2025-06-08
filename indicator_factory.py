@@ -8,7 +8,7 @@ import json
 import os
 from custom_indicators import (
     compute_obv_price_divergence, compute_volume_oscillator,
-    compute_vwap, compute_pvi, compute_nvi
+    compute_vwap, compute_pvi, compute_nvi, compute_returns, compute_volatility
 )
 import pandas_ta as pta
 
@@ -144,10 +144,12 @@ class IndicatorFactory:
                     'VOLUME_OSCILLATOR': compute_volume_oscillator,
                     'VWAP': compute_vwap,
                     'PVI': compute_pvi,
-                    'NVI': compute_nvi
+                    'NVI': compute_nvi,
+                    'RETURNS': compute_returns,
+                    'VOLATILITY': compute_volatility
                 }
                 
-                func = custom_funcs.get(name)
+                func = custom_funcs.get(name.upper())
                 if not func:
                     raise ValueError(f"Unknown custom indicator: {name}")
                 
@@ -244,11 +246,14 @@ class IndicatorFactory:
                 break
         if period_param is not None:
             try:
-                period_val = int(period_param)
+                # If the param is a dict, use its 'default' value
+                if isinstance(period_param, dict):
+                    period_val = int(period_param.get('default', 1))
+                else:
+                    period_val = int(period_param)
                 if len(data) < period_val:
                     raise ValueError(f"Input data length ({len(data)}) is less than required {period_key} ({period_val}) for indicator '{name}'")
             except (ValueError, TypeError):
-                # If period_param can't be converted to int, it's invalid
                 raise ValueError(f"Invalid {period_key} value '{period_param}' for indicator '{name}'")
         
         # Build a config dict for _compute_single_indicator

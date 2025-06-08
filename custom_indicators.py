@@ -315,16 +315,31 @@ def compute_nvi(data: pd.DataFrame) -> pd.DataFrame:
         raise IndicatorError("Failed to calculate NVI")
     return result_df
 
-# --- Removed apply_all_custom_indicators function ---
-# This function is no longer needed as main.py ensures custom indicator
-# defaults are added to the processing list if necessary.
-    _check_required_cols(data, required_cols, 'NVI')
+def compute_returns(data: pd.DataFrame, period: int = 1) -> pd.Series:
+    """Compute simple returns for the given period on the 'close' column."""
+    # Accept period as int or dict (from JSON params)
+    if isinstance(period, dict):
+        period = int(period.get('default', 1))
+    if 'close' not in data.columns:
+        raise ValueError("Missing required column 'close' for returns calculation.")
+    if len(data) < period + 1:
+        raise ValueError(f"Not enough data to compute returns with period {period}.")
+    returns = data['close'].pct_change(periods=period)
+    returns.name = f"returns_{period}"
+    return returns
 
-    logger.debug(f"Computing NVI")
-    result_df = _compute_volume_index(data, NVI, lambda x: x < 0)
-    if result_df is None:
-        raise IndicatorError("Failed to calculate NVI")
-    return result_df
+def compute_volatility(data: pd.DataFrame, period: int = 20) -> pd.Series:
+    """Compute rolling volatility (stddev of returns) for the given period on the 'close' column."""
+    if isinstance(period, dict):
+        period = int(period.get('default', 20))
+    if 'close' not in data.columns:
+        raise ValueError("Missing required column 'close' for volatility calculation.")
+    if len(data) < period + 1:
+        raise ValueError(f"Not enough data to compute volatility with period {period}.")
+    returns = data['close'].pct_change()
+    volatility = returns.rolling(window=period).std()
+    volatility.name = f"volatility_{period}"
+    return volatility
 
 # --- Removed apply_all_custom_indicators function ---
 # This function is no longer needed as main.py ensures custom indicator

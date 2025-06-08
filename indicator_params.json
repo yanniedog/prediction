@@ -787,5 +787,19 @@
         "conditions": [ { "timeperiod": { "gte": 2 } } ],
         "range_steps_default": 5,
         "name": "bbands"
+    },
+    "returns": {
+        "type": "custom",
+        "required_inputs": ["close"],
+        "params": {"period": {"default": 1, "min": 1, "max": 10}},
+        "conditions": [],
+        "name": "returns"
+    },
+    "volatility": {
+        "type": "custom",
+        "required_inputs": ["close"],
+        "params": {"period": {"default": 20, "min": 2, "max": 100}},
+        "conditions": [],
+        "name": "volatility"
     }
 }
