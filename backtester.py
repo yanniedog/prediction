@@ -247,9 +247,23 @@ class Backtester:
             test_results = self.run_strategy(test_data, strategy_func, params)
             test_metrics.append(self.calculate_performance_metrics(test_results['returns']))
         
+        # Calculate combined metrics by averaging across all windows
+        combined_metrics = {}
+        if train_metrics and test_metrics:
+            # Average metrics across all windows
+            for metric in train_metrics[0].keys():
+                train_values = [m[metric] for m in train_metrics]
+                test_values = [m[metric] for m in test_metrics]
+                combined_metrics[metric] = {
+                    'train': np.mean(train_values),
+                    'test': np.mean(test_values),
+                    'overall': np.mean(train_values + test_values)
+                }
+        
         return {
             'train_metrics': train_metrics,
-            'test_metrics': test_metrics
+            'test_metrics': test_metrics,
+            'combined_metrics': combined_metrics
         }
 
     def run_monte_carlo_simulation(self, returns: pd.Series, n_simulations: int = 1000, 
