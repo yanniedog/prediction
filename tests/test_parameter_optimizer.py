@@ -535,18 +535,27 @@ def test_optimize_parameters(optimization_data: Tuple[pd.DataFrame, Dict[str, An
     data, indicator_def = optimization_data
     
     # Test Bayesian optimization
-    best_config, best_score = optimize_parameters(data, indicator_def, method="bayesian", n_trials=5)
-    assert isinstance(best_config, dict)
-    assert isinstance(best_score, float)
+    try:
+        best_config, best_score = optimize_parameters(data, indicator_def, method="bayesian", n_trials=5)
+        assert isinstance(best_config, dict), f"Expected best_config to be a dictionary, got {type(best_config)}"
+        assert isinstance(best_score, float), f"Expected best_score to be a float, got {type(best_score)}"
+        assert best_score != float('-inf'), "Optimization failed to find any valid configuration"
+    except Exception as e:
+        pytest.fail(f"Bayesian optimization failed: {str(e)}")
     
     # Test classical optimization
-    best_config, best_score = optimize_parameters(data, indicator_def, method="classical")
-    assert isinstance(best_config, dict)
-    assert isinstance(best_score, float)
+    try:
+        best_config, best_score = optimize_parameters(data, indicator_def, method="classical")
+        assert isinstance(best_config, dict), f"Expected best_config to be a dictionary, got {type(best_config)}"
+        assert isinstance(best_score, float), f"Expected best_score to be a float, got {type(best_score)}"
+        assert best_score != float('-inf'), "Optimization failed to find any valid configuration"
+    except Exception as e:
+        pytest.fail(f"Classical optimization failed: {str(e)}")
     
     # Test invalid method
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Invalid optimization method") as exc_info:
         optimize_parameters(data, indicator_def, method="invalid")
+    assert "Invalid optimization method" in str(exc_info.value), f"Expected error about invalid method, got: {exc_info.value}"
 
 def test_optimization_constraints(optimization_data: Tuple[pd.DataFrame, Dict[str, Any]]):
     """Test optimization constraints."""
@@ -587,22 +596,28 @@ def test_error_handling(optimization_data: Tuple[pd.DataFrame, Dict[str, Any]]):
     data, indicator_def = optimization_data
     
     # Test with empty data
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Input data is empty") as exc_info:
         optimize_parameters(pd.DataFrame(), indicator_def)
+    assert "Input data is empty" in str(exc_info.value), f"Expected error about empty data, got: {exc_info.value}"
     
     # Test with invalid indicator definition
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Invalid indicator definition") as exc_info:
         optimize_parameters(data, {})
+    assert "Invalid indicator definition" in str(exc_info.value), f"Expected error about invalid definition, got: {exc_info.value}"
     
     # Test with invalid parameter ranges
     invalid_def = indicator_def.copy()
     invalid_def["RSI"]["params"]["timeperiod"]["min"] = 100
     invalid_def["RSI"]["params"]["timeperiod"]["max"] = 50
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as exc_info:
         optimize_parameters(data, invalid_def)
+    assert "min >= max" in str(exc_info.value), f"Expected error about invalid parameter range, got: {exc_info.value}"
+    assert "timeperiod" in str(exc_info.value), "Error message should mention the problematic parameter"
     
     # Test with missing required parameter
     invalid_def = indicator_def.copy()
     del invalid_def["RSI"]["params"]["timeperiod"]
-    with pytest.raises(ValueError):
-        optimize_parameters(data, invalid_def) 
+    with pytest.raises(ValueError) as exc_info:
+        optimize_parameters(data, invalid_def)
+    assert "timeperiod" in str(exc_info.value), "Error message should mention the missing parameter"
+    assert "required" in str(exc_info.value).lower(), "Error message should indicate parameter is required" 

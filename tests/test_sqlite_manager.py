@@ -9,20 +9,6 @@ import sqlite3
 import tempfile
 import shutil
 from pathlib import Path
-from sqlite_manager import (
-    _connect,
-    _execute,
-    _fetchall,
-    _fetchone,
-    _commit,
-    _close,
-    _create_table,
-    _drop_table,
-    _insert,
-    _update,
-    _delete,
-    _select
-)
 
 @pytest.fixture(scope="function")
 def temp_db(tmp_path):

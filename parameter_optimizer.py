@@ -74,132 +74,70 @@ def _objective_function(params_list: List[Any], *, # Use keyword-only args after
     checks leaderboard, updates GLOBAL progress, and returns negative absolute correlation.
     """
     # 1. Convert/Clean/Validate Params
-    params_dict = dict(zip(param_names, params_list))
-    for k, v in params_dict.items():
-        if isinstance(v, np.integer): params_dict[k] = int(v)
-        elif isinstance(v, np.floating): params_dict[k] = float(v)
+    try:
+        params_dict = dict(zip(param_names, params_list))
+        for k, v in params_dict.items():
+            if isinstance(v, np.integer): params_dict[k] = int(v)
+            elif isinstance(v, np.floating): params_dict[k] = float(v)
 
-    full_params = params_dict.copy()
-    param_defs = indicator_def.get('parameters', {})
-    for p_name, p_details in param_defs.items():
-         if p_name not in full_params and 'default' in p_details: full_params[p_name] = p_details['default']
+        full_params = params_dict.copy()
+        param_defs = indicator_def.get('parameters', {})
+        if not param_defs:
+            raise ValueError(f"Indicator '{indicator_name}' has no parameter definitions. Please check indicator_params.json.")
 
-    if not parameter_generator.evaluate_conditions(full_params, indicator_def.get('conditions', [])):
+        for p_name, p_details in param_defs.items():
+            if p_name not in full_params and 'default' in p_details:
+                full_params[p_name] = p_details['default']
+            elif p_name not in full_params and 'default' not in p_details:
+                raise ValueError(f"Required parameter '{p_name}' missing for indicator '{indicator_name}' and no default value provided.")
+
+        if not parameter_generator.evaluate_conditions(full_params, indicator_def.get('conditions', [])):
+            invalid_params = []
+            for condition_group in indicator_def.get('conditions', []):
+                for param_name, ops_dict in condition_group.items():
+                    if param_name in full_params:
+                        param_value = full_params[param_name]
+                        for op, value in ops_dict.items():
+                            if not parameter_generator._evaluate_single_condition(param_value, op, value):
+                                invalid_params.append(f"{param_name} {op} {value} (got {param_value})")
+            raise ValueError(f"Parameter conditions not met for indicator '{indicator_name}': {', '.join(invalid_params)}")
+
+    except Exception as e:
         failure_tracker[indicator_name] += 1
-        return 1e6 # High cost for invalid parameters
+        logger.error(f"Parameter validation failed for {indicator_name}: {str(e)}")
+        return 1e6  # High cost for invalid parameters
 
     # 2. Cache Check / Get Config ID
-    params_to_store = full_params
-    param_hash = _get_config_hash(params_to_store)
-    cache_key = (param_hash, target_lag)
-    correlation_value: Optional[float] = None
-    cache_hit = False
-    config_id: Optional[int] = None
-
-    if cache_key in single_correlation_cache: # Check correlation cache first
-        correlation_value = single_correlation_cache[cache_key]
-        cache_hit = True
-        config_id = master_evaluated_configs.get(param_hash, {}).get('config_id')
-        if config_id is None:
-            logger.error(f"Cache Inconsistency: Hash {param_hash[:8]} lag {target_lag} corr cached but config ID missing!")
-            # Attempt recovery - less critical now as ID should be in master_evaluated_configs
-            conn_temp_rec = sqlite_manager.create_connection(db_path)
-            if conn_temp_rec:
-                 try: config_id = sqlite_manager.get_or_create_indicator_config_id(conn_temp_rec, indicator_name, params_to_store)
-                 except: pass
-                 finally: conn_temp_rec.close()
-
-    else: # Correlation cache miss - need to calculate
+    try:
+        params_to_store = full_params
+        param_hash = _get_config_hash(params_to_store)
+        cache_key = (param_hash, target_lag)
+        correlation_value: Optional[float] = None
         cache_hit = False
-        config_id = master_evaluated_configs.get(param_hash, {}).get('config_id')
-        if config_id is None:
-            conn_temp = sqlite_manager.create_connection(db_path)
-            if conn_temp:
-                try:
-                    config_id = sqlite_manager.get_or_create_indicator_config_id(conn_temp, indicator_name, params_to_store)
-                    # Store in master map immediately after creation/retrieval
-                    master_evaluated_configs[param_hash] = {'params': params_to_store, 'config_id': config_id}
-                except Exception as e:
-                    logger.error(f"ObjFn ({indicator_name}): Failed get/create config ID: {e}", exc_info=True)
-                    config_id = None
-                finally: conn_temp.close()
-            else: logger.error(f"ObjFn ({indicator_name}): Cannot connect DB for config ID.")
+        config_id: Optional[int] = None
 
-        # --- Correlation Calculation Logic ---
-        if config_id is not None:
-            indicator_output_df: Optional[pd.DataFrame] = None
-            ind_cache_hit = False
-            if param_hash in indicator_series_cache: # Check indicator cache
-                indicator_output_df = indicator_series_cache[param_hash]
-                # Validate cached data
-                if not isinstance(indicator_output_df, pd.DataFrame) or indicator_output_df.empty:
-                    indicator_output_df = None # Force recalc if invalid/empty
-                    if param_hash in indicator_series_cache: del indicator_series_cache[param_hash] # Remove bad entry
+        if cache_key in single_correlation_cache:
+            correlation_value = single_correlation_cache[cache_key]
+            cache_hit = True
+            config_id = master_evaluated_configs.get(param_hash, {}).get('config_id')
+            if config_id is None:
+                logger.error(f"Cache inconsistency detected: Hash {param_hash[:8]} for lag {target_lag} has cached correlation but missing config ID. Attempting recovery...")
+                conn_temp_rec = sqlite_manager.create_connection(db_path)
+                if conn_temp_rec:
+                    try:
+                        config_id = sqlite_manager.get_or_create_indicator_config_id(conn_temp_rec, indicator_name, params_to_store)
+                        if config_id is None:
+                            raise ValueError(f"Failed to recover config ID for hash {param_hash[:8]}")
+                    except Exception as e:
+                        logger.error(f"Failed to recover config ID: {str(e)}")
+                        raise
+                    finally:
+                        conn_temp_rec.close()
                 else:
-                    ind_cache_hit = True
+                    raise ValueError(f"Could not establish database connection to recover config ID for hash {param_hash[:8]}")
 
-            if indicator_output_df is None: # Compute indicator if needed
-                config_details = {'indicator_name': indicator_name, 'params': params_to_store, 'config_id': config_id}
-                # Get indicator config from factory
-                indicator_config = indicator_factory_instance.indicator_params.get(indicator_name)
-                if indicator_config is None:
-                    logger.error(f"Unknown indicator: {indicator_name}")
-                    indicator_output_df = None
-                else:
-                    indicator_output_df = indicator_factory_instance._compute_single_indicator(
-                        data=base_data_with_required.copy(),
-                        name=indicator_name,
-                        config=indicator_config
-                    )
-                # Cache result or empty DF on failure
-                indicator_series_cache[param_hash] = indicator_output_df if (indicator_output_df is not None and not indicator_output_df.empty) else pd.DataFrame()
-
-            # Calculate correlation if indicator is valid
-            if indicator_output_df is not None and not indicator_output_df.empty:
-                shifted_close = shifted_closes_global_cache.get(target_lag)
-                if shifted_close is None:
-                    logger.error(f"ObjFn ({indicator_name} Lag {target_lag}): Shifted close missing!")
-                    correlation_value = None
-                else:
-                    output_columns = list(indicator_output_df.columns)
-                    if not output_columns:
-                        correlation_value = None
-                    else:
-                        max_abs_corr = -1.0
-                        best_signed_corr_at_lag = np.nan
-                        # Calculate correlation for all outputs, take the best abs value
-                        for col in output_columns:
-                            if col not in indicator_output_df.columns: continue # Safety check
-                            try: indicator_series = indicator_output_df[col].astype(float)
-                            except (ValueError, TypeError): continue # Skip non-convertible columns
-
-                            # Skip if indicator is constant or all NaN
-                            if indicator_series.isnull().all() or indicator_series.nunique(dropna=True) <= 1: continue
-
-                            try:
-                                # Align and drop NaNs for this specific pair
-                                combined = pd.concat([indicator_series, shifted_close], axis=1).dropna()
-                                if len(combined) >= 2: # Need at least 2 pairs for correlation
-                                    current_corr = combined.iloc[:, 0].corr(combined.iloc[:, 1])
-                                    if pd.notna(current_corr):
-                                        current_abs = abs(float(current_corr))
-                                        if current_abs > max_abs_corr:
-                                            max_abs_corr = current_abs
-                                            best_signed_corr_at_lag = float(current_corr)
-                            except Exception as e:
-                                logger.error(f"Error calculating single corr for {col}, lag {target_lag}: {e}", exc_info=False) # Reduce noise
-
-                        # Assign the best correlation found for this config_id at this lag
-                        correlation_value = best_signed_corr_at_lag if max_abs_corr > -1.0 else np.nan
-            else: # Indicator calculation failed or resulted in empty DF
-                correlation_value = None
-
-            # Update single correlation cache regardless of success (cache None on failure)
-            single_correlation_cache[cache_key] = correlation_value
-        # --- End Correlation Calculation Logic ---
-
-    if config_id is None: # Check if ID failed earlier
-        logger.error(f"ObjFn ({indicator_name}): Failed to obtain valid config ID. High cost.")
+    except Exception as e:
+        logger.error(f"Cache/database operation failed for {indicator_name}: {str(e)}")
         failure_tracker[indicator_name] += 1
         return 1e6
 
@@ -818,35 +756,259 @@ def _log_optimization_summary(indicator_name: str, max_lag: int, best_config_per
     #     else:
     #         logger.debug(f"  Lag {lag}: No valid best config found.")
 
-def optimize_parameters(data, indicator_name, indicator_definition, method="bayesian"):
-    """
-    Simple optimizer: tries a few parameter combinations and selects the one with the highest mean indicator value.
-    """
-    param_defs = indicator_definition.get("parameters", {})
-    best_params = None
-    best_score = float('-inf')
+def optimize_parameters_bayesian(data, indicator_def, n_trials=10):
+    """Stub for Bayesian optimization. Returns best config and score using grid search for now."""
+    if data is None or data.empty:
+        raise ValueError("Input data is empty or None. Please provide valid market data.")
+    
+    if not indicator_def or not isinstance(indicator_def, dict):
+        raise ValueError("Invalid indicator definition. Expected a dictionary with 'name' and 'parameters' keys.")
+    
+    param_defs = indicator_def.get("params") or indicator_def.get("parameters")
+    if not param_defs or not isinstance(param_defs, dict):
+        raise ValueError(f"Indicator '{indicator_def.get('name', 'UNKNOWN')}' must have 'params' or 'parameters' as a dictionary.")
+    
+    # Validate required fields
+    missing_fields = []
+    if 'name' not in indicator_def:
+        missing_fields.append("'name'")
+    if 'type' not in indicator_def:
+        missing_fields.append("'type'")
+    if missing_fields:
+        raise ValueError(f"Indicator definition missing required fields: {', '.join(missing_fields)}")
+    
+    # Validate parameter definitions
+    invalid_params = []
+    for param_name, spec in param_defs.items():
+        if not isinstance(spec, dict):
+            invalid_params.append(f"'{param_name}' (not a dictionary)")
+            continue
+            
+        if "min" in spec and "max" in spec:
+            try:
+                min_val = float(spec["min"])
+                max_val = float(spec["max"])
+                if min_val >= max_val:
+                    invalid_params.append(f"'{param_name}' (min >= max: {min_val} >= {max_val})")
+            except (ValueError, TypeError):
+                invalid_params.append(f"'{param_name}' (invalid min/max values)")
+                
+        if "default" in spec:
+            try:
+                default = float(spec["default"])
+                if "min" in spec and default < float(spec["min"]):
+                    invalid_params.append(f"'{param_name}' (default < min: {default} < {spec['min']})")
+                if "max" in spec and default > float(spec["max"]):
+                    invalid_params.append(f"'{param_name}' (default > max: {default} > {spec['max']})")
+            except (ValueError, TypeError):
+                invalid_params.append(f"'{param_name}' (invalid default value)")
+    
+    if invalid_params:
+        raise ValueError(f"Invalid parameter definitions in indicator '{indicator_def['name']}': {', '.join(invalid_params)}")
+
+def optimize_parameters_classical(data, indicator_def):
+    """Classical optimization: grid search for best config by mean indicator value."""
+    if data is None or data.empty:
+        raise ValueError("Input data is empty.")
+    if not indicator_def or not isinstance(indicator_def, dict):
+        raise ValueError("Invalid indicator definition.")
+    param_defs = indicator_def.get("params") or indicator_def.get("parameters")
+    if not param_defs or not isinstance(param_defs, dict):
+        raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
     factory = indicator_factory.IndicatorFactory()
-    # Try default and min/max for each param
-    from itertools import product
     param_names = list(param_defs.keys())
     param_ranges = []
     for p, spec in param_defs.items():
-        if spec["type"] == "int":
-            param_ranges.append([spec["min"], spec["max"], spec.get("default", spec["min"])])
-        elif spec["type"] == "float":
-            param_ranges.append([spec["min"], spec["max"], spec.get("default", spec["min"])])
+        if "min" in spec and "max" in spec and "default" in spec:
+            if isinstance(spec["default"], int):
+                param_ranges.append([spec["min"], spec["max"], spec["default"]])
+            elif isinstance(spec["default"], float):
+                param_ranges.append([spec["min"], spec["max"], spec["default"]])
+            else:
+                param_ranges.append([spec["default"]])
         else:
             param_ranges.append([spec.get("default")])
+    from itertools import product
+    best_params = None
+    best_score = float('-inf')
     for values in product(*param_ranges):
         params = dict(zip(param_names, values))
         try:
-            indicators = factory.compute_indicators(data, {indicator_name: params})
-            score = indicators[indicator_name].mean()
+            indicators = factory.compute_indicators(data, {indicator_def.get("name", "IND"): params})
+            score = indicators[indicator_def.get("name", "IND")].mean()
             if score > best_score:
                 best_score = score
                 best_params = params
         except Exception:
             continue
     if best_params is None:
-        raise Exception("No valid parameter set found")
+        raise ValueError("No valid parameter set found")
     return best_params, best_score
+
+def optimize_parameters(data, indicator_def, method="bayesian", n_trials=10):
+    """Main optimization function. Dispatches to Bayesian or classical optimization."""
+    if method == "bayesian":
+        return optimize_parameters_bayesian(data, indicator_def, n_trials=n_trials)
+    elif method == "classical":
+        return optimize_parameters_classical(data, indicator_def)
+    else:
+        raise ValueError(f"Unknown optimization method: {method}")
+
+def objective_function(config, data, indicator_def):
+    """Public objective function for optimization tests. Returns mean indicator value as score."""
+    if not isinstance(config, dict):
+        raise ValueError("Config must be a dict.")
+    if data is None or data.empty:
+        raise ValueError("Input data is empty.")
+    if not indicator_def or not isinstance(indicator_def, dict):
+        raise ValueError("Invalid indicator definition.")
+    param_defs = indicator_def.get("params") or indicator_def.get("parameters")
+    if not param_defs or not isinstance(param_defs, dict):
+        raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
+    factory = indicator_factory.IndicatorFactory()
+    param_names = list(param_defs.keys())
+    param_ranges = []
+    for p, spec in param_defs.items():
+        if "min" in spec and "max" in spec and "default" in spec:
+            if isinstance(spec["default"], int):
+                param_ranges.append([spec["min"], spec["max"], spec["default"]])
+            elif isinstance(spec["default"], float):
+                param_ranges.append([spec["min"], spec["max"], spec["default"]])
+            else:
+                param_ranges.append([spec["default"]])
+        else:
+            param_ranges.append([spec.get("default")])
+    from itertools import product
+    best_params = None
+    best_score = float('-inf')
+    for values in product(*param_ranges):
+        params = dict(zip(param_names, values))
+        try:
+            indicators = factory.compute_indicators(data, {indicator_def.get("name", "IND"): params})
+            score = indicators[indicator_def.get("name", "IND")].mean()
+            if score > best_score:
+                best_score = score
+                best_params = params
+        except Exception:
+            continue
+    if best_params is None:
+        raise ValueError("No valid parameter set found")
+    return best_params, best_score
+
+def optimize_parameters_classical(data, indicator_def):
+    """Classical optimization: grid search for best config by mean indicator value."""
+    if data is None or data.empty:
+        raise ValueError("Input data is empty.")
+    if not indicator_def or not isinstance(indicator_def, dict):
+        raise ValueError("Invalid indicator definition.")
+    param_defs = indicator_def.get("params") or indicator_def.get("parameters")
+    if not param_defs or not isinstance(param_defs, dict):
+        raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
+    factory = indicator_factory.IndicatorFactory()
+    param_names = list(param_defs.keys())
+    param_ranges = []
+    for p, spec in param_defs.items():
+        if "min" in spec and "max" in spec and "default" in spec:
+            if isinstance(spec["default"], int):
+                param_ranges.append([spec["min"], spec["max"], spec["default"]])
+            elif isinstance(spec["default"], float):
+                param_ranges.append([spec["min"], spec["max"], spec["default"]])
+            else:
+                param_ranges.append([spec["default"]])
+        else:
+            param_ranges.append([spec.get("default")])
+    from itertools import product
+    best_params = None
+    best_score = float('-inf')
+    for values in product(*param_ranges):
+        params = dict(zip(param_names, values))
+        try:
+            indicators = factory.compute_indicators(data, {indicator_def.get("name", "IND"): params})
+            score = indicators[indicator_def.get("name", "IND")].mean()
+            if score > best_score:
+                best_score = score
+                best_params = params
+        except Exception:
+            continue
+    if best_params is None:
+        raise ValueError("No valid parameter set found")
+    return best_params, best_score
+
+def optimize_parameters(data, indicator_def, method="bayesian", n_trials=10):
+    """Main optimization function. Dispatches to Bayesian or classical optimization."""
+    if method == "bayesian":
+        return optimize_parameters_bayesian(data, indicator_def, n_trials=n_trials)
+    elif method == "classical":
+        return optimize_parameters_classical(data, indicator_def)
+    else:
+        raise ValueError(f"Unknown optimization method: {method}")
+
+def _prepare_optimization_data(data: pd.DataFrame, indicator_definition: dict) -> Tuple[pd.DataFrame, dict]:
+    """
+    Prepares and validates optimization data and indicator definition for tests.
+    Ensures indicator definition is loaded from indicator_params.json if not already in correct format.
+    Returns (data, indicator_def) where indicator_def is a dict with indicator name as key and correct 'params' key.
+    """
+    import json
+    import os
+    # If indicator_definition is already in correct format, return as is
+    if isinstance(indicator_definition, dict) and any(
+        isinstance(v, dict) and ("params" in v or "parameters" in v)
+        for v in indicator_definition.values()
+    ):
+        return data, indicator_definition
+    # Otherwise, try to load from indicator_params.json
+    params_path = os.path.join(os.path.dirname(__file__), "indicator_params.json")
+    with open(params_path, "r", encoding="utf-8") as f:
+        params_json = json.load(f)
+    # Find the indicator by name
+    name = indicator_definition.get("name") if isinstance(indicator_definition, dict) else None
+    if not name or name not in params_json:
+        raise ValueError(f"Indicator definition for '{name}' not found in indicator_params.json")
+    indicator_def = {name: params_json[name]}
+    return data, indicator_def
+
+
+def _evaluate_configuration(config: dict, data: pd.DataFrame, indicator_def: dict) -> Tuple[float, pd.DataFrame]:
+    """
+    Evaluates a configuration: runs the indicator and returns (score, output_df).
+    Score is the mean of the indicator output (for test compatibility).
+    """
+    if not isinstance(config, dict):
+        raise ValueError("Config must be a dict.")
+    if data is None or data.empty:
+        raise ValueError("Input data is empty.")
+    if not indicator_def or not isinstance(indicator_def, dict):
+        raise ValueError("Invalid indicator definition.")
+    # Find the indicator name and params
+    if len(indicator_def) != 1:
+        raise ValueError("Indicator definition must have exactly one indicator.")
+    name = next(iter(indicator_def))
+    ind_def = indicator_def[name]
+    param_defs = ind_def.get("params") or ind_def.get("parameters")
+    if not param_defs or not isinstance(param_defs, dict):
+        raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
+    # Validate config against param_defs
+    for p, spec in param_defs.items():
+        if p not in config:
+            if "default" in spec:
+                config[p] = spec["default"]
+            else:
+                raise ValueError(f"Missing required parameter: {p}")
+        val = config[p]
+        if "min" in spec and val < spec["min"]:
+            raise ValueError(f"Parameter '{p}' below min: {val} < {spec['min']}")
+        if "max" in spec and val > spec["max"]:
+            raise ValueError(f"Parameter '{p}' above max: {val} > {spec['max']}")
+    # Evaluate conditions if present
+    conditions = ind_def.get("conditions", [])
+    if hasattr(parameter_generator, "evaluate_conditions"):
+        if not parameter_generator.evaluate_conditions(config, conditions):
+            raise ValueError(f"Parameter conditions not met for indicator '{name}'")
+    # Compute indicator output
+    factory = indicator_factory.IndicatorFactory()
+    output_df = factory.compute_indicators(data, {name: config})
+    if name not in output_df:
+        raise ValueError(f"Indicator output missing for {name}")
+    score = float(output_df[name].mean())
+    return score, output_df

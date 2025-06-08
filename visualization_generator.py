@@ -399,3 +399,34 @@ def plot_indicator_performance(data, indicator_name, output_path):
     plt.tight_layout()
     plt.savefig(output_path)
     plt.close()
+
+def generate_charts(
+    output_dir: Path,
+    price_data: pd.DataFrame = None,
+    indicator_data: pd.DataFrame = None,
+    correlation_data: pd.DataFrame = None,
+    optimization_data: dict = None,
+    actual_predictions: pd.Series = None,
+    predicted_predictions: pd.Series = None
+) -> dict:
+    """Generate all main chart types and return a dictionary of chart paths."""
+    chart_paths = {}
+    if price_data is not None and indicator_data is not None:
+        chart_path = output_dir / "indicator_performance.png"
+        plot_indicator_performance(price_data, indicator_data, chart_path)
+        chart_paths["indicator_performance"] = chart_path
+    if correlation_data is not None:
+        chart_path = output_dir / "correlation_matrix.png"
+        plot_correlation_matrix(correlation_data, chart_path)
+        chart_paths["correlation_matrix"] = chart_path
+    if optimization_data is not None:
+        chart_path = output_dir / "optimization_results.png"
+        plot_optimization_results(optimization_data, chart_path)
+        chart_paths["optimization_results"] = chart_path
+    if actual_predictions is not None and predicted_predictions is not None:
+        chart_path = output_dir / "prediction_accuracy.png"
+        plot_prediction_accuracy(actual_predictions, predicted_predictions, chart_path)
+        chart_paths["prediction_accuracy"] = chart_path
+    if not chart_paths:
+        raise ValueError("No data provided for chart generation.")
+    return chart_paths

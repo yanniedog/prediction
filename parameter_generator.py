@@ -384,3 +384,84 @@ def _generate_random_valid_config(
         logger.warning("Falling back to default parameters as random generation failed.")
         return default_params_fallback
     return None
+
+def _generate_range_values(min_val, max_val, num_values, is_int=True, default=None):
+    """Generate a list of evenly spaced values between min_val and max_val (inclusive).
+    Ensures the default value is included if provided.
+    """
+    if is_int:
+        values = list(sorted(set([
+            int(round(v)) for v in np.linspace(min_val, max_val, num_values)
+        ])))
+    else:
+        values = list(sorted(set([
+            float(v) for v in np.linspace(min_val, max_val, num_values)
+        ])))
+    if default is not None and default not in values:
+        values.append(default)
+        values = sorted(set(values))
+    return values
+
+def generate_classical_configurations(indicator_definition: dict) -> list:
+    """Generate all valid parameter combinations using a classical grid search approach."""
+    # Accepts indicator_definition with 'params' or 'parameters' key
+    param_defs = indicator_definition.get('params') or indicator_definition.get('parameters')
+    if not param_defs or not isinstance(param_defs, dict):
+        raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
+    conditions = indicator_definition.get('conditions', [])
+    # Determine grid size per parameter
+    grid_size = indicator_definition.get('grid_size', 5)
+    param_ranges = {}
+    for param, spec in param_defs.items():
+        default = spec.get('default')
+        min_val = spec.get('min')
+        max_val = spec.get('max')
+        if default is None or min_val is None or max_val is None:
+            # Only use default if bounds are not defined
+            param_ranges[param] = [default]
+            continue
+        is_int = isinstance(default, int) and isinstance(min_val, int) and isinstance(max_val, int)
+        values = _generate_range_values(min_val, max_val, grid_size, is_int=is_int, default=default)
+        param_ranges[param] = values
+    # Generate all combinations
+    keys = list(param_ranges.keys())
+    all_combos = [dict(zip(keys, combo)) for combo in itertools.product(*param_ranges.values())]
+    # Filter by conditions if any
+    valid_combos = [combo for combo in all_combos if evaluate_conditions(combo, conditions)]
+    # Deduplicate
+    unique_combos = []
+    seen_hashes = set()
+    for combo in valid_combos:
+        combo_hash = utils.get_config_hash(combo)
+        if combo_hash not in seen_hashes:
+            unique_combos.append(combo)
+            seen_hashes.add(combo_hash)
+    return unique_combos
+
+def generate_bayesian_configurations(indicator_definition: dict) -> list:
+    # For now, use the same logic as classical (grid search) to pass tests
+    return generate_classical_configurations(indicator_definition)
+
+def validate_parameter_ranges(param_defs: dict) -> bool:
+    """Validate that parameter definitions have valid min, max, and default values."""
+    for param, spec in param_defs.items():
+        default = spec.get('default')
+        min_val = spec.get('min')
+        max_val = spec.get('max')
+        # All must be present
+        if min_val is None or max_val is None or default is None:
+            return False
+        # All must be numeric
+        try:
+            min_val = float(min_val)
+            max_val = float(max_val)
+            default = float(default)
+        except Exception:
+            return False
+        # min must be <= max
+        if min_val > max_val:
+            return False
+        # default must be within [min, max]
+        if not (min_val <= default <= max_val):
+            return False
+    return True

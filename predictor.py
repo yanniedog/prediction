@@ -69,6 +69,48 @@ class RegressionModel(Protocol):
 
 RegressionModelT = TypeVar('RegressionModelT', bound=RegressionModel)
 
+# Simple in-memory cache for test purposes
+_indicator_cache = {}
+
+def _cache_indicators(data: pd.DataFrame, indicator_def: dict, config: dict, indicators: pd.Series):
+    """
+    Cache the computed indicators for the given data, indicator definition, and config.
+    """
+    import utils
+    if not isinstance(config, dict):
+        raise ValueError("Config must be a dict.")
+    if data is None or data.empty:
+        raise ValueError("Input data is empty.")
+    if not indicator_def or not isinstance(indicator_def, dict):
+        raise ValueError("Invalid indicator definition.")
+    # Use id(data) as a simple unique key for the DataFrame in memory
+    data_id = id(data)
+    if "name" in indicator_def:
+        name = indicator_def["name"]
+    else:
+        name = list(indicator_def.keys())[0]
+    config_hash = utils.get_config_hash(config)
+    _indicator_cache[(data_id, name, config_hash)] = indicators
+
+def _get_cached_indicators(data: pd.DataFrame, indicator_def: dict, config: dict):
+    """
+    Retrieve cached indicators for the given data, indicator definition, and config, or None if not cached.
+    """
+    import utils
+    if not isinstance(config, dict):
+        return None
+    if data is None or data.empty:
+        return None
+    if not indicator_def or not isinstance(indicator_def, dict):
+        return None
+    data_id = id(data)
+    if "name" in indicator_def:
+        name = indicator_def["name"]
+    else:
+        name = list(indicator_def.keys())[0]
+    config_hash = utils.get_config_hash(config)
+    return _indicator_cache.get((data_id, name, config_hash), None)
+
 # --- Helper Functions ---
 
 def _get_latest_data_point(db_path: Path) -> Optional[pd.DataFrame]:
@@ -866,6 +908,163 @@ def predict_price_movement(data, indicator_name, lag, params):
     pred = data[indicator_name] - data[indicator_name].shift(lag)
     pred = pred.fillna(0)
     return pred
+
+
+def calculate_indicators(data: pd.DataFrame, indicator_def: dict, config: dict) -> pd.Series:
+    """
+    Calculate indicator values for the given data, indicator definition, and config.
+    Returns a pd.Series of indicator values.
+    Raises ValueError for invalid/missing parameters or if output is empty.
+    """
+    if not isinstance(config, dict):
+        raise ValueError("Config must be a dict.")
+    if data is None or data.empty:
+        raise ValueError("Input data is empty.")
+    if not indicator_def or not isinstance(indicator_def, dict):
+        raise ValueError("Invalid indicator definition.")
+    param_defs = indicator_def.get("params") or indicator_def.get("parameters")
+    if not param_defs or not isinstance(param_defs, dict):
+        raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
+    # Validate config against param_defs
+    for p, spec in param_defs.items():
+        if p not in config:
+            if "default" in spec:
+                config[p] = spec["default"]
+            else:
+                raise ValueError(f"Missing required parameter: {p}")
+        val = config[p]
+        if "min" in spec and val < spec["min"]:
+            raise ValueError(f"Parameter '{p}' below min: {val} < {spec['min']}")
+        if "max" in spec and val > spec["max"]:
+            raise ValueError(f"Parameter '{p}' above max: {val} > {spec['max']}")
+    # Evaluate conditions if present
+    conditions = indicator_def.get("conditions", [])
+    import parameter_generator
+    if hasattr(parameter_generator, "evaluate_conditions"):
+        if not parameter_generator.evaluate_conditions(config, conditions):
+            raise ValueError(f"Parameter conditions not met for indicator")
+    factory = indicator_factory.IndicatorFactory()
+    output_df = factory.compute_indicators(data, {indicator_def.get("name", "IND"): config} if "name" in indicator_def else {list(indicator_def.keys())[0]: config})
+    # Try to get the correct output series
+    if "name" in indicator_def:
+        name = indicator_def["name"]
+    else:
+        name = list(indicator_def.keys())[0]
+    if name not in output_df:
+        raise ValueError(f"Indicator output missing for {name}")
+    series = output_df[name]
+    if not isinstance(series, pd.Series) or series.empty or series.isna().all():
+        raise ValueError(f"Indicator output for {name} is empty or invalid")
+    return series
+
+
+def _calculate_correlation(indicator_series: pd.Series, price_series: pd.Series, lag: int) -> float:
+    """Calculate correlation between indicator and price data with lag.
+    
+    Args:
+        indicator_series: Series containing indicator values
+        price_series: Series containing price values
+        lag: Number of periods to lag the price series
+        
+    Returns:
+        float: Correlation coefficient between indicator and lagged price
+        
+    Raises:
+        ValueError: If inputs are invalid or insufficient data
+    """
+    if not isinstance(indicator_series, pd.Series) or not isinstance(price_series, pd.Series):
+        raise ValueError("Both inputs must be pandas Series")
+    if len(indicator_series) != len(price_series):
+        raise ValueError("Input series must have same length")
+    if lag < 1:
+        raise ValueError("Lag must be positive")
+    if len(indicator_series) <= lag:
+        raise ValueError("Insufficient data for lag calculation")
+        
+    # Calculate price returns
+    price_returns = price_series.pct_change()
+    
+    # Shift price returns by lag
+    lagged_returns = price_returns.shift(-lag)
+    
+    # Drop NaN values
+    valid_data = pd.DataFrame({
+        'indicator': indicator_series,
+        'returns': lagged_returns
+    }).dropna()
+    
+    if len(valid_data) < 2:
+        raise ValueError("Insufficient valid data points after lag")
+        
+    # Calculate correlation
+    correlation = valid_data['indicator'].corr(valid_data['returns'])
+    
+    return correlation
+
+
+def _prepare_prediction_data(data: pd.DataFrame, indicator_def: Dict[str, Any]) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """Prepare data and indicator definitions for prediction.
+    
+    Args:
+        data: DataFrame containing price data
+        indicator_def: Dictionary containing indicator definitions
+        
+    Returns:
+        Tuple containing:
+        - DataFrame: Prepared price data
+        - Dict: Prepared indicator definitions
+        
+    Raises:
+        ValueError: If inputs are invalid
+    """
+    if not isinstance(data, pd.DataFrame) or data.empty:
+        raise ValueError("Input data must be a non-empty DataFrame")
+    if not isinstance(indicator_def, dict) or not indicator_def:
+        raise ValueError("Indicator definition must be a non-empty dictionary")
+        
+    # Validate required columns
+    required_cols = ['open', 'high', 'low', 'close', 'volume']
+    missing_cols = [col for col in required_cols if col not in data.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
+        
+    # Convert columns to numeric
+    for col in required_cols:
+        data[col] = pd.to_numeric(data[col], errors='coerce')
+        
+    # Drop rows with NaN values
+    data = data.dropna(subset=required_cols)
+    if data.empty:
+        raise ValueError("No valid data points after cleaning")
+        
+    # Validate indicator definitions
+    for name, defn in indicator_def.items():
+        if not isinstance(defn, dict):
+            raise ValueError(f"Invalid indicator definition for {name}")
+        if 'type' not in defn:
+            raise ValueError(f"Missing type in indicator definition for {name}")
+        if 'required_inputs' not in defn:
+            raise ValueError(f"Missing required_inputs in indicator definition for {name}")
+        if 'params' not in defn:
+            raise ValueError(f"Missing params in indicator definition for {name}")
+            
+        # Validate required inputs
+        for input_col in defn['required_inputs']:
+            if input_col not in data.columns:
+                raise ValueError(f"Required input column '{input_col}' not found in data for {name}")
+                
+        # Validate parameters
+        for param_name, param_def in defn['params'].items():
+            if not isinstance(param_def, dict):
+                raise ValueError(f"Invalid parameter definition for {param_name} in {name}")
+            if 'default' not in param_def:
+                raise ValueError(f"Missing default value for parameter {param_name} in {name}")
+            if 'min' not in param_def:
+                raise ValueError(f"Missing min value for parameter {param_name} in {name}")
+            if 'max' not in param_def:
+                raise ValueError(f"Missing max value for parameter {param_name} in {name}")
+                
+    return data, indicator_def
 
 
 if __name__ == '__main__':
