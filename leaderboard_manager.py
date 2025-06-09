@@ -143,6 +143,12 @@ def check_and_update_single_lag(
     if not pd.notna(correlation_value) or not isinstance(correlation_value, (float, int)):
         logger.debug(f"Skipping leaderboard check: Non-numeric correlation {correlation_value} (Lag {lag}, ID {config_id})")
         return False
+    
+    # Validate correlation value is within valid range (-1 to 1)
+    if not (-1.0 <= correlation_value <= 1.0):
+        logger.debug(f"Skipping leaderboard check: Correlation {correlation_value} outside valid range [-1, 1] (Lag {lag}, ID {config_id})")
+        return False
+    
     if config_id is None or not isinstance(config_id, int): # Ensure we have a valid source config ID
          logger.error(f"Skipping leaderboard check: Invalid/missing source config_id ({config_id}) (Lag {lag}, Ind {indicator_name})")
          return False
@@ -706,7 +712,7 @@ def generate_consistency_report(
         logger.warning("No correlation data or invalid max_lag for consistency report.")
         return False
 
-    output_filepath = output_dir / f"{file_prefix}_consistency_report.txt"
+    output_filepath = output_dir / f"{file_prefix}_report.txt"
     current_timestamp_str = datetime.now(timezone.utc).isoformat(timespec='milliseconds') + 'Z'
     # Create a quick lookup map for configs
     configs_dict = {cfg['config_id']: cfg for cfg in indicator_configs_processed if 'config_id' in cfg}
@@ -836,35 +842,24 @@ def generate_consistency_report(
         return False
 
 class LeaderboardManager:
+    """Class-based interface for leaderboard management."""
+    
     def __init__(self, db_path=None):
-        """Initialize the leaderboard manager.
-        
-        Args:
-            db_path: Optional path to the leaderboard database. If None, uses default from config.
-        """
-        if db_path is not None:
-            # Temporarily override the config path for this instance
-            self._original_db_path = config.LEADERBOARD_DB_PATH
-            config.LEADERBOARD_DB_PATH = Path(db_path)
-        else:
-            self._original_db_path = None
-            
+        """Initialize with optional custom database path."""
+        self.db_path = db_path or LEADERBOARD_DB_PATH
+        # Ensure database is initialized
         self._initialize_db()
     
     def _initialize_db(self) -> bool:
-        """Initialize the database on class instantiation."""
-        success = initialize_leaderboard_db()
-        if self._original_db_path is not None:
-            # Restore original path
-            config.LEADERBOARD_DB_PATH = self._original_db_path
-        return success
+        """Initialize the database if it doesn't exist."""
+        return initialize_leaderboard_db()
     
     def create_connection(self) -> Optional[sqlite3.Connection]:
         """Create a connection to the leaderboard database."""
         return _create_leaderboard_connection()
     
     def load_leaderboard(self) -> Dict[Tuple[int, str], Dict[str, Any]]:
-        """Load current leaderboard data from the database."""
+        """Load leaderboard data."""
         return load_leaderboard()
     
     def check_and_update_single_lag(
@@ -879,10 +874,10 @@ class LeaderboardManager:
         data_daterange: str,
         source_db_name: str
     ) -> bool:
-        """Check and update a single lag in the leaderboard."""
+        """Check and update a single lag correlation."""
         return check_and_update_single_lag(
-            lag, correlation_value, indicator_name, params,
-            config_id, symbol, timeframe, data_daterange, source_db_name
+            lag, correlation_value, indicator_name, params, config_id,
+            symbol, timeframe, data_daterange, source_db_name
         )
     
     def update_leaderboard(
@@ -897,22 +892,12 @@ class LeaderboardManager:
         min_correlation_threshold: float = 0.0,
         max_updates_per_config: Optional[int] = None
     ) -> Dict[int, Dict[str, Any]]:
-        """Update leaderboard with new correlation results.
+        """Update leaderboard with new correlation results."""
+        # Ensure database is initialized before updating
+        if not self._initialize_db():
+            logger.error("Failed to initialize leaderboard database")
+            return {}
         
-        Args:
-            current_run_correlations: Dictionary mapping config IDs to lists of correlation values for each lag
-            indicator_configs: List of indicator configurations used in the current run
-            max_lag: Maximum lag value used in the analysis
-            symbol: Symbol being analyzed
-            timeframe: Timeframe being analyzed
-            data_daterange: Date range of the dataset
-            source_db_name: Name of the source database
-            min_correlation_threshold: Minimum correlation value to consider (default: 0.0)
-            max_updates_per_config: Maximum number of updates to allow per config (default: None)
-            
-        Returns:
-            Dictionary mapping config IDs to their best correlation results
-        """
         return update_leaderboard(
             current_run_correlations, indicator_configs,
             max_lag, symbol, timeframe, data_daterange, source_db_name,

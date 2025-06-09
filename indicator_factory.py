@@ -149,7 +149,8 @@ class IndicatorFactory:
                 raise ValueError(f"Unknown indicator: {indicator_name}")
             
             # Validate required inputs are present in data
-            required_inputs = indicator_def.get('required_inputs', ['close'])
+            # Use the config parameter's required_inputs if available, otherwise fall back to indicator_def
+            required_inputs = config.get('required_inputs', indicator_def.get('required_inputs', ['close']))
             missing_inputs = [input_name for input_name in required_inputs if input_name not in data.columns]
             if missing_inputs:
                 raise ValueError(f"Missing required inputs for indicator '{indicator_name}': {missing_inputs}")

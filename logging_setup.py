@@ -18,20 +18,24 @@ _file_log_level = logging.WARNING # Default to WARNING
 LOG_DIR = config.LOG_DIR
 LOG_LEVEL = logging.INFO  # Default log level for compatibility with tests
 
-def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_mode='w'):
+def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_mode='w', cleanup_old_logs=False):
     """Configures logging with levels for console/file, overwriting log file by default."""
     global _console_handler, _default_console_level, _file_log_level
     # Force WARNING for console if running under pytest
     if 'PYTEST_CURRENT_TEST' in os.environ:
         console_level = logging.WARNING
+        # Keep file level as specified, don't override to INFO
     _default_console_level = console_level # Update default if changed
     _file_log_level = file_level        # Update file level if changed
 
+    # Get the current LOG_DIR from config (allows tests to patch it)
+    current_log_dir = config.LOG_DIR
+    
     # Ensure LOG_DIR is a Path object and create it
-    if isinstance(LOG_DIR, str):
-        log_dir = Path(LOG_DIR)
+    if isinstance(current_log_dir, str):
+        log_dir = Path(current_log_dir)
     else:
-        log_dir = LOG_DIR
+        log_dir = current_log_dir
     
     # Create the log directory if it doesn't exist
     try:
@@ -41,6 +45,15 @@ def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_m
         # Fallback to current directory
         log_dir = Path.cwd() / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
+
+    # Clean up old log files if requested
+    if cleanup_old_logs:
+        try:
+            for log_file in log_dir.glob('*.txt'):
+                if log_file.name != 'logfile.txt':  # Keep current log file
+                    log_file.unlink()
+        except Exception as e:
+            print(f"Warning: Could not cleanup old log files: {e}", file=sys.stderr)
 
     log_filename = log_dir / "logfile.txt"
     
@@ -81,6 +94,10 @@ def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_m
         file_handler.setLevel(_file_log_level) # Set level for this specific handler
         file_handler.setFormatter(file_formatter)
         logger.addHandler(file_handler)
+        
+        # Force a flush to ensure the file is created and writable
+        file_handler.flush()
+        
     except Exception as e:
         print(f"CRITICAL ERROR setting up file logging: {e}", file=sys.stderr)
         # Consider exiting if file logging is essential and fails

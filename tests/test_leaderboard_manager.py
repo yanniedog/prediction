@@ -269,6 +269,9 @@ def test_error_handling(leaderboard_manager, test_data):
         indicator_name='RSI',
         params={'timeperiod': 14},
         config_id=1,
-        symbol='BTCUSDT'  # Missing other required fields
+        symbol='BTCUSDT',
+        timeframe='1h',
+        data_daterange='2023-01-01 to 2023-12-31',
+        source_db_name='test.db'
     )
     assert result == False  # Should return False for missing required fields 

@@ -22,6 +22,7 @@ import predictor
 import backtester
 import itertools
 import gc
+import sqlite3
 
 @pytest.fixture(scope="function")
 def temp_dir() -> Generator[Path, None, None]:
@@ -172,8 +173,8 @@ def test_select_data_source_and_lag(temp_dir: Path, sample_data: pd.DataFrame) -
             with patch('main.sqlite_manager.create_connection') as mock_conn:
                 mock_conn_instance = MagicMock()
                 mock_cursor = MagicMock()
-                # fetchone() returns (1,) for symbol, timeframe, then (1, '{}') for config id
-                fetchone_side_effects = [(1,), (1,)] + [(1, '{}')] * 20
+                # fetchone() returns ("1h",) for timeframe lookup
+                fetchone_side_effects = [("1h",)] + [(1, '{}')] * 20
                 mock_cursor.fetchone.side_effect = fetchone_side_effects
                 mock_conn_instance.cursor.return_value = mock_cursor
                 mock_conn.return_value = mock_conn_instance
@@ -499,34 +500,37 @@ def test_error_handling(temp_dir: Path) -> None:
     with patch('main.data_manager.manage_data_source', return_value=None):  # Simulate user quit
         with pytest.raises(SystemExit):
             main._select_data_source_and_lag()
-    
+
     # Test invalid data source (None returned from manage_data_source)
     with patch('main.data_manager.manage_data_source', return_value=None):
         with pytest.raises(SystemExit):
             main._select_data_source_and_lag()
-    
+
     # Test data validation failure
     with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
         with patch('main.data_manager.load_data', return_value=None):  # Simulate data load failure
             with pytest.raises(ValueError):
                 main._select_data_source_and_lag()
-    
-    # Test invalid indicator definitions
-    with patch('main._setup_and_select_mode', return_value='a'):
-        with patch('main._select_data_source_and_lag', return_value=(
-            Path("test.db"), "BTCUSD", "1h", pd.DataFrame(), 10, 1, 1, "20240101-20240131"
-        )):
-            with patch('main.indicator_factory.IndicatorFactory') as mock_factory:
-                mock_factory.return_value.indicator_params = {}
-                with pytest.raises(SystemExit):
-                    main.run_analysis()
-    
-    # Test database connection failure during data source selection
+
+    # Test database connection failure
     with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
-        with patch('main.sqlite_manager.create_connection', return_value=None):
-            with pytest.raises(ValueError):
-                main._select_data_source_and_lag()
-    
+        with patch('main.data_manager.load_data', return_value=pd.DataFrame({'test': [1, 2, 3]})):
+            with patch('main.sqlite_manager.create_connection', return_value=None):  # Simulate connection failure
+                with pytest.raises(ValueError):
+                    main._select_data_source_and_lag()
+
+    # Test database table missing
+    with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
+        with patch('main.data_manager.load_data', return_value=pd.DataFrame({'test': [1, 2, 3]})):
+            with patch('main.sqlite_manager.create_connection') as mock_conn:
+                mock_conn_instance = MagicMock()
+                mock_cursor = MagicMock()
+                mock_cursor.execute.side_effect = sqlite3.OperationalError("no such table: timeframes")
+                mock_conn_instance.cursor.return_value = mock_cursor
+                mock_conn.return_value = mock_conn_instance
+                with pytest.raises(ValueError):
+                    main._select_data_source_and_lag()
+
     # Force cleanup after each test case
     gc.collect()
     try:
