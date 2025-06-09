@@ -400,6 +400,7 @@ def test_fetch_klines_handles_invalid_symbol(monkeypatch):
     # Simulate API returning empty for invalid symbol
     def mock_get(*args, **kwargs):
         class MockResponse:
+            status_code = 200
             def raise_for_status(self): pass
             def json(self): return []
         return MockResponse()
@@ -454,6 +455,7 @@ def test_save_to_sqlite_creates_db(tmp_path):
 
 def test_fetch_klines_handles_api_error(monkeypatch):
     class MockResponse:
+        status_code = 500
         def raise_for_status(self): raise Exception("API error")
         def json(self): return []
     def mock_get(*args, **kwargs): return MockResponse()

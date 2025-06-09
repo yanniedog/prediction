@@ -19,8 +19,8 @@ def test_indicator_params_loads_json(tmp_path):
 
 def test_get_indicator_params(tmp_path):
     params = {
-        "RSI": {"type": "momentum", "parameters": {"period": {"type": "int", "min": 2, "max": 30, "default": 14}}},
-        "BB": {"type": "volatility", "parameters": {"period": {"type": "int", "min": 2, "max": 30, "default": 20}, "stddev": {"type": "float", "min": 1.0, "max": 3.0, "default": 2.0}}}
+        "RSI": {"type": "momentum", "params": {"timeperiod": {"type": "int", "min": 2, "max": 30, "default": 14}}},
+        "BB": {"type": "volatility", "params": {"timeperiod": {"type": "int", "min": 2, "max": 30, "default": 20}, "nbdevup": {"type": "float", "min": 1.0, "max": 3.0, "default": 2.0}}}
     }
     file_path = tmp_path / "params.json"
     with open(file_path, "w") as f:
@@ -37,8 +37,8 @@ def test_get_indicator_params(tmp_path):
 
 def test_get_all_indicators(tmp_path):
     params = {
-        "RSI": {"type": "momentum", "parameters": {"period": {"type": "int", "min": 2, "max": 30, "default": 14}}},
-        "BB": {"type": "volatility", "parameters": {"period": {"type": "int", "min": 2, "max": 30, "default": 20}, "stddev": {"type": "float", "min": 1.0, "max": 3.0, "default": 2.0}}}
+        "RSI": {"type": "momentum", "params": {"timeperiod": {"type": "int", "min": 2, "max": 30, "default": 14}}},
+        "BB": {"type": "volatility", "params": {"timeperiod": {"type": "int", "min": 2, "max": 30, "default": 20}, "nbdevup": {"type": "float", "min": 1.0, "max": 3.0, "default": 2.0}}}
     }
     file_path = tmp_path / "params.json"
     with open(file_path, "w") as f:
@@ -50,8 +50,8 @@ def test_get_all_indicators(tmp_path):
 
 def test_validate_indicator_params(tmp_path):
     params = {
-        "RSI": {"type": "momentum", "parameters": {"period": {"type": "int", "min": 2, "max": 30, "default": 14}}},
-        "BB": {"type": "volatility", "parameters": {"period": {"type": "int", "min": 2, "max": 30, "default": 20}, "stddev": {"type": "float", "min": 1.0, "max": 3.0, "default": 2.0}}}
+        "RSI": {"type": "momentum", "params": {"timeperiod": {"type": "int", "min": 2, "max": 30, "default": 14}}},
+        "BB": {"type": "volatility", "params": {"timeperiod": {"type": "int", "min": 2, "max": 30, "default": 20}, "nbdevup": {"type": "float", "min": 1.0, "max": 3.0, "default": 2.0}}}
     }
     file_path = tmp_path / "params.json"
     with open(file_path, "w") as f:
@@ -59,16 +59,16 @@ def test_validate_indicator_params(tmp_path):
     import indicator_params as ip
     ip.PARAMS_FILE = str(file_path)
     # Valid
-    assert validate_indicator_params("RSI", {"period": 14})
+    assert validate_indicator_params("RSI", {"timeperiod": 14})
     # Invalid type
     with pytest.raises(ValueError):
-        validate_indicator_params("RSI", {"period": "bad"})
+        validate_indicator_params("RSI", {"timeperiod": "bad"})
     # Out of range
     with pytest.raises(ValueError):
-        validate_indicator_params("RSI", {"period": 100})
+        validate_indicator_params("RSI", {"timeperiod": 100})
     # Missing param
     with pytest.raises(ValueError):
         validate_indicator_params("RSI", {})
     # Non-existent indicator
     with pytest.raises(KeyError):
-        validate_indicator_params("NON_EXISTENT", {"period": 14}) 
+        validate_indicator_params("NON_EXISTENT", {"timeperiod": 14}) 

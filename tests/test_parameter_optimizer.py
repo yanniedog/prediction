@@ -619,8 +619,8 @@ def test_error_handling(optimization_data: Tuple[pd.DataFrame, Dict[str, Any]]):
     invalid_def["RSI"]["params"]["timeperiod"]["max"] = 50
     with pytest.raises(ValueError) as exc_info:
         optimize_parameters(data, invalid_def)
-    # The error should be about parameter validation, not min >= max
-    assert "Parameter" in str(exc_info.value), f"Expected error about parameter validation, got: {exc_info.value}"
+    # The error should be about parameter validation
+    assert "Invalid parameter definitions" in str(exc_info.value), f"Expected error about parameter validation, got: {exc_info.value}"
     
     # Test with missing required parameter
     invalid_def = indicator_def.copy()

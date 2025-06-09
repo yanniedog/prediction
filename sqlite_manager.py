@@ -125,7 +125,9 @@ def initialize_database(db_path: Union[str, Path], symbol: str, timeframe: str) 
             CREATE TABLE IF NOT EXISTS indicator_configs (
                 id INTEGER PRIMARY KEY,
                 indicator_id INTEGER NOT NULL,
+                config_hash TEXT NOT NULL,
                 config_json TEXT NOT NULL,
+                UNIQUE(indicator_id, config_hash),
                 FOREIGN KEY (indicator_id) REFERENCES indicators(id)
             )
         """)
@@ -152,16 +154,13 @@ def initialize_database(db_path: Union[str, Path], symbol: str, timeframe: str) 
                 id INTEGER PRIMARY KEY,
                 symbol_id INTEGER NOT NULL,
                 timeframe_id INTEGER NOT NULL,
-                indicator_id INTEGER NOT NULL,
-                config_id INTEGER NOT NULL,
+                indicator_config_id INTEGER NOT NULL,
                 lag INTEGER NOT NULL,
-                correlation_type TEXT NOT NULL,
                 correlation_value REAL NOT NULL,
                 calculation_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (symbol_id) REFERENCES symbols(id),
                 FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
-                FOREIGN KEY (indicator_id) REFERENCES indicators(id),
-                FOREIGN KEY (config_id) REFERENCES indicator_configs(id)
+                FOREIGN KEY (indicator_config_id) REFERENCES indicator_configs(id)
             )
         """)
 
@@ -186,7 +185,7 @@ def initialize_database(db_path: Union[str, Path], symbol: str, timeframe: str) 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_historical_data_symbol_timeframe ON historical_data(symbol_id, timeframe_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_historical_data_open_time ON historical_data(open_time)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_symbols ON correlations(symbol_id, timeframe_id)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_indicators ON correlations(indicator_id, config_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_indicators ON correlations(indicator_config_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_correlation ON leaderboard(correlation_type, correlation_value)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_lag ON leaderboard(lag)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_lag_val ON leaderboard(lag, correlation_value)")
@@ -278,13 +277,12 @@ def _get_or_create_id(conn: sqlite3.Connection, table: str, column: str, value: 
             
         # Insert new value
         cursor.execute(f"INSERT INTO {table} ({actual_column}) VALUES (?)", (str_value,))
-        conn.commit()
+        # Don't commit here - let the caller handle the transaction
         return cursor.lastrowid
         
     except sqlite3.Error as e:
         logger.error(f"DB error getting/creating ID for '{value}' in '{table}': {e}", exc_info=True)
-        try: conn.rollback()
-        except Exception as rb_err: logger.error(f"Rollback failed in _get_or_create_id: {rb_err}")
+        # Don't rollback here - let the caller handle the transaction
         raise
 
 def get_or_create_indicator_config_id(conn: sqlite3.Connection, indicator_name: str, params: Dict[str, Any]) -> int:
@@ -624,7 +622,9 @@ class SQLiteManager:
                 CREATE TABLE IF NOT EXISTS indicator_configs (
                     id INTEGER PRIMARY KEY,
                     indicator_id INTEGER NOT NULL,
+                    config_hash TEXT NOT NULL,
                     config_json TEXT NOT NULL,
+                    UNIQUE(indicator_id, config_hash),
                     FOREIGN KEY (indicator_id) REFERENCES indicators(id)
                 )
             """)
@@ -650,16 +650,13 @@ class SQLiteManager:
                     id INTEGER PRIMARY KEY,
                     symbol_id INTEGER NOT NULL,
                     timeframe_id INTEGER NOT NULL,
-                    indicator_id INTEGER NOT NULL,
-                    config_id INTEGER NOT NULL,
+                    indicator_config_id INTEGER NOT NULL,
                     lag INTEGER NOT NULL,
-                    correlation_type TEXT NOT NULL,
                     correlation_value REAL NOT NULL,
                     calculation_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY (symbol_id) REFERENCES symbols(id),
                     FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
-                    FOREIGN KEY (indicator_id) REFERENCES indicators(id),
-                    FOREIGN KEY (config_id) REFERENCES indicator_configs(id)
+                    FOREIGN KEY (indicator_config_id) REFERENCES indicator_configs(id)
                 )
             """)
             
@@ -850,7 +847,6 @@ class SQLiteManager:
                 # Insert new value
                 cursor.execute(f"INSERT INTO {table_name} ({name_column}) VALUES (?)", (value,))
                 id_ = cursor.lastrowid
-                conn.commit()
             
             conn.close()
             return id_
