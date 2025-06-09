@@ -237,33 +237,27 @@ def _save_to_sqlite(df: pd.DataFrame, db_path: str, symbol: str, timeframe: str)
         df_to_insert['symbol_id'] = symbol_id
         df_to_insert['timeframe_id'] = timeframe_id
 
-        # Ensure all required columns exist
-        required_columns = [
+        # Define columns that exist in the database schema
+        db_columns = [
             "symbol_id", "timeframe_id", "open_time", "open", "high", "low", 
-            "close", "volume", "close_time"
-        ]
-        optional_columns = [
-            "quote_asset_volume", "number_of_trades",
-            "taker_buy_base_asset_volume", "taker_buy_quote_asset_volume"
+            "close", "volume"
         ]
 
         # Check required columns
-        missing_required = [col for col in required_columns if col not in df_to_insert.columns]
+        missing_required = [col for col in db_columns if col not in df_to_insert.columns]
         if missing_required:
             logger.error(f"DataFrame missing required columns: {missing_required}")
             conn.rollback()
             return False
 
-        # Select only columns that exist in the DataFrame
-        columns_to_insert = required_columns + [col for col in optional_columns if col in df_to_insert.columns]
-        df_to_insert = df_to_insert[columns_to_insert]
+        # Select only columns that exist in the database schema
+        df_to_insert = df_to_insert[db_columns]
 
         # Convert data types
         for col in df_to_insert.columns:
-            if col in ['open_time', 'close_time', 'number_of_trades']:
+            if col in ['open_time']:
                 df_to_insert[col] = pd.to_numeric(df_to_insert[col], downcast='integer')
-            elif col in ['open', 'high', 'low', 'close', 'volume', 'quote_asset_volume', 
-                        'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume']:
+            elif col in ['open', 'high', 'low', 'close', 'volume']:
                 df_to_insert[col] = pd.to_numeric(df_to_insert[col], downcast='float')
 
         # Insert data
@@ -438,14 +432,61 @@ def manage_data_source(choice: Optional[int] = None) -> Optional[Tuple[Path, str
     try:
         # List available databases
         db_files = list_existing_databases()
+        
         if not db_files:
-            logging.warning("No existing databases found")
-            return None
+            print("\nNo existing databases found.")
+            print("Would you like to download a new database?")
+            print("1. Download BTCUSDT 1d data (recommended)")
+            print("2. Download custom symbol/timeframe")
+            print("0. Quit")
             
-        # Print available options
+            while True:
+                try:
+                    if choice is not None:
+                        download_choice = choice
+                    else:
+                        download_choice = int(input("\nSelect option (0-2): ").strip())
+                        
+                    if download_choice == 0:
+                        return None
+                    elif download_choice == 1:
+                        # Download default BTCUSDT 1d data
+                        symbol = "BTCUSDT"
+                        timeframe = "1d"
+                        break
+                    elif download_choice == 2:
+                        # Get custom symbol and timeframe
+                        symbol = input("Enter symbol (e.g., BTCUSDT, ETHUSDT): ").strip().upper()
+                        if not is_valid_symbol(symbol):
+                            print(f"Invalid symbol: {symbol}")
+                            continue
+                            
+                        print("Available timeframes: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M")
+                        timeframe = input("Enter timeframe (e.g., 1d, 1h): ").strip().lower()
+                        if not is_valid_timeframe(timeframe):
+                            print(f"Invalid timeframe: {timeframe}")
+                            continue
+                        break
+                    else:
+                        print("Please enter a number between 0 and 2")
+                except ValueError:
+                    print("Please enter a valid number")
+            
+            # Download the data
+            db_path = config.DB_DIR / f"{symbol}_{timeframe}.db"
+            print(f"\nDownloading {symbol} {timeframe} data...")
+            if download_binance_data(symbol, timeframe, db_path):
+                print(f"Successfully downloaded data to {db_path.name}")
+                return db_path, symbol, timeframe
+            else:
+                print("Failed to download data. Please check your internet connection and try again.")
+                return None
+        
+        # If we have existing databases, show them
         print("\nAvailable databases:")
         for i, db_file in enumerate(db_files, 1):
             print(f"{i}. {db_file.name}")
+        print("0. Download new database")
             
         # Get user selection
         while True:
@@ -453,13 +494,34 @@ def manage_data_source(choice: Optional[int] = None) -> Optional[Tuple[Path, str
                 if choice is not None:
                     selected_choice = choice
                 else:
-                    selected_choice = int(input("\nSelect database (number) or 0 to quit: ").strip())
+                    selected_choice = int(input("\nSelect database (number) or 0 to download new: ").strip())
                     
                 if selected_choice == 0:
-                    return None
+                    # Download new database
+                    print("\nDownload new database:")
+                    symbol = input("Enter symbol (e.g., BTCUSDT, ETHUSDT): ").strip().upper()
+                    if not is_valid_symbol(symbol):
+                        print(f"Invalid symbol: {symbol}")
+                        continue
+                        
+                    print("Available timeframes: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M")
+                    timeframe = input("Enter timeframe (e.g., 1d, 1h): ").strip().lower()
+                    if not is_valid_timeframe(timeframe):
+                        print(f"Invalid timeframe: {timeframe}")
+                        continue
+                    
+                    db_path = config.DB_DIR / f"{symbol}_{timeframe}.db"
+                    print(f"\nDownloading {symbol} {timeframe} data...")
+                    if download_binance_data(symbol, timeframe, db_path):
+                        print(f"Successfully downloaded data to {db_path.name}")
+                        return db_path, symbol, timeframe
+                    else:
+                        print("Failed to download data. Please check your internet connection and try again.")
+                        return None
+                        
                 if 1 <= selected_choice <= len(db_files):
                     break
-                print(f"Please enter a number between 1 and {len(db_files)}")
+                print(f"Please enter a number between 0 and {len(db_files)}")
             except ValueError:
                 print("Please enter a valid number")
                 
