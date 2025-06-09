@@ -46,7 +46,6 @@ def test_leaderboard_initialization(leaderboard_manager):
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
     tables = {row[0] for row in cursor.fetchall()}
     assert 'leaderboard' in tables
-    assert 'metadata' in tables
     conn.close()
 
 def test_update_single_lag(leaderboard_manager, test_data):

@@ -31,15 +31,28 @@ def temp_dir() -> Path:
 def sample_data() -> pd.DataFrame:
     dates = pd.date_range(start="2023-01-01", periods=100, freq="h")
     np.random.seed(42)
+    
+    # Generate base prices
+    base_price = 100
+    price_changes = np.random.normal(0, 1, 100)
+    close_prices = base_price + np.cumsum(price_changes)
+    
+    # Generate OHLC data with proper relationships
     data = pd.DataFrame({
         "timestamp": dates,
-        "open": np.random.normal(100, 1, 100),
-        "close": np.random.normal(100, 1, 100),
-        "volume": np.random.normal(1000, 100, 100)
+        "close": close_prices,
     })
-    # Ensure proper price relationships
-    data["high"] = data[["open", "close"]].max(axis=1) + abs(np.random.normal(0, 0.1, 100))
-    data["low"] = data[["open", "close"]].min(axis=1) - abs(np.random.normal(0, 0.1, 100))
+    
+    # Generate open prices close to close prices
+    data["open"] = data["close"] + np.random.normal(0, 0.5, 100)
+    
+    # Generate high and low prices ensuring proper relationships
+    data["high"] = data[["open", "close"]].max(axis=1) + np.random.uniform(0, 2, 100)
+    data["low"] = data[["open", "close"]].min(axis=1) - np.random.uniform(0, 2, 100)
+    
+    # Ensure volume is positive
+    data["volume"] = np.random.uniform(100, 10000, 100)
+    
     return data
 
 @pytest.fixture(scope="function")
@@ -52,15 +65,25 @@ def data_manager(temp_dir: Path):
 def test_data():
     """Create test data with proper time intervals."""
     dates = pd.date_range(start='2020-01-01', end='2020-03-01', freq='h')
+    
+    # Generate base prices
+    base_price = 3000
+    price_changes = np.random.normal(0, 50, len(dates))
+    close_prices = base_price + np.cumsum(price_changes)
+    
     data = pd.DataFrame({
-        'open': np.random.uniform(1000, 6000, len(dates)),
-        'close': np.random.uniform(1000, 6000, len(dates)),
-        'volume': np.random.uniform(1000, 10000, len(dates))
+        'close': close_prices,
     }, index=dates)
     
-    # Ensure proper price relationships
-    data['high'] = data[['open', 'close']].max(axis=1) + np.random.uniform(0, 100, len(dates))
-    data['low'] = data[['open', 'close']].min(axis=1) - np.random.uniform(0, 100, len(dates))
+    # Generate open prices close to close prices
+    data['open'] = data['close'] + np.random.normal(0, 10, len(dates))
+    
+    # Generate high and low prices ensuring proper relationships
+    data['high'] = data[['open', 'close']].max(axis=1) + np.random.uniform(0, 50, len(dates))
+    data['low'] = data[['open', 'close']].min(axis=1) - np.random.uniform(0, 50, len(dates))
+    
+    # Ensure volume is positive
+    data['volume'] = np.random.uniform(1000, 10000, len(dates))
     
     return data
 

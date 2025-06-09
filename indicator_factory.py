@@ -155,31 +155,38 @@ class IndicatorFactory:
                     ta_func = getattr(ta, 'BBANDS')
                 else:
                     ta_func = getattr(ta, ta_func_name)
-            
+
             # Prepare inputs
             inputs = {}
             for input_name in config.get('required_inputs', ['close']):
                 if input_name not in data.columns:
                     raise ValueError(f"Required input column '{input_name}' not found in data")
                 inputs[input_name] = data[input_name].values
-            
+
             # Get parameters and merge with defaults
             config_params = config.get('params', {})
             merged_params = {}
-            
+
             # Extract default values from config and merge with provided params
             for param_name, param_def in config_params.items():
                 if isinstance(param_def, dict) and 'default' in param_def:
                     merged_params[param_name] = param_def['default']
                 else:
                     merged_params[param_name] = param_def
-            
+
             # Override with provided params
             merged_params.update(params)
-            
-            # Normalize parameter names
-            if config['type'] == 'talib':
-                # Map common parameter names to TA-Lib specific names
+
+            # Normalize parameter names for custom indicators
+            if config['type'] == 'custom':
+                # For custom indicators, map timeperiod to period if needed
+                if 'timeperiod' in merged_params and 'period' not in merged_params:
+                    merged_params['period'] = merged_params.pop('timeperiod')
+                elif 'timeperiod' in merged_params and 'period' in merged_params:
+                    # If both exist, prefer period for custom indicators
+                    merged_params['period'] = merged_params.pop('timeperiod')
+            else:
+                # Normalize parameter names for TA-Lib indicators
                 param_mapping = {
                     'period': 'timeperiod',
                     'length': 'timeperiod',
@@ -193,7 +200,7 @@ class IndicatorFactory:
                     else:
                         normalized_params[key] = value
                 merged_params = normalized_params
-            
+
             # Handle special cases for different indicators
             if indicator_name.upper() in ['BB', 'BBANDS']:
                 # Ensure proper parameter names for BBANDS
@@ -206,7 +213,7 @@ class IndicatorFactory:
                 if 'nbdevdn' in merged_params:
                     nbdevdn = merged_params.pop('nbdevdn')
                     merged_params['nbdevdn'] = float(nbdevdn)
-            
+
             # Compute indicator
             try:
                 if config['type'] == 'custom':
@@ -223,7 +230,7 @@ class IndicatorFactory:
                     results = ta_func(*ordered_inputs, **merged_params)
                 else:
                     raise
-            
+
             # Convert results to DataFrame
             if isinstance(results, tuple):
                 # Handle multiple outputs
@@ -236,11 +243,11 @@ class IndicatorFactory:
             else:
                 # Single output
                 result_df = pd.DataFrame({indicator_name: results})
-            
+
             # Set index to match input data
             result_df.index = data.index
             return result_df
-            
+
         except Exception as e:
             logger.error(f"Error computing indicator {indicator_name}: {str(e)}")
             raise ValueError(f"Error computing indicator {indicator_name}: {str(e)}")

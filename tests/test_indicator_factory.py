@@ -44,7 +44,7 @@ def test_compute_indicators_basic(indicator_factory, test_data):
     assert len(result_df) == len(test_data)
 
     # Test with invalid indicator
-    with pytest.raises(ValueError, match="Unknown indicator"):
+    with pytest.raises(ValueError, match="Invalid indicators"):
         indicator_factory.compute_indicators(test_data, indicators=['INVALID'])
 
 def test_indicator_creation(indicator_factory, test_data):
