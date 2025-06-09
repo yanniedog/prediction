@@ -59,11 +59,11 @@ def sample_data_with_extremes() -> pd.DataFrame:
     """Create sample data with extreme values for edge case testing."""
     dates = pd.date_range(start='2024-01-01', periods=50, freq='D')
     data = pd.DataFrame({
-        'open': [100] * 50,
-        'high': [102] * 50,
-        'low': [98] * 50,
-        'close': [101] * 50,
-        'volume': [1000] * 50
+        'open': [100.0] * 50,
+        'high': [102.0] * 50,
+        'low': [98.0] * 50,
+        'close': [101.0] * 50,  # float for close
+        'volume': [1000.0] * 50  # float for volume
     }, index=dates)
     
     # Add some extreme values

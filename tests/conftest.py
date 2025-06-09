@@ -1,3 +1,4 @@
+import pandas_ta_patch  # Apply patch for pandas_ta NaN import issue
 import os
 import sys
 import pytest

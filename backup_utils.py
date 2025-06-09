@@ -8,6 +8,7 @@ import shutil
 import json
 import zipfile
 import hashlib
+import sqlite3
 from pathlib import Path
 from typing import Optional, Dict, List, Union
 
@@ -37,17 +38,27 @@ class BackupManager:
         try:
             self.backup_dir.mkdir(parents=True, exist_ok=True)
         except OSError as e:
-            raise ValueError(f"Could not create backup directory: {e}")
+            raise OSError(f"Could not create backup directory: {e}")
             
         if not self.backup_dir.is_dir():
             raise ValueError(f"Backup path is not a directory: {backup_dir}")
+            
+        # Test if directory is writable
+        test_file = self.backup_dir / ".test_write"
+        try:
+            test_file.touch()
+            test_file.unlink()
+        except OSError as e:
+            raise OSError(f"Backup directory is not writable: {e}")
     
-    def create_backup(self, source_path: Union[str, Path]) -> Path:
+    def create_backup(self, source_path: Union[str, Path], compression_level: int = 6, metadata: Optional[Dict] = None) -> Path:
         """
         Create a backup of a database file.
         
         Args:
             source_path: Path to the database file to backup
+            compression_level: ZIP compression level (0-9, where 9 is maximum compression)
+            metadata: Optional metadata to store with the backup
             
         Returns:
             Path to the created backup file
@@ -59,6 +70,11 @@ class BackupManager:
             raise ValueError(f"Source path is not a file: {source_path}")
         if source_path.stat().st_size == 0:
             raise ValueError(f"Source file is empty: {source_path}")
+        if not 0 <= compression_level <= 9:
+            raise ValueError("Compression level must be between 0 and 9")
+        # Check if file is a valid SQLite database
+        if not self._is_valid_sqlite_db(source_path):
+            raise ValueError(f"Source file is not a valid SQLite database: {source_path}")
             
         # Generate backup filename
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -67,7 +83,7 @@ class BackupManager:
         
         # Create backup
         try:
-            with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            with zipfile.ZipFile(backup_path, 'w', zipfile.ZIP_DEFLATED, compresslevel=compression_level) as zf:
                 zf.write(source_path, source_path.name)
                 
             # Create backup info file
@@ -78,18 +94,36 @@ class BackupManager:
                 "checksum": self._calculate_checksum(backup_path)
             }
             
+            if metadata:
+                info["metadata"] = metadata
+            
             info_path = backup_path.with_suffix('.json')
-            with open(info_path, 'w') as f:
-                json.dump(info, f, indent=2)
+            try:
+                with open(info_path, 'w') as f:
+                    json.dump(info, f, indent=2)
+            except OSError as e:
+                if backup_path.exists():
+                    backup_path.unlink()
+                raise OSError(f"Failed to write backup info: {e}")
                 
             # Cleanup old backups
             self._cleanup_old_backups()
             
             return backup_path
             
+        except OSError as e:
+            if backup_path.exists():
+                try:
+                    backup_path.unlink()
+                except OSError:
+                    pass
+            raise OSError(f"Failed to create backup: {e}")
         except Exception as e:
             if backup_path.exists():
-                backup_path.unlink()
+                try:
+                    backup_path.unlink()
+                except OSError:
+                    pass
             raise ValueError(f"Failed to create backup: {e}")
     
     def restore_backup(self, backup_path: Union[str, Path], restore_path: Union[str, Path]) -> None:
@@ -107,7 +141,10 @@ class BackupManager:
             raise ValueError(f"Backup file does not exist: {backup_path}")
         if not _validate_backup(backup_path):
             raise ValueError(f"Invalid backup file: {backup_path}")
-            
+        # Check if restore_path's parent exists and is writable
+        parent_dir = restore_path.parent
+        if not parent_dir.exists() or not os.access(parent_dir, os.W_OK):
+            raise ValueError(f"Restore directory does not exist or is not writable: {parent_dir}")
         try:
             with zipfile.ZipFile(backup_path, 'r') as zf:
                 # Extract the database file
@@ -144,6 +181,21 @@ class BackupManager:
             for byte_block in iter(lambda: f.read(4096), b""):
                 sha256_hash.update(byte_block)
         return sha256_hash.hexdigest()
+
+    @staticmethod
+    def _is_valid_sqlite_db(path: Path) -> bool:
+        try:
+            with open(path, 'rb') as f:
+                header = f.read(16)
+            if header != b'SQLite format 3\x00':
+                return False
+            # Try connecting to the database
+            conn = sqlite3.connect(str(path))
+            conn.execute('PRAGMA schema_version;')
+            conn.close()
+            return True
+        except Exception:
+            return False
 
 def _create_backup(source_path: Union[str, Path], backup_dir: Union[str, Path]) -> Path:
     """Create a backup of a file."""
@@ -208,8 +260,8 @@ def _cleanup_old_backups(backup_dir: Union[str, Path], max_age_days: Optional[in
         cutoff = datetime.datetime.now() - datetime.timedelta(days=max_age_days)
         for backup in backup_dir.glob("*.zip"):
             if _validate_backup(backup):
-                info = _get_backup_info(backup)
-                backup_time = datetime.datetime.fromisoformat(info["timestamp"])
+                # Use file modification time for age
+                backup_time = datetime.datetime.fromtimestamp(backup.stat().st_mtime)
                 if backup_time < cutoff:
                     try:
                         backup.unlink()
@@ -223,133 +275,63 @@ def _cleanup_old_backups(backup_dir: Union[str, Path], max_age_days: Optional[in
         manager.max_count = max_count
         manager._cleanup_old_backups()
 
-def create_backup_flat(project_dir: str):
+def create_backup_flat(project_dir: str) -> bool:
     """
-    Finds .py, .json files AND the specific file 'requirements.txt' ONLY
-    in the top-level project_dir (no subdirs), concatenates them into a
-    timestamped backup file in the BACKUP_SUBDIR. Excludes other .txt files.
+    Create a flat backup of all project files.
+    
+    Args:
+        project_dir: Directory containing project files to backup
+        
+    Returns:
+        bool: True if backup was successful, False otherwise
     """
-    project_path = Path(project_dir).resolve() # Use Path object and resolve
-    backup_dir_path = project_path / BACKUP_SUBDIR
-
-    print(f"Scanning ONLY the directory: {project_path}")
-    print(f"Including file extensions: {FILE_EXTENSIONS} and the specific file 'requirements.txt'.")
-    print(f"Excluding all other '.txt' files.")
-    print(f"Ignoring all subdirectories.")
-    print(f"Backup destination directory: {backup_dir_path}")
-
-    # --- 1. Ensure backup directory exists ---
+    project_dir = Path(project_dir)
+    if not project_dir.exists() or not project_dir.is_dir():
+        raise ValueError(f"Invalid project directory: {project_dir}")
+        
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_filename = f"project_backup_{timestamp}.txt"
+    backup_filepath = project_dir / backup_filename
+    
     try:
-        backup_dir_path.mkdir(parents=True, exist_ok=True)
-        print(f"Backup directory '{BACKUP_SUBDIR}' ensured.")
-    except OSError as e:
-        print(f"Error: Could not create backup directory '{backup_dir_path}': {e}", file=sys.stderr)
-        # Don't exit here, allow script using this utility to decide
-        raise # Re-raise the exception
-
-    # --- 2. Generate backup filename ---
-    now = datetime.datetime.now()
-    timestamp = now.strftime("%Y%m%d_%H%M%S")
-    backup_filename = f"{FILENAME_PREFIX}{timestamp}.txt" # Backup file itself is .txt
-    backup_filepath = backup_dir_path / backup_filename
-
-    print(f"Generated backup filename: {backup_filename}")
-
-    # --- 3. Find relevant files (ONLY in project_dir) ---
-    files_to_backup = []
-    try:
-        for item in project_path.iterdir(): # Use iterdir()
-            # Check if it's a file AND
-            # (has an extension in FILE_EXTENSIONS OR is exactly 'requirements.txt')
-            if item.is_file() and (item.suffix in FILE_EXTENSIONS or item.name == 'requirements.txt'):
-                 # Ensure we don't accidentally pick up the backup file itself (unlikely here but good practice)
-                if item.resolve() != backup_filepath.resolve():
-                     # Check if the file is inside the backup directory itself
-                    if item.parent.resolve() != backup_dir_path.resolve():
-                        # Check if it's this script itself
-                        if item.name != Path(__file__).name:
-                            files_to_backup.append(item) # Store Path objects
-
-    except FileNotFoundError:
-        print(f"Error: Project directory not found: {project_path}", file=sys.stderr)
-        raise # Re-raise
-    except OSError as e:
-        print(f"Error: Could not read project directory '{project_path}': {e}", file=sys.stderr)
-        raise # Re-raise
-
-    if not files_to_backup:
-        print(f"No files matching {FILE_EXTENSIONS} or 'requirements.txt' found directly within '{project_path}'.")
-        # Let it proceed to create an empty (header-only) backup file
-        pass
-
-    print(f"Found {len(files_to_backup)} files to include in the backup:")
-    for f in sorted(files_to_backup, key=lambda p: p.name): # Print sorted list for clarity
-        print(f"  - {f.name}")
-
-    # --- 4. Concatenate files into backup ---
-    try:
-        # Use pathlib open method
-        with backup_filepath.open('w', encoding='utf-8') as outfile:
-            print(f"\nCreating backup file: {backup_filepath}")
-            outfile.write(f"# Backup created on: {now.strftime('%Y-%m-%d %H:%M:%S')}\n")
-            outfile.write(f"# Source directory (non-recursive): {project_path}\n")
-            outfile.write(f"# Included files ({len(files_to_backup)}): {', '.join(sorted(p.name for p in files_to_backup))}\n\n")
-
-            # Sort files by name for consistent order in the output file
-            files_to_backup.sort(key=lambda p: p.name)
-
-            content = "" # Initialize content to handle edge case of empty file
-            for i, filepath_obj in enumerate(files_to_backup):
-                filename = filepath_obj.name # Get filename from Path object
-                print(f"  Adding ({i+1}/{len(files_to_backup)}): {filename}")
-
-                # Add a separator header
-                outfile.write(f"\n{'=' * SEPARATOR_LINE_LENGTH}\n")
-                outfile.write(f"=== START: {filename}\n")
-                outfile.write(f"{'=' * SEPARATOR_LINE_LENGTH}\n\n")
-
-                try:
-                    # Use pathlib read_text method
-                    content = filepath_obj.read_text(encoding='utf-8', errors='replace') # Use replace for safety
-                    outfile.write(content)
-                except FileNotFoundError:
-                     # This check is less likely needed with pathlib unless file deleted between find and read
-                     print(f"    Warning: File not found during read: {filepath_obj}", file=sys.stderr)
-                     outfile.write(f"*** ERROR: File not found at read time: {filename} ***\n")
-                     content = "" # Reset content on error
-                except UnicodeDecodeError:
-                    print(f"    Warning: Could not decode file as UTF-8: {filepath_obj}. Adding placeholder.", file=sys.stderr)
-                    outfile.write(f"*** ERROR: Could not decode file content (not valid UTF-8): {filename} ***\n")
-                    content = "" # Reset content on error
-                except Exception as e:
-                    print(f"    Error reading file {filepath_obj}: {e}", file=sys.stderr)
-                    outfile.write(f"*** ERROR reading file {filename}: {e} ***\n")
-                    content = "" # Reset content on error
-
-                # Add a separator footer (ensure newline before it if content didn't have one)
-                # Check if content was successfully read and doesn't end with newline
-                if content and not content.endswith('\n'):
-                    outfile.write('\n')
-                outfile.write(f"\n{'=' * SEPARATOR_LINE_LENGTH}\n")
-                outfile.write(f"=== END: {filename}\n")
-                outfile.write(f"{'=' * SEPARATOR_LINE_LENGTH}\n")
-
+        with open(backup_filepath, 'w', encoding='utf-8') as outfile:
+            # Write header
+            outfile.write(f"Project Backup - {timestamp}\n")
+            outfile.write(f"{'=' * SEPARATOR_LINE_LENGTH}\n\n")
+            
+            # Process each file
+            for filepath in sorted(project_dir.glob('**/*')):
+                if filepath.is_file() and not filepath.name.startswith('.') and (filepath.suffix in FILE_EXTENSIONS or filepath.name == 'requirements.txt'):
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as infile:
+                            content = infile.read()
+                            
+                        outfile.write(f"\n{'=' * SEPARATOR_LINE_LENGTH}\n")
+                        outfile.write(f"=== FILE: {filepath.relative_to(project_dir)}\n")
+                        outfile.write(f"{'=' * SEPARATOR_LINE_LENGTH}\n\n")
+                        outfile.write(content)
+                        outfile.write(f"\n{'=' * SEPARATOR_LINE_LENGTH}\n")
+                        outfile.write(f"=== END: {filepath.relative_to(project_dir)}\n")
+                        outfile.write(f"{'=' * SEPARATOR_LINE_LENGTH}\n")
+                    except Exception as e:
+                        print(f"Warning: Could not process file {filepath}: {e}", file=sys.stderr)
+                        continue
+                        
         print(f"\nSuccessfully created backup: {backup_filepath}")
-        return True # Indicate success
-
-    except IOError as e:
+        return True
+        
+    except OSError as e:
         print(f"Error: Could not write to backup file '{backup_filepath}': {e}", file=sys.stderr)
-        raise # Re-raise
+        raise
     except Exception as e:
         print(f"An unexpected error occurred during backup creation: {e}", file=sys.stderr)
-        # Attempt to clean up partially created backup file on unexpected error
         if backup_filepath.exists():
-             try:
-                 backup_filepath.unlink()
-                 print(f"Cleaned up partial backup file: {backup_filepath}")
-             except OSError as rm_err:
-                 print(f"Warning: Could not remove partial backup file '{backup_filepath}': {rm_err}", file=sys.stderr)
-        raise # Re-raise
+            try:
+                backup_filepath.unlink()
+                print(f"Cleaned up partial backup file: {backup_filepath}")
+            except OSError as rm_err:
+                print(f"Warning: Could not remove partial backup file '{backup_filepath}': {rm_err}", file=sys.stderr)
+        raise
 
 # This allows the script to be run directly for backup purposes
 if __name__ == "__main__":

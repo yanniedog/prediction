@@ -71,6 +71,10 @@ class Strategy:
 class Backtester:
     def __init__(self, data_manager, indicator_factory):
         """Initialize the Backtester with data and indicator managers."""
+        if data_manager is None:
+            raise ValueError("data_manager cannot be None")
+        if indicator_factory is None:
+            raise ValueError("indicator_factory cannot be None")
         self.data_manager = data_manager
         self.indicator_factory = indicator_factory
         self._validate_dependencies()
@@ -373,8 +377,8 @@ class Backtester:
             # Try to convert from ms since epoch
             returns = returns.copy()
             returns.index = pd.to_datetime(returns.index, unit='ms')
-        # Resample returns to monthly frequency
-        monthly_returns = returns.resample('M').apply(lambda x: (1 + x).prod() - 1)
+        # Resample returns to monthly frequency (use 'ME' instead of deprecated 'M')
+        monthly_returns = returns.resample('ME').apply(lambda x: (1 + x).prod() - 1)
         # Create a DataFrame with year and month as indices
         monthly_returns_df = pd.DataFrame({
             'year': monthly_returns.index.year,
@@ -388,7 +392,7 @@ class Backtester:
             values='returns'
         )
         # Create the heatmap
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=(12, 6))
         sns.heatmap(heatmap_data, annot=True, fmt='.2%', cmap='RdYlGn', 
                    center=0, ax=ax)
         ax.set_title('Monthly Returns Heatmap')

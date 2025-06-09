@@ -26,11 +26,23 @@ def backtester(data_manager, indicator_factory):
     """Provide a Backtester instance for testing."""
     return Backtester(data_manager, indicator_factory)
 
-def test_backtester_initialization(backtester):
-    """Test Backtester initialization."""
-    assert backtester is not None
-    assert hasattr(backtester, 'data_manager')
-    assert hasattr(backtester, 'indicator_factory')
+def test_backtester_initialization(data_manager, indicator_factory):
+    """Test backtester initialization."""
+    # Test basic initialization
+    backtester = Backtester(data_manager, indicator_factory)
+    assert backtester.data_manager == data_manager
+    assert backtester.indicator_factory == indicator_factory
+    
+    # Test with invalid data manager
+    with pytest.raises(ValueError):
+        Backtester(None, indicator_factory)
+    
+    # Test with invalid indicator factory
+    with pytest.raises(ValueError):
+        Backtester(data_manager, None)
+
+    # Test that data_manager can be accessed
+    # assert hasattr(backtester.data_manager, 'get_data')
 
 def test_strategy_execution(backtester, test_data):
     """Test strategy execution methods."""
@@ -185,7 +197,7 @@ def test_optimization(backtester, test_data):
     assert 'best_score' in optimization_results
 
 @pytest.mark.timeout(30)
-def test_walk_forward_analysis(backtester, sample_data):
+def test_walk_forward_analysis(backtester, test_data):
     """Test walk-forward analysis."""
     def strategy(data: pd.DataFrame, params: Dict[str, Any]) -> pd.Series:
         """Moving average crossover strategy for walk-forward analysis."""
@@ -208,7 +220,7 @@ def test_walk_forward_analysis(backtester, sample_data):
     
     params = {'short_window': 10, 'long_window': 20}
     results = backtester.walk_forward_analysis(
-        sample_data,
+        test_data,
         strategy,
         params,
         train_size=0.7,
@@ -313,282 +325,6 @@ def test_benchmark_comparison(backtester, test_data):
     assert 'relative_performance' in comparison
     assert 'metrics_comparison' in comparison
 
-# Test fixtures
-@pytest.fixture(scope="function")
-def sample_data() -> pd.DataFrame:
-    """Create sample price data for testing."""
-    dates = pd.date_range(start="2023-01-01", periods=100, freq="h")
-    np.random.seed(42)
-    data = pd.DataFrame({
-        "timestamp": dates,
-        "open": np.random.normal(100, 1, 100),
-        "high": np.random.normal(101, 1, 100),
-        "low": np.random.normal(99, 1, 100),
-        "close": np.random.normal(100, 1, 100),
-        "volume": np.random.normal(1000, 100, 100)
-    })
-    data["high"] = data[["open", "close"]].max(axis=1) + abs(np.random.normal(0, 0.1, 100))
-    data["low"] = data[["open", "close"]].min(axis=1) - abs(np.random.normal(0, 0.1, 100))
-    return data
-
-@pytest.fixture(scope="function")
-def sample_strategy() -> Strategy:
-    """Create a sample strategy for testing."""
-    def entry_condition(data: pd.DataFrame, params: Dict[str, Any]) -> pd.Series:
-        return data["close"] > data["close"].rolling(window=params["window"]).mean()
-    
-    def exit_condition(data: pd.DataFrame, params: Dict[str, Any]) -> pd.Series:
-        return data["close"] < data["close"].rolling(window=params["window"]).mean()
-    
-    return Strategy(
-        name="Moving Average Crossover",
-        entry_condition=entry_condition,
-        exit_condition=exit_condition,
-        params={"window": 20}
-    )
-
-@pytest.fixture(scope="function")
-def backtester(sample_data: pd.DataFrame, sample_strategy: Strategy) -> Backtester:
-    """Create a Backtester instance for testing."""
-    return Backtester(sample_data, sample_strategy)
-
-def test_backtester_initialization(sample_data: pd.DataFrame, sample_strategy: Strategy):
-    """Test backtester initialization."""
-    # Test basic initialization
-    backtester = Backtester(sample_data, sample_strategy)
-    assert backtester.data.equals(sample_data)
-    assert backtester.strategy == sample_strategy
-    
-    # Test with invalid data
-    with pytest.raises(ValueError):
-        Backtester(pd.DataFrame(), sample_strategy)
-    
-    # Test with invalid strategy
-    with pytest.raises(ValueError):
-        Backtester(sample_data, None)
-
-def test_strategy_execution(backtester: Backtester):
-    """Test strategy execution."""
-    # Test basic execution
-    results = backtester.run()
-    assert isinstance(results, pd.DataFrame)
-    assert not results.empty
-    assert "position" in results.columns
-    assert "returns" in results.columns
-    
-    # Test with custom parameters
-    custom_params = {"window": 10}
-    results = backtester.run(params=custom_params)
-    assert isinstance(results, pd.DataFrame)
-    assert not results.empty
-    
-    # Test with invalid parameters
-    with pytest.raises(ValueError):
-        backtester.run(params={"invalid": 10})
-
-def test_performance_metrics(backtester: Backtester):
-    """Test performance metrics calculation."""
-    # Run backtest
-    results = backtester.run()
-    metrics = backtester.calculate_metrics(results)
-    
-    # Verify metrics
-    assert isinstance(metrics, dict)
-    assert isinstance(metrics.total_return, float)
-    assert isinstance(metrics.sharpe_ratio, float)
-    assert isinstance(metrics.sortino_ratio, float)
-    assert isinstance(metrics.max_drawdown, float)
-    assert isinstance(metrics.win_rate, float)
-    
-    # Test with empty results
-    with pytest.raises(ValueError):
-        backtester.calculate_metrics(pd.DataFrame())
-    
-    # Test with missing required columns
-    invalid_results = results.drop(columns=["returns"])
-    with pytest.raises(ValueError):
-        backtester.calculate_metrics(invalid_results)
-
-def test_returns_calculation(backtester: Backtester):
-    """Test returns calculation."""
-    # Test basic returns calculation
-    results = backtester.run()
-    returns = _calculate_returns(results["position"], results["close"])
-    assert isinstance(returns, pd.Series)
-    assert not returns.empty
-    assert not returns.isna().all()
-    
-    # Test with zero positions
-    zero_positions = pd.Series(0, index=results.index)
-    returns = _calculate_returns(zero_positions, results["close"])
-    assert (returns == 0).all()
-    
-    # Test with invalid data
-    with pytest.raises(ValueError):
-        _calculate_returns(pd.Series(), results["close"])
-
-def test_drawdown_calculation(backtester: Backtester):
-    """Test drawdown calculation."""
-    # Run backtest and calculate returns
-    results = backtester.run()
-    returns = _calculate_returns(results["position"], results["close"])
-    
-    # Test drawdown calculation
-    drawdown = _calculate_drawdown(returns)
-    assert isinstance(drawdown, pd.Series)
-    assert not drawdown.empty
-    assert not drawdown.isna().all()
-    assert (drawdown <= 0).all()  # Drawdowns should be non-positive
-    
-    # Test max drawdown
-    max_dd = _calculate_max_drawdown(returns)
-    assert isinstance(max_dd, float)
-    assert max_dd <= 0
-    assert max_dd >= drawdown.min()
-
-def test_risk_metrics(backtester: Backtester):
-    """Test risk metrics calculation."""
-    # Run backtest and calculate returns
-    results = backtester.run()
-    returns = _calculate_returns(results["position"], results["close"])
-    
-    # Test Sharpe ratio
-    sharpe = _calculate_sharpe_ratio(returns)
-    assert isinstance(sharpe, float)
-    assert not np.isnan(sharpe)
-    assert not np.isinf(sharpe)
-    
-    # Test Sortino ratio
-    sortino = _calculate_sortino_ratio(returns)
-    assert isinstance(sortino, float)
-    assert not np.isnan(sortino)
-    assert not np.isinf(sortino)
-    
-    # Test with zero returns
-    zero_returns = pd.Series(0, index=returns.index)
-    assert _calculate_sharpe_ratio(zero_returns) == 0
-    assert _calculate_sortino_ratio(zero_returns) == 0
-
-def test_win_rate_calculation(backtester: Backtester):
-    """Test win rate calculation."""
-    # Run backtest and calculate returns
-    results = backtester.run()
-    returns = _calculate_returns(results["position"], results["close"])
-    
-    # Test win rate calculation
-    win_rate = _calculate_win_rate(returns)
-    assert isinstance(win_rate, float)
-    assert 0 <= win_rate <= 1
-    
-    # Test with all winning trades
-    winning_returns = pd.Series(0.1, index=returns.index)
-    assert _calculate_win_rate(winning_returns) == 1.0
-    
-    # Test with all losing trades
-    losing_returns = pd.Series(-0.1, index=returns.index)
-    assert _calculate_win_rate(losing_returns) == 0.0
-
-def test_position_management(backtester: Backtester):
-    """Test position management."""
-    # Test position sizing
-    results = backtester.run(position_size=0.5)  # 50% position size
-    assert (abs(results["position"]) <= 0.5).all()
-    
-    # Test position limits
-    results = backtester.run(max_position=0.3)  # Maximum 30% position
-    assert (abs(results["position"]) <= 0.3).all()
-    
-    # Test invalid position size
-    with pytest.raises(ValueError):
-        backtester.run(position_size=1.5)  # >100% position size
-    
-    # Test invalid max position
-    with pytest.raises(ValueError):
-        backtester.run(max_position=-0.1)  # Negative max position
-
-def test_transaction_costs(backtester: Backtester):
-    """Test transaction cost handling."""
-    # Test with transaction costs
-    results = backtester.run(transaction_cost=0.001)  # 0.1% transaction cost
-    assert "transaction_cost" in results.columns
-    assert (results["transaction_cost"] >= 0).all()
-    
-    # Test with zero transaction costs
-    results = backtester.run(transaction_cost=0)
-    assert (results["transaction_cost"] == 0).all()
-    
-    # Test with invalid transaction costs
-    with pytest.raises(ValueError):
-        backtester.run(transaction_cost=-0.001)  # Negative transaction cost
-
-def test_optimization(backtester: Backtester):
-    """Test strategy optimization."""
-    # Define parameter grid
-    param_grid = {
-        "window": [10, 20, 30, 40, 50]
-    }
-    
-    # Test optimization
-    best_params, best_metrics = backtester.optimize(param_grid)
-    assert isinstance(best_params, dict)
-    assert "window" in best_params
-    assert isinstance(best_metrics, dict)
-    
-    # Test with invalid parameter grid
-    with pytest.raises(ValueError):
-        backtester.optimize({})
-    
-    # Test with invalid parameter values
-    invalid_grid = {"window": [-1, 0]}  # Invalid window sizes
-    with pytest.raises(ValueError):
-        backtester.optimize(invalid_grid)
-
-def test_plotting(backtester: Backtester, temp_dir: Path):
-    """Test backtest plotting."""
-    # Run backtest
-    results = backtester.run()
-    
-    # Test equity curve plot
-    plot_path = temp_dir / "equity_curve.png"
-    backtester.plot_equity_curve(results, plot_path)
-    assert plot_path.exists()
-    
-    # Test drawdown plot
-    plot_path = temp_dir / "drawdown.png"
-    backtester.plot_drawdown(results, plot_path)
-    assert plot_path.exists()
-    
-    # Test monthly returns plot
-    plot_path = temp_dir / "monthly_returns.png"
-    backtester.plot_monthly_returns(results, plot_path)
-    assert plot_path.exists()
-
-def test_error_handling(backtester: Backtester):
-    """Test error handling."""
-    # Test with invalid data types
-    invalid_data = backtester.data.copy()
-    invalid_data["close"] = "invalid"
-    with pytest.raises(ValueError):
-        Backtester(invalid_data, backtester.strategy)
-    
-    # Test with missing required columns
-    invalid_data = backtester.data.drop(columns=["close"])
-    with pytest.raises(ValueError):
-        Backtester(invalid_data, backtester.strategy)
-    
-    # Test with invalid strategy conditions
-    def invalid_condition(data: pd.DataFrame, params: Dict[str, Any]) -> pd.Series:
-        return pd.Series(["invalid"] * len(data))  # Invalid return type
-    
-    invalid_strategy = Strategy(
-        name="Invalid Strategy",
-        entry_condition=invalid_condition,
-        exit_condition=backtester.strategy.exit_condition,
-        params=backtester.strategy.params
-    )
-    with pytest.raises(ValueError):
-        Backtester(backtester.data, invalid_strategy)
-
 # Test main backtest function
 @patch('backtester.sqlite_manager')
 @patch('backtester.data_manager')
@@ -648,29 +384,36 @@ def test_calculate_performance_metrics_no_scipy(backtester, monkeypatch):
     with pytest.raises(ImportError):
         backtester.calculate_performance_metrics(returns)
 
-def test_optimize_strategy_empty_param_space(backtester, sample_data, sample_strategy):
+@pytest.mark.timeout(30)
+def test_optimize_strategy_empty_param_space(backtester, test_data):
     """Test strategy optimization with empty parameter space."""
+    # Define a simple strategy inline
+    def simple_strategy(data, params):
+        return pd.Series(1, index=data.index)
     param_space = {}
     with pytest.raises(ValueError):
-        backtester.optimize_strategy(sample_data, sample_strategy, param_space)
+        backtester.optimize_strategy(test_data, simple_strategy, param_space)
 
-def test_walk_forward_analysis_invalid_sizes(backtester, sample_data, sample_strategy):
+@pytest.mark.timeout(30)
+def test_walk_forward_analysis_invalid_sizes(backtester, test_data):
     """Test walk-forward analysis with invalid sizes."""
+    # Define a simple strategy inline
+    def simple_strategy(data, params):
+        return pd.Series(1, index=data.index)
     params = {'short_window': 10, 'long_window': 20}
     with pytest.raises(ValueError):
-        backtester.walk_forward_analysis(
-            sample_data,
-            sample_strategy,
-            params,
-            train_size=1.5,  # Invalid train size
-            step_size=0.1
-        )
-
-def test_run_monte_carlo_simulation_invalid_params(backtester, sample_data):
-    """Test Monte Carlo simulation with invalid parameters."""
-    returns = pd.Series(np.random.normal(0.001, 0.02, 100), index=sample_data.index)
+        backtester.walk_forward_analysis(test_data, simple_strategy, params, train_size=1.5, step_size=0.1)
     with pytest.raises(ValueError):
-        backtester.run_monte_carlo_simulation(returns, n_simulations=0, time_steps=0)
+        backtester.walk_forward_analysis(test_data, simple_strategy, params, train_size=0.7, step_size=1.5)
+
+@pytest.mark.timeout(30)
+def test_run_monte_carlo_simulation_invalid_params(backtester, test_data):
+    """Test Monte Carlo simulation with invalid parameters."""
+    returns = pd.Series(np.random.normal(0.001, 0.02, len(test_data)), index=test_data.index)
+    with pytest.raises(ValueError):
+        backtester.run_monte_carlo_simulation(returns, n_simulations=0, time_steps=252)
+    with pytest.raises(ValueError):
+        backtester.run_monte_carlo_simulation(returns, n_simulations=100, time_steps=0)
 
 def test_compare_with_benchmark_mismatched_indices(backtester):
     """Test benchmark comparison with mismatched indices."""

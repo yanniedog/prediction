@@ -20,7 +20,6 @@ import shutil
 # (Adjust based on actual function locations if refactored)
 import sqlite_manager
 import leaderboard_manager
-import visualization_generator
 import config as app_config
 
 try:
@@ -452,6 +451,9 @@ def run_interim_reports(
         stage_name: Name of the analysis stage
         correlation_data: Optional pre-fetched correlation data
     """
+    # Import here to avoid circular dependency
+    import visualization_generator
+    
     logger.info(f"--- Starting {stage_name} Reports ---")
     
     interim_correlations = correlation_data

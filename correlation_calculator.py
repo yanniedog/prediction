@@ -1107,6 +1107,14 @@ class CorrelationCalculator:
             self.logger.error(f"Error forecasting correlations: {e}")
             return pd.DataFrame()
 
+    def calculate_lag_correlation(self, data1: pd.Series, data2: pd.Series, lags) -> pd.Series:
+        """Calculate lagged correlation for a range of lags."""
+        results = []
+        for lag in lags:
+            corr = _calculate_lag_correlation(data1, data2, lag)
+            results.append(corr)
+        return pd.Series(results, index=list(lags))
+
 def _calculate_correlation(series1: pd.Series, series2: pd.Series, method: str = 'pearson') -> float:
     """Calculate correlation between two series."""
     if method == 'pearson':
