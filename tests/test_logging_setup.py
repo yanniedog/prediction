@@ -67,7 +67,7 @@ def setup_logging(temp_log_dir):
     original_log_dir = config.LOG_DIR
     try:
         config.LOG_DIR = temp_log_dir
-        logging_setup.setup_logging()
+        logging_setup.setup_logging(file_level=logging.INFO, console_level=logging.WARNING)
         yield
     finally:
         # Clean up logging handlers

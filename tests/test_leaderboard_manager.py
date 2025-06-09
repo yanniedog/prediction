@@ -242,7 +242,10 @@ def test_generate_reports(leaderboard_manager, test_data, temp_db_dir):
     
     # Verify report files exist
     assert (temp_db_dir / 'test_consistency_report.txt').exists()
-    assert (temp_db_dir / 'test_consistency_heatmap.png').exists()
+    
+    # Check for heatmap file with the correct pattern (it includes the sort description)
+    heatmap_files = list(temp_db_dir.glob('test_consistency*heatmap*.png'))
+    assert len(heatmap_files) > 0, f"No heatmap files found in {temp_db_dir}. Files present: {list(temp_db_dir.glob('*.png'))}"
 
 def test_error_handling(leaderboard_manager, test_data):
     """Test error handling in various scenarios."""

@@ -926,11 +926,20 @@ def test_generate_random_valid_config(sample_parameter_definitions, sample_condi
 
 def test_generate_random_valid_config_impossible_conditions(sample_parameter_definitions):
     """Test generating random valid configuration with impossible conditions."""
+    # Create impossible conditions where fast must be > slow, but fast.max <= slow.min
     impossible_conditions = [{
-        'fast': {'gt': 'slow'},  # Impossible: fast > slow
-        'slow': {'lt': 'fast'}   # Impossible: slow < fast
+        'fast': {'gt': 'slow'},  # fast > slow
+        'slow': {'lt': 'fast'}   # slow < fast
     }]
-    config = _generate_random_valid_config(sample_parameter_definitions, impossible_conditions)
+    
+    # Modify the parameter definitions to make the condition truly impossible
+    # Set fast.max < slow.min to make fast > slow impossible
+    modified_definitions = sample_parameter_definitions.copy()
+    modified_definitions['fast']['max'] = 4.0  # fast.max = 4.0
+    modified_definitions['slow']['min'] = 5.0  # slow.min = 5.0
+    # Now fast.max (4.0) < slow.min (5.0), making fast > slow impossible
+    
+    config = _generate_random_valid_config(modified_definitions, impossible_conditions)
     assert config is None  # Should return None for impossible conditions
 
 def test_generate_random_valid_config_no_conditions(sample_parameter_definitions):

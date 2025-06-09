@@ -266,8 +266,11 @@ def test_define_search_space(sample_indicator_definition):
     # Verify bounds
     for name, bounds in param_bounds.items():
         assert name in param_defs
-        assert len(bounds) == 2
-        assert bounds[0] <= bounds[1]
+        assert len(bounds) == 3  # min, max, default
+        assert 'min' in bounds
+        assert 'max' in bounds
+        assert 'default' in bounds
+        assert bounds['min'] <= bounds['max']
 
 # Test _process_default_config_fast_eval
 def test_process_default_config_fast_eval(
@@ -365,8 +368,8 @@ def test_log_optimization_summary(caplog):
     
     # Verify logging
     assert any(f"Optimization summary for {indicator_name}" in record.message for record in caplog.records)
-    assert any("Best configurations per lag:" in record.message for record in caplog.records)
-    assert any("Total configurations evaluated:" in record.message for record in caplog.records)
+    assert any("Best configs per lag:" in record.message for record in caplog.records)
+    assert any("Total evaluated configs:" in record.message for record in caplog.records)
 
 # Test optimize_parameters_bayesian_per_lag
 @pytest.mark.skipif(not SKOPT_AVAILABLE, reason="scikit-optimize not installed")
