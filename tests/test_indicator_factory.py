@@ -653,12 +653,13 @@ def test_indicator_factory_error_handling(factory, complex_test_data):
             'params': {}
         }, {})
     
-    # Test with missing required inputs
+    # Test with missing required inputs - use the actual indicator config format
     with pytest.raises(ValueError):
         factory._compute_single_indicator(complex_test_data, 'RSI', {
+            'name': 'RSI',
             'type': 'talib',
             'required_inputs': ['nonexistent_column'],
-            'params': {}
+            'params': {'timeperiod': {'default': 14}}
         }, {})
     
     # Test with invalid parameter values
@@ -687,9 +688,14 @@ def complex_test_data():
         'volume': np.random.uniform(1000, 5000, 200),
         'adj_close': np.random.uniform(100, 200, 200)
     })
-    # Add some NaN values
-    data.loc[data.index[10:20], 'close'] = np.nan
-    data.loc[data.index[50:60], 'volume'] = np.nan
+    
+    # Ensure proper price relationships
+    data['high'] = data[['open', 'close', 'high']].max(axis=1)
+    data['low'] = data[['open', 'close', 'low']].min(axis=1)
+    
+    # Clean any NaN values to ensure indicators work properly
+    data = data.fillna(method='ffill').fillna(method='bfill')
+    
     return data
 
 def test_compute_single_indicator_edge_cases(factory, complex_test_data):

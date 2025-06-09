@@ -266,6 +266,105 @@ def test_data():
     
     return data
 
+@pytest.fixture
+def sample_data():
+    """Provide sample data for testing."""
+    dates = pd.date_range(start='2020-01-01', periods=100, freq='h')
+    np.random.seed(42)  # For reproducibility
+    
+    data = pd.DataFrame({
+        'timestamp': dates,
+        'open': np.random.normal(100, 1, 100).cumsum() + 1000,
+        'high': np.random.normal(101, 1, 100).cumsum() + 1000,
+        'low': np.random.normal(99, 1, 100).cumsum() + 1000,
+        'close': np.random.normal(100, 1, 100).cumsum() + 1000,
+        'volume': np.random.lognormal(10, 1, 100)
+    })
+    
+    # Ensure proper price relationships
+    data['high'] = data[['open', 'close', 'high']].max(axis=1)
+    data['low'] = data[['open', 'close', 'low']].min(axis=1)
+    
+    # Ensure no NaN values
+    data = data.ffill().bfill().astype(float)
+    
+    return data
+
+@pytest.fixture
+def complex_test_data():
+    """Create complex test data with various scenarios."""
+    dates = pd.date_range(start='2024-01-01', periods=200, freq='h')
+    data = pd.DataFrame({
+        'date': dates,
+        'open': np.random.uniform(100, 200, 200),
+        'high': np.random.uniform(200, 300, 200),
+        'low': np.random.uniform(50, 100, 200),
+        'close': np.random.uniform(100, 200, 200),
+        'volume': np.random.uniform(1000, 5000, 200),
+        'adj_close': np.random.uniform(100, 200, 200)
+    })
+    
+    # Ensure proper price relationships
+    data['high'] = data[['open', 'close', 'high']].max(axis=1)
+    data['low'] = data[['open', 'close', 'low']].min(axis=1)
+    
+    return data
+
+@pytest.fixture
+def temp_dir(tmp_path):
+    """Create a temporary directory for testing."""
+    temp_dir = tmp_path / "temp_test_dir"
+    temp_dir.mkdir(exist_ok=True)
+    yield temp_dir
+    # Cleanup is handled by pytest's tmp_path fixture
+
+@pytest.fixture
+def temp_params_file(tmp_path):
+    """Create a temporary parameters file for testing."""
+    params_file = tmp_path / "test_indicator_params.json"
+    yield params_file
+    # Cleanup is handled by pytest's tmp_path fixture
+
+@pytest.fixture
+def indicator_defs():
+    """Provide indicator definitions for testing."""
+    return {
+        "RSI": {
+            "name": "RSI",
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {
+                "timeperiod": {
+                    "min": 2,
+                    "max": 100,
+                    "default": 14
+                }
+            }
+        },
+        "BB": {
+            "name": "BB",
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {
+                "timeperiod": {
+                    "min": 2,
+                    "max": 100,
+                    "default": 20
+                },
+                "nbdevup": {
+                    "min": 0.1,
+                    "max": 5.0,
+                    "default": 2.0
+                },
+                "nbdevdn": {
+                    "min": 0.1,
+                    "max": 5.0,
+                    "default": 2.0
+                }
+            }
+        }
+    }
+
 @pytest.fixture(scope="function")
 def temp_db_path(tmp_path):
     """Create a temporary database path for testing."""
@@ -360,6 +459,11 @@ def data_manager(config):
 @pytest.fixture(scope="session")
 def indicator_factory():
     """Provide an IndicatorFactory instance for testing."""
+    return IndicatorFactory()
+
+@pytest.fixture(scope="module")
+def factory():
+    """Create a factory instance for testing."""
     return IndicatorFactory()
 
 @pytest.fixture(scope="session")

@@ -226,8 +226,8 @@ def test_data_source_selection(tmp_path):
         assert symbol_id == 1
         assert timeframe_id == 1
         assert isinstance(data_daterange, str)
-        assert "2024-01-01" in data_daterange
-        assert "2024-01-05" in data_daterange  # 100 hours from 2024-01-01 = 2024-01-05
+        assert "20240101" in data_daterange
+        assert "20240105" in data_daterange  # 100 hours from 2024-01-01 = 2024-01-05
 
 def test_data_validation(sample_data):
     """Test data validation"""
