@@ -49,6 +49,24 @@ def data_manager(temp_dir: Path):
     import config as app_config
     return DataManager(app_config)
 
+@pytest.fixture
+def test_data():
+    """Create test data with proper time intervals."""
+    dates = pd.date_range(start='2020-01-01', end='2020-03-01', freq='1h')
+    data = pd.DataFrame({
+        'open': np.random.uniform(1000, 6000, len(dates)),
+        'high': np.random.uniform(1000, 6000, len(dates)),
+        'low': np.random.uniform(1000, 6000, len(dates)),
+        'close': np.random.uniform(1000, 6000, len(dates)),
+        'volume': np.random.uniform(1000, 10000, len(dates))
+    }, index=dates)
+    
+    # Ensure high is always >= low
+    data['high'] = data[['open', 'close', 'high']].max(axis=1)
+    data['low'] = data[['open', 'close', 'low']].min(axis=1)
+    
+    return data
+
 def test_data_manager_initialization(temp_dir: Path):
     manager = DataManager(data_dir=temp_dir)
     assert manager.data_dir == temp_dir

@@ -578,11 +578,82 @@ def get_indicator_configs_by_ids(conn: sqlite3.Connection, config_ids: List[int]
         return []
 
 class SQLiteManager:
-    def __init__(self, db_path):
-        self.db_path = db_path
-        self.conn = create_connection(db_path)
-        if self.conn is None:
-            raise Exception(f"Could not connect to database: {db_path}")
+    def __init__(self, db_path: Union[str, Path]):
+        self.db_path = Path(db_path)
+        self.conn = None
+        self._initialize_db()
+        
+    def _initialize_db(self):
+        """Initialize database connection and create tables if they don't exist."""
+        try:
+            self.conn = sqlite3.connect(self.db_path)
+            self._create_tables()
+        except sqlite3.Error as e:
+            logging.error(f"Database initialization failed: {e}")
+            raise
+            
+    def _create_tables(self):
+        """Create required tables if they don't exist."""
+        cursor = self.conn.cursor()
+        cursor.executescript("""
+            CREATE TABLE IF NOT EXISTS symbols (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            CREATE TABLE IF NOT EXISTS timeframes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timeframe TEXT NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            CREATE TABLE IF NOT EXISTS historical_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol_id INTEGER NOT NULL,
+                timeframe_id INTEGER NOT NULL,
+                open_time INTEGER NOT NULL,
+                open REAL NOT NULL,
+                high REAL NOT NULL,
+                low REAL NOT NULL,
+                close REAL NOT NULL,
+                volume REAL NOT NULL,
+                close_time INTEGER NOT NULL,
+                quote_asset_volume REAL,
+                number_of_trades INTEGER,
+                taker_buy_base_asset_volume REAL,
+                taker_buy_quote_asset_volume REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
+                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id) ON DELETE CASCADE,
+                UNIQUE(symbol_id, timeframe_id, open_time)
+            );
+        """)
+        self.conn.commit()
+        
+    def _execute(self, query: str, params: tuple = None) -> sqlite3.Cursor:
+        """Execute a SQL query with parameters.
+        
+        Args:
+            query: SQL query to execute
+            params: Query parameters
+            
+        Returns:
+            sqlite3.Cursor: Cursor with query results
+        """
+        try:
+            cursor = self.conn.cursor()
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+            self.conn.commit()
+            return cursor
+        except sqlite3.Error as e:
+            logging.error(f"Query execution failed: {e}")
+            self.conn.rollback()
+            raise
+
     def insert(self, table, row_dict):
         cols = ', '.join(row_dict.keys())
         placeholders = ', '.join(['?'] * len(row_dict))
@@ -591,6 +662,7 @@ class SQLiteManager:
         cur = self.conn.cursor()
         cur.execute(sql, values)
         self.conn.commit()
+
     def select(self, table, columns):
         cols = ', '.join(columns)
         sql = f"SELECT {cols} FROM {table}"

@@ -829,6 +829,10 @@ def _validate_data(data: pd.DataFrame) -> bool:
     if (data['high'] < data['low']).any():
         raise ValueError("High price cannot be less than low price")
 
+    # Check for negative volume
+    if (data['volume'] < 0).any():
+        raise ValueError("Negative values found in column: volume")
+
     # Check for duplicate dates
     if data.index.duplicated().any():
         raise ValueError("Duplicate dates found")

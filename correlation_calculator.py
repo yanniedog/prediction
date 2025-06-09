@@ -332,50 +332,27 @@ class CorrelationCalculator:
         except ImportError:
             self.NETWORKX_AVAILABLE = False
         
-    def calculate_correlation(self, data: pd.DataFrame, indicator: str, lag: int) -> Optional[float]:
-        """Calculate correlation between price and indicator with improved error handling."""
-        try:
-            if not isinstance(data, pd.DataFrame):
-                raise ValueError("Data must be a pandas DataFrame")
-                
-            if indicator not in data.columns:
-                raise ValueError(f"Indicator {indicator} not found in data")
-                
-            if not isinstance(lag, int) or lag < 0:
-                raise ValueError(f"Invalid lag value: {lag}")
-                
-            if len(data) < self.min_data_points:
-                raise ValueError(f"Insufficient data points (minimum {self.min_data_points} required)")
-                
-            # Get price and indicator series
-            price = data['close']
-            indicator_series = data[indicator]
+    def calculate_correlation(self, data1: pd.Series, data2: pd.Series, method: str = 'pearson') -> float:
+        """Calculate correlation between two series.
+        
+        Args:
+            data1: First data series
+            data2: Second data series
+            method: Correlation method ('pearson', 'spearman', 'kendall')
             
-            # Check for missing values
-            if price.isnull().any() or indicator_series.isnull().any():
-                raise ValueError("Data contains missing values")
-                
-            # Calculate correlation
-            if lag == 0:
-                correlation = price.corr(indicator_series)
-            else:
-                # Shift price series by lag
-                shifted_price = price.shift(-lag)
-                # Drop rows with NaN values after shift
-                valid_mask = ~(shifted_price.isnull() | indicator_series.isnull())
-                if valid_mask.sum() < self.min_data_points:
-                    raise ValueError(f"Insufficient valid data points after lag {lag}")
-                correlation = shifted_price[valid_mask].corr(indicator_series[valid_mask])
-                
-            # Validate correlation value
-            if not self.min_correlation <= correlation <= self.max_correlation:
-                raise ValueError(f"Invalid correlation value: {correlation}")
-                
-            return correlation
-        except Exception as e:
-            logging.error(f"Failed to calculate correlation for {indicator} at lag {lag}: {e}")
-            return None
-            
+        Returns:
+            float: Correlation coefficient
+        """
+        if not isinstance(data1, pd.Series) or not isinstance(data2, pd.Series):
+            raise TypeError("data1 and data2 must be pandas Series")
+        
+        # Drop any NaN values
+        valid_mask = ~(data1.isna() | data2.isna())
+        if not valid_mask.any():
+            return np.nan
+        
+        return data1[valid_mask].corr(data2[valid_mask], method=method)
+
     def calculate_correlations(self, data: pd.DataFrame, indicator: str, max_lag: int) -> Optional[Dict[int, float]]:
         """Calculate correlations for all lags with improved error handling."""
         try:
@@ -394,7 +371,7 @@ class CorrelationCalculator:
             # Calculate correlations for each lag
             correlations = {}
             for lag in range(max_lag + 1):
-                correlation = self.calculate_correlation(data, indicator, lag)
+                correlation = self.calculate_correlation(data[indicator], data['close'], 'pearson')
                 if correlation is not None:
                     correlations[lag] = correlation
                     
@@ -1208,8 +1185,7 @@ class CorrelationCalculator:
             return pd.DataFrame()
 
     def calculate_lag_correlation(self, data1: pd.Series, data2: pd.Series, lags: Union[range, List[int]]) -> pd.Series:
-        """
-        Calculate correlation between two series at different lags.
+        """Calculate correlation between two series at different lags.
         
         Args:
             data1: First data series
@@ -1221,7 +1197,7 @@ class CorrelationCalculator:
         """
         if not isinstance(data1, pd.Series) or not isinstance(data2, pd.Series):
             raise TypeError("data1 and data2 must be pandas Series")
-            
+        
         correlations = pd.Series(index=lags, dtype=float)
         for lag in lags:
             if lag >= 0:
@@ -1230,57 +1206,7 @@ class CorrelationCalculator:
                 correlations[lag] = self.calculate_correlation(data1, shifted_data2)
             else:
                 # Shift data1 forward for negative lags
-                shifted_data1 = data1.shift(lag)
+                shifted_data1 = data1.shift(-lag)  # Note: using -lag since lag is negative
                 correlations[lag] = self.calculate_correlation(shifted_data1, data2)
                 
         return correlations
-
-def _calculate_correlation(series1: pd.Series, series2: pd.Series, method: str = 'pearson') -> float:
-    """Calculate correlation between two series."""
-    if method == 'pearson':
-        return series1.corr(series2, method='pearson')
-    elif method == 'spearman':
-        return series1.corr(series2, method='spearman')
-    elif method == 'kendall':
-        return series1.corr(series2, method='kendall')
-    else:
-        raise ValueError(f"Unknown correlation method: {method}")
-
-def _calculate_lag_correlation(series1: pd.Series, series2: pd.Series, lag: int = 1, method: str = 'pearson') -> float:
-    """Calculate lagged correlation between two series."""
-    if lag == 0:
-        return _calculate_correlation(series1, series2, method)
-    return _calculate_correlation(series1, series2.shift(-lag), method)
-
-def _calculate_rolling_correlation(series1: pd.Series, series2: pd.Series, window: int = 20, method: str = 'pearson') -> pd.Series:
-    """Calculate rolling correlation between two series."""
-    return series1.rolling(window).corr(series2, method=method)
-
-def _calculate_cross_correlation(series1: pd.Series, series2: pd.Series, lag: int = 0) -> float:
-    """Calculate cross-correlation at a given lag."""
-    if lag > 0:
-        return np.corrcoef(series1[lag:], series2[:-lag])[0, 1]
-    elif lag < 0:
-        return np.corrcoef(series1[:lag], series2[-lag:])[0, 1]
-    else:
-        return np.corrcoef(series1, series2)[0, 1]
-
-def _calculate_autocorrelation(series: pd.Series, lag: int = 1) -> float:
-    """Calculate autocorrelation for a given lag."""
-    return series.autocorr(lag=lag)
-
-def _calculate_partial_correlation(series1: pd.Series, series2: pd.Series, control: pd.Series) -> float:
-    """Calculate partial correlation between two series, controlling for a third."""
-    from scipy.stats import linregress
-    # Regress out control from both series
-    res1 = series1 - linregress(control, series1).slope * control
-    res2 = series2 - linregress(control, series2).slope * control
-    return _calculate_correlation(res1, res2)
-
-def _calculate_spearman_correlation(series1: pd.Series, series2: pd.Series) -> float:
-    """Calculate Spearman correlation."""
-    return _calculate_correlation(series1, series2, method='spearman')
-
-def _calculate_kendall_correlation(series1: pd.Series, series2: pd.Series) -> float:
-    """Calculate Kendall correlation."""
-    return _calculate_correlation(series1, series2, method='kendall')

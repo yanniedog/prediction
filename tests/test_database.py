@@ -229,7 +229,7 @@ def test_database_initialization():
     test_db = Path("test.db")
     if test_db.exists():
         test_db.unlink()
-        
+    
     conn = sqlite3.connect(str(test_db))
     assert conn is not None, "Failed to create database connection"
     
@@ -274,6 +274,8 @@ def test_database_initialization():
         
     finally:
         conn.close()
+        import time
+        time.sleep(0.1)  # Ensure file is released before deletion
         if test_db.exists():
             test_db.unlink()
 
