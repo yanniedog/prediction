@@ -15,6 +15,8 @@ import utils
 
 logger = logging.getLogger(__name__)
 
+LEADERBOARD_DB_PATH = config.LEADERBOARD_DB_PATH
+
 # --- Database Connection Helper ---
 def _create_leaderboard_connection() -> Optional[sqlite3.Connection]:
     """Creates a connection to the leaderboard SQLite database."""
@@ -944,46 +946,44 @@ class LeaderboardManager:
             max_lag, output_dir, file_prefix, abs_corr_threshold
         )
 
-# Module-level functions for backward compatibility
-def initialize_leaderboard():
-    """Module-level function to initialize leaderboard."""
-    manager = LeaderboardManager()
-    return manager._initialize_db()
+# Module-level functions for backward compatibility and testing
+def create_connection() -> Optional[sqlite3.Connection]:
+    """Module-level function to create a connection to the leaderboard database."""
+    return _create_leaderboard_connection()
+
+def initialize_leaderboard() -> bool:
+    """Module-level function to initialize the leaderboard database."""
+    return initialize_leaderboard_db()
 
 def update_single_lag(lag: int, correlation_value: float, indicator_name: str, params: Dict[str, Any], 
                      config_id: int, symbol: str, timeframe: str, data_daterange: str, source_db_name: str) -> bool:
-    """Module-level function to update single lag."""
-    manager = LeaderboardManager()
-    return manager.check_and_update_single_lag(lag, correlation_value, indicator_name, params, config_id, 
-                                             symbol, timeframe, data_daterange, source_db_name)
+    """Module-level function to update a single lag in the leaderboard."""
+    return check_and_update_single_lag(lag, correlation_value, indicator_name, params, config_id, 
+                                     symbol, timeframe, data_daterange, source_db_name)
 
 def update_leaderboard_bulk(current_run_correlations: Dict[int, List[Optional[float]]], 
                            indicator_configs: List[Dict[str, Any]], max_lag: int, symbol: str, 
                            timeframe: str, data_daterange: str, source_db_name: str, 
                            min_correlation_threshold: float = 0.0, 
                            max_updates_per_config: Optional[int] = None) -> Dict[int, Dict[str, Any]]:
-    """Module-level function to update leaderboard in bulk."""
-    manager = LeaderboardManager()
-    return manager.update_leaderboard(current_run_correlations, indicator_configs, max_lag, symbol, 
-                                    timeframe, data_daterange, source_db_name, min_correlation_threshold, 
-                                    max_updates_per_config)
+    """Module-level function to update the leaderboard in bulk."""
+    return update_leaderboard(current_run_correlations, indicator_configs, max_lag, symbol, 
+                            timeframe, data_daterange, source_db_name, min_correlation_threshold, 
+                            max_updates_per_config)
 
 def find_best_predictor(target_lag: int) -> Optional[Dict[str, Any]]:
-    """Module-level function to find best predictor."""
-    manager = LeaderboardManager()
-    return manager.find_best_predictor_for_lag(target_lag)
+    """Module-level function to find the best predictor for a target lag."""
+    return find_best_predictor_for_lag(target_lag)
 
 def export_leaderboard() -> bool:
-    """Module-level function to export leaderboard."""
-    manager = LeaderboardManager()
-    return manager.export_leaderboard_to_text()
+    """Module-level function to export the leaderboard to text."""
+    return export_leaderboard_to_text()
 
 def generate_reports() -> bool:
     """Module-level function to generate reports."""
-    manager = LeaderboardManager()
-    return manager.generate_leading_indicator_report()
+    return generate_leading_indicator_report()
 
 def handle_errors() -> bool:
-    """Module-level function for error handling."""
-    # This is a placeholder for any error handling logic
+    """Module-level function to handle errors."""
+    # This is a placeholder for error handling logic
     return True

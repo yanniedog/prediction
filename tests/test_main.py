@@ -49,14 +49,83 @@ def sample_indicator_definitions() -> Dict[str, Dict[str, Any]]:
     """Create sample indicator definitions for testing."""
     return {
         "RSI": {
+            "name": "RSI",
             "type": "talib",
             "required_inputs": ["close"],
-            "params": {"timeperiod": 14}
+            "params": {
+                "timeperiod": {
+                    "type": "int",
+                    "min": 2,
+                    "max": 100,
+                    "default": 14,
+                    "description": "RSI period"
+                }
+            },
+            "conditions": []
         },
         "BB": {
+            "name": "BBANDS",
             "type": "talib",
             "required_inputs": ["close"],
-            "params": {"timeperiod": 20, "nbdevup": 2, "nbdevdn": 2}
+            "params": {
+                "timeperiod": {
+                    "type": "int",
+                    "min": 2,
+                    "max": 100,
+                    "default": 20,
+                    "description": "Bollinger Bands period"
+                },
+                "nbdevup": {
+                    "type": "float",
+                    "min": 0.5,
+                    "max": 5.0,
+                    "default": 2.0,
+                    "description": "Upper band deviation"
+                },
+                "nbdevdn": {
+                    "type": "float",
+                    "min": 0.5,
+                    "max": 5.0,
+                    "default": 2.0,
+                    "description": "Lower band deviation"
+                }
+            },
+            "conditions": []
+        },
+        "MACD": {
+            "name": "MACD",
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {
+                "fastperiod": {
+                    "type": "int",
+                    "min": 2,
+                    "max": 50,
+                    "default": 12,
+                    "description": "Fast period"
+                },
+                "slowperiod": {
+                    "type": "int",
+                    "min": 5,
+                    "max": 100,
+                    "default": 26,
+                    "description": "Slow period"
+                },
+                "signalperiod": {
+                    "type": "int",
+                    "min": 2,
+                    "max": 50,
+                    "default": 9,
+                    "description": "Signal period"
+                }
+            },
+            "conditions": [
+                {
+                    "fastperiod": {
+                        "lt": "slowperiod"
+                    }
+                }
+            ]
         }
     }
 
@@ -136,7 +205,7 @@ def test_prepare_configurations(
     mock_display = MagicMock()
     
     # Test classical path
-    with patch('builtins.input', side_effect=['c', 'y'] * 10):  # Provide enough values for all input calls
+    with patch('builtins.input', side_effect=['c', 'y'] * 20):  # Provide enough values for all input calls
         with patch('main.sqlite_manager.create_connection') as mock_conn:
             mock_conn_instance = MagicMock()
             mock_cursor = MagicMock()

@@ -7,7 +7,7 @@ import random
 import json # For default comparison hashing if needed
 
 # Import config for fallback value
-import config as app_config
+import config
 import utils # For compare_param_dicts
 
 # --- Utility: Cartesian product for parameter grid ---
@@ -86,107 +86,70 @@ def evaluate_conditions(params: Dict[str, Any], conditions: List[Dict[str, Dict[
 def generate_configurations(
     indicator_definition: Dict[str, Any], # Accept the specific definition
 ) -> List[Dict[str, Any]]:
-    """Generates valid parameter combinations using small ranges around defaults,
-       respecting per-indicator range steps if specified."""
+    """Generate parameter configurations for an indicator.
 
-    indicator_name = indicator_definition.get('name', 'UnknownIndicator') # Get name for logging
-    parameter_definitions = indicator_definition.get('parameters', {})
+    Args:
+        indicator_definition: Dictionary containing indicator definition with parameters
+
+    Returns:
+        List of parameter configuration dictionaries
+
+    Raises:
+        ValueError: If indicator definition is invalid
+    """
+    if not isinstance(indicator_definition, dict):
+        raise ValueError("Indicator definition must be a dictionary")
+    
+    if not indicator_definition:
+        raise ValueError("Indicator definition cannot be empty")
+    
+    # Handle both 'params' and 'parameters' keys for backward compatibility
+    parameter_definitions = indicator_definition.get('params', indicator_definition.get('parameters', {}))
     conditions = indicator_definition.get('conditions', [])
+    indicator_name = indicator_definition.get('name', 'Unknown')
+    
+    # If no parameters defined, return empty config
+    if not parameter_definitions:
+        logger.info(f"No parameters defined for '{indicator_name}', returning empty configuration.")
+        return [{}]
+    
+    # Validate parameter definitions
+    if not isinstance(parameter_definitions, dict):
+        raise ValueError(f"Parameter definitions for '{indicator_name}' must be a dictionary")
+    
+    # Check for invalid parameter types
+    for param_name, param_def in parameter_definitions.items():
+        if not isinstance(param_def, dict):
+            raise ValueError(f"Parameter definition for '{param_name}' must be a dictionary")
+        
+        # Check for invalid default values
+        if 'default' in param_def:
+            default_val = param_def['default']
+            if default_val is not None and not isinstance(default_val, (int, float, bool, str)):
+                raise ValueError(f"Invalid default value for parameter '{param_name}': {default_val}")
+        
+        # Check for invalid min/max values
+        for bound_key in ['min', 'max']:
+            if bound_key in param_def:
+                bound_val = param_def[bound_key]
+                if bound_val is not None and not isinstance(bound_val, (int, float)):
+                    raise ValueError(f"Invalid {bound_key} value for parameter '{param_name}': {bound_val}")
 
-    # Determine range_steps: Use indicator-specific first, then global fallback
-    range_steps_indicator = indicator_definition.get('range_steps_default')
-    if isinstance(range_steps_indicator, int) and range_steps_indicator >= 1:
-        range_steps = range_steps_indicator
-        logger.debug(f"GenConfigs ({indicator_name}): Using indicator-specific range_steps: {range_steps}")
-    else:
-        range_steps = app_config.DEFAULTS.get("default_param_range_steps", 3) # Use global fallback
-        logger.debug(f"GenConfigs ({indicator_name}): Using global default range_steps: {range_steps}")
-        if range_steps < 1:
-             logger.warning(f"Global default range_steps={range_steps} invalid, using 1.")
-             range_steps = 1
-
-    num_values = (2 * range_steps) + 1
-    logger.info(f"Generating parameter ranges for '{indicator_name}' with {num_values} values per param (Range Steps: {range_steps}).")
+    logger.info(f"Generating parameter ranges for '{indicator_name}' with {config.DEFAULTS.get('classical_path_range_steps', 3)} values per param (Range Steps: {config.DEFAULTS.get('classical_path_range_steps', 3)}).")
 
     param_ranges = {}
-    # Define standard step sizes (can be tuned)
-    int_step = 1
-    float_step_pct = 0.10 # 10% of default value as step, bounded
-    min_float_step = 0.01
-
-    # Define parameter categories for potentially different step logic
-    # Added 'name' check within this function for clarity
-    period_params = ['fast', 'slow', 'fastperiod', 'slowperiod', 'signalperiod', 'timeperiod', 'timeperiod1', 'timeperiod2', 'timeperiod3', 'length', 'window', 'obv_period', 'price_period', 'fastk_period', 'slowk_period', 'slowd_period', 'fastd_period', 'tenkan', 'kijun', 'senkou']
-    factor_params = ['fastlimit','slowlimit','acceleration','maximum','vfactor','smoothing']
-    dev_scalar_params = ['scalar','nbdev','nbdevup','nbdevdn']
-
     for param, details in parameter_definitions.items():
-        default = details.get('default')
-        if default is None:
-            # If no default, but min/max are given, we might still generate range (e.g., for optimizer later)
-            # But for *this* function (default path range), skip if no default.
-            logger.debug(f"Param '{param}' has no default, skipping range gen for default path.")
+        if not isinstance(details, dict):
+            logger.warning(f"Skip invalid param def '{param}'")
             continue
-
-        values = []
-        p_min = details.get('min')
-        p_max = details.get('max')
-
-        # Treat bool, str, and None as non-numeric: only use default
-        if isinstance(default, bool) or isinstance(default, str) or default is None:
-            values = [default]
-        elif isinstance(default, int):
-            # Determine min boundary, using 2 for most periods, 1 otherwise
-            min_bound = 1
-            # Check if param is a period type AND not in the list of exceptions that allow 1
-            is_strict_period = param in period_params and param.lower() not in [
-                'mom', 'roc', 'rocp', 'rocr', 'rocr100', 'atr', 'natr', 'beta', 'correl',
-                'signalperiod', 'fastk_period', 'slowk_period', 'slowd_period', 'fastd_period',
-                'tenkan', 'kijun', 'senkou', 'timeperiod1', 'timeperiod2', 'timeperiod3']
-            if is_strict_period:
-                 min_bound = 2
-            # Use JSON min if available and valid, taking precedence over calculated min_bound
-            if p_min is not None and isinstance(p_min, int):
-                min_bound = max(min_bound, p_min)
-
-            # Determine max boundary if specified in JSON
-            max_bound = p_max if (p_max is not None and isinstance(p_max, int)) else float('inf')
-
-            # Generate values around default using steps
-            start = max(min_bound, default - range_steps * int_step)
-            generated = [min(max_bound, max(min_bound, start + i * int_step)) for i in range(num_values)]
-            values = sorted(list(set(generated + [default]))) # Add default and unique sort
-            # Final check against bounds
-            values = [v for v in values if min_bound <= v <= max_bound]
-
-
-        elif isinstance(default, float):
-            # Determine min boundary: Use JSON first, then category defaults, then 0.0
-            min_bound = 0.0
-            if param in factor_params: min_bound = 0.01
-            elif param in dev_scalar_params: min_bound = 0.1
-            if p_min is not None and isinstance(p_min, (int, float)):
-                 min_bound = max(min_bound, float(p_min)) # JSON overrides category
-
-            # Determine max boundary: Use JSON first, then category defaults, then inf
-            max_bound = float('inf')
-            if param in factor_params: max_bound = 1.0
-            elif param in dev_scalar_params: max_bound = 5.0
-            if p_max is not None and isinstance(p_max, (int, float)):
-                 max_bound = min(max_bound, float(p_max)) # JSON overrides category
-
-            # Calculate step size relative to default, but bounded
-            step = max(min_float_step, abs(default * float_step_pct))
-
-            start = default - range_steps * step
-            # Generate values, round, clip to bounds
-            generated = [round(min(max_bound, max(min_bound, start + i * step)), 4) for i in range(num_values)]
-            values = sorted(list(set(generated + [default]))) # Add default and unique sort
-            # Final check against bounds
-            values = [v for v in values if min_bound <= v <= max_bound]
-
-        else: # Handle non-numeric (e.g., string, bool) - just use the default
-            values = [default]
+            
+        default = details.get('default')
+        min_val = details.get('min')
+        max_val = details.get('max')
+        
+        # Generate range values
+        values = _generate_range_values(min_val, max_val, config.DEFAULTS.get('classical_path_range_steps', 3), 
+                                      isinstance(default, int) if default is not None else True, default)
 
         if values:
             param_ranges[param] = values
@@ -195,7 +158,6 @@ def generate_configurations(
              # If range generation failed (e.g., bounds too tight) but default exists, use default only
              param_ranges[param] = [default]
              logger.warning(f"Could not generate range for '{param}', using default only: {default}")
-
 
     if not param_ranges:
         logger.warning(f"No parameters found with defaults for '{indicator_name}'.")
@@ -234,7 +196,6 @@ def generate_configurations(
             logger.info(f"Default config for '{indicator_name}' was valid but missing, added back.")
     elif default_combo:
         logger.warning(f"Default parameter combination for '{indicator_name}' failed condition checks.")
-
 
     # Deduplicate using helper function (more robust than simple hashing)
     unique_valid_combinations = []
@@ -389,6 +350,18 @@ def _generate_range_values(min_val, max_val, num_values, is_int=True, default=No
     """Generate a list of evenly spaced values between min_val and max_val (inclusive).
     Ensures the default value is included if provided.
     """
+    # Handle None values
+    if min_val is None or max_val is None:
+        if default is not None:
+            return [default]
+        else:
+            return []
+    
+    # Ensure min_val <= max_val
+    if min_val > max_val:
+        min_val, max_val = max_val, min_val
+    
+    # Generate values
     if is_int:
         values = list(sorted(set([
             int(round(v)) for v in np.linspace(min_val, max_val, num_values)
@@ -397,9 +370,12 @@ def _generate_range_values(min_val, max_val, num_values, is_int=True, default=No
         values = list(sorted(set([
             float(v) for v in np.linspace(min_val, max_val, num_values)
         ])))
+    
+    # Ensure default is included
     if default is not None and default not in values:
         values.append(default)
         values = sorted(set(values))
+    
     return values
 
 def generate_classical_configurations(indicator_definition: dict) -> list:

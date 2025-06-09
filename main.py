@@ -79,7 +79,6 @@ def _setup_and_select_mode(timestamp_str: str) -> Optional[str]:
 
     try:
         print("Performing automatic cleanup (Reports, Logs, Leaderboard DB, Reports/*.txt)...")
-        logger = logging.getLogger(__name__)
 
         # --- Specific Cleanup Logic ---
         leaderboard_db_path = config.LEADERBOARD_DB_PATH

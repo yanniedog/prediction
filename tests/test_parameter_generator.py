@@ -75,7 +75,14 @@ def sample_indicator_definitions() -> Dict[str, Dict[str, Any]]:
                     "min": 2,
                     "max": 50
                 }
-            }
+            },
+            "conditions": [
+                {
+                    "fastperiod": {
+                        "lt": "slowperiod"
+                    }
+                }
+            ]
         }
     }
 
@@ -88,22 +95,36 @@ def sample_indicator_definition() -> Dict[str, Any]:
             "period": {
                 "default": 14,
                 "min": 2,
-                "max": 100
+                "max": 50
             },
             "fast": {
                 "default": 12.0,
-                "min": 1.0,
-                "max": 50.0
+                "min": 2.0,
+                "max": 30.0
             },
             "slow": {
                 "default": 26.0,
                 "min": 5.0,
-                "max": 100.0
+                "max": 50.0
             },
-            "signal": {
-                "default": 9,
-                "min": 1,
-                "max": 50
+            "factor": {
+                "default": 0.5,
+                "min": 0.1,
+                "max": 1.0
+            },
+            "scalar": {
+                "default": 2.0,
+                "min": 0.1,
+                "max": 5.0
+            },
+            "bool_param": {
+                "default": True
+            },
+            "str_param": {
+                "default": "value"
+            },
+            "none_param": {
+                "default": None
             }
         },
         "conditions": [
@@ -115,6 +136,16 @@ def sample_indicator_definition() -> Dict[str, Any]:
             {
                 "period": {
                     "gt": 0  # period must be positive
+                }
+            },
+            {
+                "factor": {
+                    "gt": 0.1  # factor must be greater than 0.1
+                }
+            },
+            {
+                "scalar": {
+                    "gt": 0.1  # scalar must be greater than 0.1
                 }
             }
         ],
@@ -128,24 +159,64 @@ def sample_parameter_definitions() -> Dict[str, Dict[str, Any]]:
         "period": {
             "default": 14,
             "min": 2,
-            "max": 100
+            "max": 50
         },
         "fast": {
             "default": 12.0,
-            "min": 1.0,
-            "max": 50.0
+            "min": 2.0,
+            "max": 30.0
         },
         "slow": {
             "default": 26.0,
             "min": 5.0,
-            "max": 100.0
+            "max": 50.0
         },
-        "signal": {
-            "default": 9,
-            "min": 1,
-            "max": 50
+        "factor": {
+            "default": 0.5,
+            "min": 0.1,
+            "max": 1.0
+        },
+        "scalar": {
+            "default": 2.0,
+            "min": 0.1,
+            "max": 5.0
+        },
+        "bool_param": {
+            "default": True
+        },
+        "str_param": {
+            "default": "value"
+        },
+        "none_param": {
+            "default": None
         }
     }
+
+@pytest.fixture(scope="function")
+def sample_conditions() -> List[Dict[str, Dict[str, Any]]]:
+    """Create sample conditions for testing."""
+    return [
+        {
+            "fast": {
+                "lt": "slow"  # fast must be less than slow
+            }
+        },
+        {
+            "period": {
+                "gt": 0  # period must be positive
+            }
+        },
+        {
+            "factor": {
+                "gt": 0.1  # factor must be greater than 0.1
+            }
+        },
+        {
+            "scalar": {
+                "gt": 0.1  # scalar must be greater than 0.1
+            }
+        }
+    ]
 
 def test_evaluate_single_condition() -> None:
     """Test evaluation of single conditions."""

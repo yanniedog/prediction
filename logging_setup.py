@@ -14,6 +14,8 @@ _default_console_level = logging.INFO
 # Use WARNING for production/normal runs, DEBUG for detailed tracing
 _file_log_level = logging.WARNING # Default to WARNING
 
+LOG_DIR = config.LOG_DIR
+
 def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_mode='w'):
     """Configures logging with levels for console/file, overwriting log file by default."""
     global _console_handler, _default_console_level, _file_log_level

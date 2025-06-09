@@ -143,14 +143,23 @@ class IndicatorFactory:
     def _compute_single_indicator(self, data: pd.DataFrame, indicator_name: str, config: Dict[str, Any], params: Dict[str, Any]) -> pd.DataFrame:
         """Compute a single indicator with the given configuration."""
         try:
+            # Get the indicator definition from the factory's loaded params
+            indicator_def = self.indicator_params.get(indicator_name)
+            if not indicator_def:
+                raise ValueError(f"Unknown indicator: {indicator_name}")
+            
             # Get the function based on indicator type
-            if config['type'] == 'custom':
+            indicator_type = indicator_def.get('type')
+            if not indicator_type:
+                raise ValueError(f"Missing 'type' in indicator definition for {indicator_name}")
+                
+            if indicator_type == 'custom':
                 ta_func = _custom_indicator_registry.get(indicator_name.lower())
                 if not ta_func:
                     raise ValueError(f"Custom indicator {indicator_name} not found")
             else:
                 # Map indicator names to TA-Lib function names
-                ta_func_name = config.get('name', indicator_name.upper())
+                ta_func_name = indicator_def.get('name', indicator_name.upper())
                 if ta_func_name == 'BBANDS':
                     ta_func = getattr(ta, 'BBANDS')
                 else:
@@ -158,13 +167,13 @@ class IndicatorFactory:
 
             # Prepare inputs
             inputs = {}
-            for input_name in config.get('required_inputs', ['close']):
+            for input_name in indicator_def.get('required_inputs', ['close']):
                 if input_name not in data.columns:
                     raise ValueError(f"Required input column '{input_name}' not found in data")
                 inputs[input_name] = data[input_name].values
 
             # Get parameters and merge with defaults
-            config_params = config.get('params', {})
+            config_params = indicator_def.get('params', {})
             merged_params = {}
 
             # Extract default values from config and merge with provided params
@@ -178,7 +187,7 @@ class IndicatorFactory:
             merged_params.update(params)
 
             # Normalize parameter names for custom indicators
-            if config['type'] == 'custom':
+            if indicator_type == 'custom':
                 # For custom indicators, map timeperiod to period if needed
                 if 'timeperiod' in merged_params and 'period' not in merged_params:
                     merged_params['period'] = merged_params.pop('timeperiod')
@@ -230,7 +239,7 @@ class IndicatorFactory:
 
             # Compute indicator
             try:
-                if config['type'] == 'custom':
+                if indicator_type == 'custom':
                     results = ta_func(data, **merged_params)
                 else:
                     results = ta_func(**inputs, **merged_params)
@@ -239,7 +248,7 @@ class IndicatorFactory:
                 if "takes at least 1 positional argument" in str(e):
                     # Convert inputs dict to positional args in correct order
                     # Use the first required input as the default
-                    default_input = config.get('required_inputs', ['close'])[0]
+                    default_input = indicator_def.get('required_inputs', ['close'])[0]
                     ordered_inputs = [inputs[default_input]]
                     results = ta_func(*ordered_inputs, **merged_params)
                 else:
@@ -248,7 +257,7 @@ class IndicatorFactory:
             # Convert results to DataFrame
             if isinstance(results, tuple):
                 # Handle multiple outputs
-                output_names = config.get('output_names', [f"{indicator_name}_{i}" for i in range(len(results))])
+                output_names = indicator_def.get('output_names', [f"{indicator_name}_{i}" for i in range(len(results))])
                 result_df = pd.DataFrame({name: values for name, values in zip(output_names, results)})
             elif isinstance(results, pd.Series):
                 result_df = pd.DataFrame({indicator_name: results})

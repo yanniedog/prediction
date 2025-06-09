@@ -696,67 +696,47 @@ class DataManager:
         """
         if data.empty:
             raise ValueError("Empty DataFrame provided")
-            
+        
         if columns is None:
             columns = data.select_dtypes(include=[np.number]).columns.tolist()
+        
+        # Check for missing columns
+        missing_cols = [col for col in columns if col not in data.columns]
+        if missing_cols:
+            raise ValueError(f"Columns not found in DataFrame: {missing_cols}")
         
         # Create a copy to avoid modifying the original
         normalized = data.copy()
         
-        # Handle price columns specially to maintain relationships
+        # Standard z-score normalization for price columns
         price_cols = [col for col in ['open', 'high', 'low', 'close'] if col in columns and col in data.columns]
-        if price_cols and len(price_cols) >= 2:  # Need at least high and low
-            # Calculate price ranges and midpoints
-            high = data['high']
-            low = data['low']
-            mid = (high + low) / 2
-            range_ = high - low
-            
-            # Normalize midpoint and range
-            mid_mean = mid.mean()
-            mid_std = mid.std()
-            if mid_std == 0:
-                logger.warning("Zero standard deviation in price data, skipping normalization")
-                return data
-            
-            mid_norm = (mid - mid_mean) / mid_std
-            
-            range_mean = range_.mean()
-            range_std = range_.std()
-            if range_std == 0:
-                logger.warning("Zero standard deviation in price range, skipping normalization")
-                return data
-            
-            range_norm = (range_ - range_mean) / range_std
-            
-            # Reconstruct price columns from normalized midpoint and range
-            high_norm = mid_norm + range_norm / 2
-            low_norm = mid_norm - range_norm / 2
-            
-            # Calculate open and close relative to high/low range
-            open_range = (data['open'] - low) / range_
-            close_range = (data['close'] - low) / range_
-            
-            # Apply normalized range to get final values
-            normalized['high'] = high_norm
-            normalized['low'] = low_norm
-            normalized['open'] = low_norm + open_range * range_norm
-            normalized['close'] = low_norm + close_range * range_norm
-            
-            # Ensure proper price relationships after normalization
+        for col in price_cols:
+            mean = normalized[col].mean()
+            std = normalized[col].std()
+            if std == 0:
+                logger.warning(f"Zero standard deviation in column {col}, skipping normalization")
+                continue
+            normalized[col] = (normalized[col] - mean) / std
+        # After normalization, ensure price relationships are preserved
+        if all(col in normalized.columns for col in ['open', 'high', 'low', 'close']):
             normalized['high'] = normalized[['open', 'close', 'high']].max(axis=1)
             normalized['low'] = normalized[['open', 'close', 'low']].min(axis=1)
-        
-        # Handle non-price columns
-        other_cols = [col for col in columns if col not in price_cols and col in normalized.columns]
-        for col in other_cols:
-            if col in normalized.columns:
+            # Re-normalize price columns to ensure mean≈0 and std≈1
+            for col in price_cols:
                 mean = normalized[col].mean()
                 std = normalized[col].std()
-                if std == 0:
-                    logger.warning(f"Zero standard deviation in column {col}, skipping normalization")
-                    continue
-                normalized[col] = (normalized[col] - mean) / std
+                if std > 0:
+                    normalized[col] = (normalized[col] - mean) / std
+        
+        # Handle non-price columns with proper z-score normalization
+        other_cols = [col for col in columns if col not in price_cols and col in normalized.columns]
+        for col in other_cols:
+            mean = normalized[col].mean()
+            std = normalized[col].std()
+            if std == 0:
+                logger.warning(f"Zero standard deviation in column {col}, skipping normalization")
+                continue
+            normalized[col] = (normalized[col] - mean) / std
         
         return normalized
 
