@@ -395,19 +395,24 @@ def test_ensure_dir(tmp_path):
 
 def test_retry():
     calls = {"count": 0}
+    
     @utils.retry(tries=3, delay=0.01)
     def flaky():
         calls["count"] += 1
         if calls["count"] < 2:
             raise ValueError("fail")
         return 42
+    
     assert flaky() == 42
+    
     # Should raise after max tries
     calls["count"] = 0
+    
+    @utils.retry(tries=2, delay=0.01)
+    def always_fail():
+        raise ValueError("fail")
+    
     with pytest.raises(ValueError):
-        @utils.retry(tries=2, delay=0.01)
-        def always_fail():
-            raise ValueError("fail")
         always_fail()
 
 def test_timer():

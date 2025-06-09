@@ -1241,10 +1241,10 @@ class SQLiteManager:
     def is_connected(self) -> bool:
         """Check if the database is connected."""
         try:
-            if self.conn is None:
+            if self.connection is None:
                 return False
             # Test the connection with a simple query
-            cursor = self.conn.cursor()
+            cursor = self.connection.cursor()
             cursor.execute("SELECT 1")
             cursor.fetchone()
             return True
@@ -1254,7 +1254,7 @@ class SQLiteManager:
     def get_tables(self) -> List[str]:
         """Get list of all tables in the database."""
         try:
-            cursor = self.conn.cursor()
+            cursor = self.connection.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             return [row[0] for row in cursor.fetchall()]
         except Exception as e:
@@ -1264,14 +1264,14 @@ class SQLiteManager:
     def insert_row(self, table_name: str, data: Dict[str, Any]) -> bool:
         """Insert a single row into a table."""
         try:
-            cursor = self.conn.cursor()
+            cursor = self.connection.cursor()
             columns = list(data.keys())
             placeholders = ','.join(['?' for _ in columns])
             values = list(data.values())
             
             query = f"INSERT INTO {table_name} ({','.join(columns)}) VALUES ({placeholders})"
             cursor.execute(query, values)
-            self.conn.commit()
+            self.connection.commit()
             return True
         except Exception as e:
             logger.error(f"Error inserting row into {table_name}: {e}")
@@ -1280,7 +1280,7 @@ class SQLiteManager:
     def update_row(self, table_name: str, data: Dict[str, Any], where_conditions: Dict[str, Any]) -> bool:
         """Update a single row in a table."""
         try:
-            cursor = self.conn.cursor()
+            cursor = self.connection.cursor()
             set_clause = ','.join([f"{k}=?" for k in data.keys()])
             where_clause = ' AND '.join([f"{k}=?" for k in where_conditions.keys()])
             
@@ -1288,7 +1288,7 @@ class SQLiteManager:
             values = list(data.values()) + list(where_conditions.values())
             
             cursor.execute(query, values)
-            self.conn.commit()
+            self.connection.commit()
             return True
         except Exception as e:
             logger.error(f"Error updating row in {table_name}: {e}")
@@ -1297,7 +1297,7 @@ class SQLiteManager:
     def update_many(self, table_name: str, data: Dict[str, Any], where_conditions: Dict[str, Any]) -> bool:
         """Update multiple rows in a table."""
         try:
-            cursor = self.conn.cursor()
+            cursor = self.connection.cursor()
             set_clause = ','.join([f"{k}=?" for k in data.keys()])
             where_clause = ' AND '.join([f"{k}=?" for k in where_conditions.keys()])
             
@@ -1305,7 +1305,7 @@ class SQLiteManager:
             values = list(data.values()) + list(where_conditions.values())
             
             cursor.execute(query, values)
-            self.conn.commit()
+            self.connection.commit()
             return True
         except Exception as e:
             logger.error(f"Error updating rows in {table_name}: {e}")
@@ -1314,14 +1314,14 @@ class SQLiteManager:
     def delete_row(self, table_name: str, where_conditions: Dict[str, Any]) -> bool:
         """Delete a single row from a table."""
         try:
-            cursor = self.conn.cursor()
+            cursor = self.connection.cursor()
             where_clause = ' AND '.join([f"{k}=?" for k in where_conditions.keys()])
             
             query = f"DELETE FROM {table_name} WHERE {where_clause}"
             values = list(where_conditions.values())
             
             cursor.execute(query, values)
-            self.conn.commit()
+            self.connection.commit()
             return True
         except Exception as e:
             logger.error(f"Error deleting row from {table_name}: {e}")
@@ -1330,14 +1330,14 @@ class SQLiteManager:
     def delete_many(self, table_name: str, where_conditions: Dict[str, Any]) -> bool:
         """Delete multiple rows from a table."""
         try:
-            cursor = self.conn.cursor()
+            cursor = self.connection.cursor()
             where_clause = ' AND '.join([f"{k}=?" for k in where_conditions.keys()])
             
             query = f"DELETE FROM {table_name} WHERE {where_clause}"
             values = list(where_conditions.values())
             
             cursor.execute(query, values)
-            self.conn.commit()
+            self.connection.commit()
             return True
         except Exception as e:
             logger.error(f"Error deleting rows from {table_name}: {e}")

@@ -648,7 +648,7 @@ def get_data_date_range(data: pd.DataFrame) -> str:
         logger.error(f"Error getting date range: {e}")
         return "Error"
 
-def flatten_dict(d: Dict[str, Any], parent_key: str = '', sep: str = '_') -> Dict[str, Any]:
+def flatten_dict(d: Dict[str, Any], parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
     """Flattens a nested dictionary into a single level dictionary.
     
     Args:
@@ -687,15 +687,133 @@ def dict_hash(d: Dict[str, Any]) -> str:
     return hashlib.sha256(dict_str.encode('utf-8')).hexdigest()
 
 def safe_divide(numerator: float, denominator: float) -> float:
-    """Safely divide two numbers, returning 0 if denominator is 0.
-    
-    Args:
-        numerator: The number to divide
-        denominator: The number to divide by
-        
-    Returns:
-        float: The result of division, or 0 if denominator is 0
-    """
+    """Safely divide two numbers, returning 0 if denominator is 0."""
     if denominator == 0:
         return 0.0
     return numerator / denominator
+
+# --- Missing Functions for Tests ---
+
+def format_timedelta(seconds: int) -> str:
+    """Format seconds into a human-readable time string."""
+    if seconds < 60:
+        return f"{seconds}s"
+    elif seconds < 3600:
+        minutes = seconds // 60
+        remaining_seconds = seconds % 60
+        return f"{minutes}m {remaining_seconds}s"
+    else:
+        hours = seconds // 3600
+        remaining_minutes = (seconds % 3600) // 60
+        remaining_seconds = seconds % 60
+        return f"{hours}h {remaining_minutes}m {remaining_seconds}s"
+
+class Timer:
+    """Simple timer class for measuring execution time."""
+    def __init__(self):
+        self.start_time = None
+        self.end_time = None
+    
+    def start(self):
+        """Start the timer."""
+        self.start_time = datetime.now()
+        return self
+    
+    def stop(self):
+        """Stop the timer."""
+        self.end_time = datetime.now()
+        return self
+    
+    def elapsed(self) -> timedelta:
+        """Get elapsed time."""
+        if self.start_time is None:
+            return timedelta(0)
+        end = self.end_time or datetime.now()
+        return end - self.start_time
+    
+    def elapsed_seconds(self) -> float:
+        """Get elapsed time in seconds."""
+        return self.elapsed().total_seconds()
+
+def human_readable_size(size_bytes: int) -> str:
+    """Convert bytes to human readable format."""
+    if size_bytes == 0:
+        return "0.0 B"
+    
+    size_names = ["B", "KB", "MB", "GB", "TB"]
+    i = 0
+    while size_bytes >= 1024 and i < len(size_names) - 1:
+        size_bytes /= 1024.0
+        i += 1
+    
+    return f"{size_bytes:.1f} {size_names[i]}"
+
+def rolling_apply(arr: np.ndarray, window: int, func: Callable) -> np.ndarray:
+    """Apply a function to rolling windows of an array."""
+    if len(arr) < window:
+        return np.array([])
+    
+    result = []
+    for i in range(window - 1, len(arr)):
+        window_data = arr[i - window + 1:i + 1]
+        result.append(func(window_data))
+    
+    return np.array(result)
+
+def chunks(lst: list, n: int):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
+def retry(tries: int = 3, delay: float = 1.0):
+    """Decorator to retry a function on failure."""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(tries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    if attempt < tries - 1:
+                        import time
+                        time.sleep(delay)
+            raise last_exception
+        return wrapper
+    return decorator
+
+def parse_timeframe(timeframe: str) -> Tuple[str, int]:
+    """Parse timeframe string into unit and value."""
+    if not timeframe:
+        raise ValueError("Timeframe cannot be empty")
+    
+    # Handle common timeframe formats
+    timeframe = timeframe.upper()
+    
+    if timeframe.endswith('M'):
+        return 'M', int(timeframe[:-1])
+    elif timeframe.endswith('H'):
+        return 'H', int(timeframe[:-1])
+    elif timeframe.endswith('D'):
+        return 'D', int(timeframe[:-1])
+    elif timeframe.endswith('W'):
+        return 'W', int(timeframe[:-1])
+    elif timeframe.endswith('Y'):
+        return 'Y', int(timeframe[:-1])
+    else:
+        # Assume minutes if no unit specified
+        return 'M', int(timeframe)
+
+def is_number(value: Any) -> bool:
+    """Check if a value is a number."""
+    try:
+        float(value)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+def ensure_dir(directory: Union[str, Path]) -> Path:
+    """Ensure a directory exists, creating it if necessary."""
+    dir_path = Path(directory)
+    dir_path.mkdir(parents=True, exist_ok=True)
+    return dir_path

@@ -2,13 +2,24 @@
 
 import pandas as pd
 import numpy as np
+import warnings
 from typing import Any, Dict, List, Optional, Union
+
+# Suppress deprecation warnings for pkg_resources
+warnings.filterwarnings("ignore", category=UserWarning, module="pkg_resources")
+
+# Fix numpy NaN import issue for pandas_ta
+if not hasattr(np, 'NaN'):
+    np.NaN = np.nan
 
 # Patch pandas_ta NaN handling
 def patch_pandas_ta():
     """Apply patches to pandas_ta to fix NaN handling issues."""
     try:
-        import pandas_ta as ta
+        # Suppress warnings during import
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            import pandas_ta as ta
         
         # Store original functions
         original_indicators = {}
@@ -54,7 +65,9 @@ _original_indicators = patch_pandas_ta()
 def restore_original_indicators():
     """Restore original pandas_ta indicator functions."""
     try:
-        import pandas_ta as ta
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            import pandas_ta as ta
         for name, func in _original_indicators.items():
             setattr(ta, name, func)
     except ImportError:

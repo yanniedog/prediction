@@ -767,6 +767,10 @@ def predict_price_movement(data, indicator_def, params, lag=1):
     if lag <= 0:
         raise ValueError("Lag must be positive")
     
+    # Validate indicator definition structure
+    if not indicator_def or len(indicator_def) == 0:
+        raise ValueError("Invalid indicator definition")
+    
     # Validate required inputs
     required_inputs = indicator_def.get('required_inputs', ['close'])
     missing_cols = [col for col in required_inputs if col not in data.columns]
@@ -786,6 +790,14 @@ def predict_price_movement(data, indicator_def, params, lag=1):
                     numeric_data = pd.to_numeric(data[col], errors='coerce')
                     if numeric_data.isna().any():
                         raise ValueError(f"NaN values found in columns: ['{col}']")
+            
+            # Check for all-NaN data
+            if data[col].isna().all():
+                raise ValueError(f"NaN values found in columns: ['{col}']")
+            
+            # Check for negative values in volume column
+            if col == 'volume' and (data[col] < 0).any():
+                raise ValueError(f"Negative values found in volume column")
     
     # Extract indicator name from indicator_def
     if isinstance(indicator_def, dict):

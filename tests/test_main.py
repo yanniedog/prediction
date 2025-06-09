@@ -184,12 +184,16 @@ def test_prepare_configurations(
     with patch('main.indicator_factory.IndicatorFactory') as mock_factory:
         mock_instance = MagicMock()
         mock_instance.indicator_params = sample_indicator_definitions
-        mock_instance.compute_indicators.return_value = pd.DataFrame({
-            'RSI': [0.5, 0.6, 0.7] * 33 + [0.5],  # 100 values
-            'BB_upper': [1.0] * 100,
-            'BB_middle': [0.5] * 100,
-            'BB_lower': [0.0] * 100
-        })
+        # Mock compute_configured_indicators to return the expected tuple
+        mock_instance.compute_configured_indicators.return_value = (
+            pd.DataFrame({
+                'RSI': [0.5, 0.6, 0.7] * 33 + [0.5],  # 100 values
+                'BB_upper': [1.0] * 100,
+                'BB_middle': [0.5] * 100,
+                'BB_lower': [0.0] * 100
+            }),
+            set()  # Empty set for failed config IDs
+        )
         mock_factory.return_value = mock_instance
         
         # Mock parameter optimizer to avoid actual optimization
@@ -268,12 +272,15 @@ def test_calculate_indicators_and_correlations(
     with patch('main.indicator_factory.IndicatorFactory') as mock_factory:
         mock_instance = MagicMock()
         mock_instance.indicator_params = sample_indicator_definitions
-        mock_instance.compute_indicators.return_value = pd.DataFrame({
-            'RSI': [0.5, 0.6, 0.7] * 33 + [0.5],  # 100 values
-            'BB_upper': [1.0] * 100,
-            'BB_middle': [0.5] * 100,
-            'BB_lower': [0.0] * 100
-        })
+        mock_instance.compute_configured_indicators.return_value = (
+            pd.DataFrame({
+                'RSI': [0.5, 0.6, 0.7] * 33 + [0.5],  # 100 values
+                'BB_upper': [1.0] * 100,
+                'BB_middle': [0.5] * 100,
+                'BB_lower': [0.0] * 100
+            }),
+            set()  # Empty set for failed config IDs
+        )
         mock_factory.return_value = mock_instance
         
         # Mock correlation calculator
