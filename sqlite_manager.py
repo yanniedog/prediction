@@ -12,6 +12,7 @@ import hashlib
 import math # Added for ceiling division in batching
 import utils
 import shutil
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -19,97 +20,145 @@ logger = logging.getLogger(__name__)
 # Check your specific SQLite version if needed, but 900 is generally safe.
 SQLITE_MAX_VARIABLE_NUMBER = config.DEFAULTS.get("sqlite_max_variable_number", 900)
 
-def create_connection(db_path: str) -> Optional[sqlite3.Connection]:
-    """Create a database connection to the SQLite database."""
-    try:
-        # Use URI mode to enable WAL and other features
-        conn = sqlite3.connect(f"file:{db_path}?mode=rwc", uri=True, timeout=30.0)
-        conn.execute("PRAGMA journal_mode=WAL;")  # Enable Write-Ahead Logging
-        conn.execute("PRAGMA busy_timeout=30000;")  # 30 second timeout
-        conn.execute("PRAGMA foreign_keys=ON;")  # Enable foreign key constraints
-        return conn
-    except sqlite3.Error as e:
-        logger.error(f"Error connecting to database '{db_path}': {e}", exc_info=True)
-        return None
+def create_connection(db_path: str, timeout: float = 30.0) -> Optional[sqlite3.Connection]:
+    """Create a database connection with retry logic."""
+    max_retries = 3
+    retry_delay = 1.0
+    
+    for attempt in range(max_retries):
+        try:
+            conn = sqlite3.connect(db_path, timeout=timeout)
+            conn.execute("PRAGMA journal_mode=WAL;")  # Enable Write-Ahead Logging
+            conn.execute("PRAGMA busy_timeout=30000;")  # Set busy timeout to 30 seconds
+            conn.execute("PRAGMA synchronous=NORMAL;")  # Faster writes with reasonable safety
+            conn.execute("PRAGMA foreign_keys=ON;")  # Enable foreign key constraints
+            return conn
+        except sqlite3.Error as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"Database connection attempt {attempt + 1} failed: {e}. Retrying...")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+            else:
+                logger.error(f"Error connecting to database '{db_path}': {e}", exc_info=True)
+                raise
+    return None
 
 def initialize_database(db_path: str, symbol: str, timeframe: str) -> bool:
-    """Initialize database schema and tables."""
-    conn = create_connection(db_path)
-    if not conn:
-        return False
-
+    """Initialize database with required tables and constraints."""
     try:
+        # Create database directory if it doesn't exist
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        
+        # Remove existing database if corrupted
+        if os.path.exists(db_path):
+            try:
+                conn = create_connection(db_path)
+                if conn is None:
+                    os.remove(db_path)
+            except sqlite3.DatabaseError:
+                os.remove(db_path)
+            except Exception as e:
+                logger.error(f"Error checking database {db_path}: {e}")
+                return False
+        
+        conn = create_connection(db_path)
+        if conn is None:
+            return False
+            
         cursor = conn.cursor()
         
-        # Create symbols table with proper constraints
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS symbols (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol TEXT NOT NULL UNIQUE CHECK (symbol = UPPER(symbol))
-        )
+        # Create tables
+        cursor.executescript("""
+            CREATE TABLE IF NOT EXISTS symbols (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT UNIQUE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            CREATE TABLE IF NOT EXISTS timeframes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timeframe TEXT UNIQUE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            
+            CREATE TABLE IF NOT EXISTS indicators (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(name, type)
+            );
+            
+            CREATE TABLE IF NOT EXISTS indicator_configs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                indicator_id INTEGER NOT NULL,
+                params TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (indicator_id) REFERENCES indicators(id),
+                UNIQUE(indicator_id, params)
+            );
+            
+            CREATE TABLE IF NOT EXISTS historical_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol_id INTEGER NOT NULL,
+                timeframe_id INTEGER NOT NULL,
+                timestamp INTEGER NOT NULL,
+                open REAL NOT NULL,
+                high REAL NOT NULL,
+                low REAL NOT NULL,
+                close REAL NOT NULL,
+                volume REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
+                UNIQUE(symbol_id, timeframe_id, timestamp)
+            );
+            
+            CREATE TABLE IF NOT EXISTS correlations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                indicator1_id INTEGER NOT NULL,
+                indicator2_id INTEGER NOT NULL,
+                symbol_id INTEGER NOT NULL,
+                timeframe_id INTEGER NOT NULL,
+                correlation REAL NOT NULL,
+                lag INTEGER NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (indicator1_id) REFERENCES indicators(id),
+                FOREIGN KEY (indicator2_id) REFERENCES indicators(id),
+                FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
+                UNIQUE(indicator1_id, indicator2_id, symbol_id, timeframe_id, lag)
+            );
+            
+            CREATE TABLE IF NOT EXISTS leaderboard (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                indicator_id INTEGER NOT NULL,
+                symbol_id INTEGER NOT NULL,
+                timeframe_id INTEGER NOT NULL,
+                lag INTEGER NOT NULL,
+                score REAL NOT NULL,
+                params TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (indicator_id) REFERENCES indicators(id),
+                FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
+                UNIQUE(indicator_id, symbol_id, timeframe_id, lag)
+            );
         """)
         
-        # Create timeframes table with proper constraints
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS timeframes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timeframe TEXT NOT NULL UNIQUE CHECK (timeframe IN ('1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M'))
-        )
-        """)
-        
-        # Create historical_data table with proper constraints
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS historical_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol_id INTEGER NOT NULL,
-            timeframe_id INTEGER NOT NULL,
-            open_time INTEGER NOT NULL,
-            open REAL NOT NULL CHECK (open > 0),
-            high REAL NOT NULL CHECK (high >= open AND high >= low),
-            low REAL NOT NULL CHECK (low <= open AND low <= close),
-            close REAL NOT NULL CHECK (close > 0),
-            volume REAL NOT NULL CHECK (volume >= 0),
-            quote_asset_volume REAL NOT NULL CHECK (quote_asset_volume >= 0),
-            number_of_trades INTEGER NOT NULL CHECK (number_of_trades >= 0),
-            taker_buy_base_asset_volume REAL NOT NULL CHECK (taker_buy_base_asset_volume >= 0),
-            taker_buy_quote_asset_volume REAL NOT NULL CHECK (taker_buy_quote_asset_volume >= 0),
-            close_time INTEGER NOT NULL CHECK (close_time > open_time),
-            UNIQUE(symbol_id, timeframe_id, open_time),
-            FOREIGN KEY (symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
-            FOREIGN KEY (timeframe_id) REFERENCES timeframes(id) ON DELETE CASCADE
-        )
-        """)
-        
-        # Create leaderboard table with proper constraints
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS leaderboard (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol_id INTEGER NOT NULL,
-            timeframe_id INTEGER NOT NULL,
-            predictor_name TEXT NOT NULL,
-            parameters TEXT NOT NULL,
-            performance_metrics TEXT NOT NULL,
-            created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL,
-            UNIQUE(symbol_id, timeframe_id, predictor_name),
-            FOREIGN KEY (symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
-            FOREIGN KEY (timeframe_id) REFERENCES timeframes(id) ON DELETE CASCADE
-        )
-        """)
-        
-        # Insert symbol and timeframe if they don't exist
-        cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol.upper(),))
+        # Insert initial data
+        cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol,))
         cursor.execute("INSERT OR IGNORE INTO timeframes (timeframe) VALUES (?)", (timeframe,))
         
         conn.commit()
+        conn.close()
         return True
         
-    except sqlite3.Error as e:
-        logger.error(f"Error initializing database schema: {e}", exc_info=True)
-        conn.rollback()
+    except Exception as e:
+        logger.error(f"Error initializing database {db_path}: {e}", exc_info=True)
+        if conn:
+            conn.close()
         return False
-    finally:
-        conn.close()
 
 def recover_database(db_path: str, symbol: str, timeframe: str) -> bool:
     """Attempt to recover a corrupted database."""

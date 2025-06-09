@@ -130,14 +130,19 @@ def test_database_connection_handling(temp_db_path, valid_symbol, valid_timefram
             conn2 = sqlite3.connect(temp_db_path)
             cursor1 = conn1.cursor()
             cursor2 = conn2.cursor()
-            cursor1.execute("INSERT INTO symbols (symbol) VALUES (?)", (valid_symbol,))
-            cursor2.execute("INSERT INTO timeframes (timeframe) VALUES (?)", (valid_timeframe,))
+            
+            # Use different symbols and timeframes for concurrent connections
+            cursor1.execute("INSERT INTO symbols (symbol) VALUES (?)", ("ETHUSDT",))
+            cursor2.execute("INSERT INTO timeframes (timeframe) VALUES (?)", ("4h",))
+            
             conn1.commit()
             conn2.commit()
-            cursor1.execute("SELECT symbol FROM symbols WHERE symbol = ?", (valid_symbol,))
-            assert cursor1.fetchone()[0] == valid_symbol
-            cursor2.execute("SELECT timeframe FROM timeframes WHERE timeframe = ?", (valid_timeframe,))
-            assert cursor2.fetchone()[0] == valid_timeframe
+            
+            cursor1.execute("SELECT symbol FROM symbols WHERE symbol = ?", ("ETHUSDT",))
+            assert cursor1.fetchone()[0] == "ETHUSDT"
+            cursor2.execute("SELECT timeframe FROM timeframes WHERE timeframe = ?", ("4h",))
+            assert cursor2.fetchone()[0] == "4h"
+            
             conn1.close()
             conn2.close()
             break
@@ -153,17 +158,20 @@ def test_leaderboard_constraints(temp_db_path, valid_symbol, valid_timeframe):
     _initialize_database(temp_db_path, valid_symbol, valid_timeframe)
     conn = sqlite3.connect(temp_db_path)
     cursor = conn.cursor()
-    # Insert symbol and timeframe
-    cursor.execute("INSERT INTO symbols (symbol) VALUES (?)", (valid_symbol,))
-    cursor.execute("INSERT INTO timeframes (timeframe) VALUES (?)", (valid_timeframe,))
+    
+    # Insert different symbol and timeframe for testing
+    cursor.execute("INSERT INTO symbols (symbol) VALUES (?)", ("ETHUSDT",))
+    cursor.execute("INSERT INTO timeframes (timeframe) VALUES (?)", ("4h",))
     symbol_id = cursor.lastrowid
     timeframe_id = cursor.lastrowid
-    # Test unique constraint (adjust columns as per schema)
+    
+    # Test unique constraint
     cursor.execute("""
         INSERT INTO leaderboard (
             symbol_id, timeframe_id, predictor_name, parameters, performance_metrics, created_at, updated_at
         ) VALUES (?, ?, ?, ?, ?, strftime('%s','now'), strftime('%s','now'))
     """, (symbol_id, timeframe_id, "RSI", "{}", "{}"))
+    
     # Try to insert duplicate
     with pytest.raises(sqlite3.IntegrityError):
         cursor.execute("""
@@ -180,8 +188,8 @@ def test_database_rollback(temp_db_path, valid_symbol, valid_timeframe):
     cursor = conn.cursor()
     try:
         cursor.execute("BEGIN TRANSACTION")
-        # Insert symbol
-        cursor.execute("INSERT INTO symbols (symbol) VALUES (?)", (valid_symbol,))
+        # Insert different symbol for testing
+        cursor.execute("INSERT INTO symbols (symbol) VALUES (?)", ("ETHUSDT",))
         symbol_id = cursor.lastrowid
         # Insert invalid data to trigger rollback
         with pytest.raises(sqlite3.OperationalError):
@@ -190,7 +198,7 @@ def test_database_rollback(temp_db_path, valid_symbol, valid_timeframe):
     except sqlite3.OperationalError:
         cursor.execute("ROLLBACK")
     # Verify rollback
-    cursor.execute("SELECT COUNT(*) FROM symbols")
+    cursor.execute("SELECT COUNT(*) FROM symbols WHERE symbol = ?", ("ETHUSDT",))
     assert cursor.fetchone()[0] == 0
     conn.close()
 

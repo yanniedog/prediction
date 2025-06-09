@@ -123,172 +123,109 @@ class IndicatorFactory:
         """Get output names for TA-Lib function. Default to function name."""
         return [func_name]
 
-    def _compute_single_indicator(self, data: pd.DataFrame, name: str, config: Dict[str, Any]) -> Optional[pd.DataFrame]:
-        """Compute a single indicator based on its configuration."""
+    def _compute_single_indicator(self, data: pd.DataFrame, indicator_name: str, config: Dict) -> pd.DataFrame:
+        """Compute a single indicator using the provided configuration."""
         try:
-            # Create empty DataFrame with same index as input data
-            result_df = pd.DataFrame(index=data.index, columns=[])
+            # Get indicator type from config or default to talib
+            indicator_type = config.get('type', 'talib')
             
-            # Validate input data for NaN values
-            if data.isnull().any().any():
-                logger.warning(f"Input data contains NaN values for indicator {name}. These will be handled appropriately.")
+            # Validate input data
+            if data.empty:
+                raise ValueError("Input data is empty")
             
-            if config['type'] in ['talib', 'ta-lib']:  # Handle both types the same way
-                func_name = config['name']
-                params = config['params']
-                required_cols = []
-                # Map parameter names to required columns
-                if 'high' in params: required_cols.append('high')
-                if 'low' in params: required_cols.append('low')
-                if 'close' in params: required_cols.append('close')
-                if 'volume' in params: required_cols.append('volume')
-                if 'open' in params: required_cols.append('open')
-                # Validate required columns
-                missing_cols = [col for col in required_cols if col not in data.columns]
-                if missing_cols:
-                    logger.error(f"Missing required columns for {name}: {missing_cols}")
-                    return result_df
-                # Get TA-Lib function
-                ta_func = getattr(ta, func_name.upper(), None)
-                if not ta_func:
-                    raise ValueError(f"Unknown TA-Lib function: {func_name}")
-                # Prepare input arrays
-                inputs = {}
-                for param_name, col_value in params.items():
-                    # If the value is a dict (e.g., {'default': 14}), use the default
-                    if isinstance(col_value, dict):
-                        value = col_value.get('default', None)
-                    else:
-                        value = col_value
-                    # If value is a string and a column, use the column data
-                    if isinstance(value, str) and value in data.columns:
-                        inputs[param_name] = data[value].values
-                    else:
-                        # Use as-is (for timeperiod, float, int, etc.)
-                        inputs[param_name] = value
-                # Handle NaN values in input arrays
-                for param_name, values in inputs.items():
-                    if isinstance(values, np.ndarray):
-                        inputs[param_name] = np.nan_to_num(values, nan=np.nan)
-                logger.debug(f"Calling TA-Lib function {func_name.upper()} with inputs: {inputs}")
-                # Get output names
-                output_names = self._get_ta_lib_output_suffixes(func_name.upper())
-                # Compute indicator
-                results = ta_func(**inputs)
-                logger.debug(f"TA-Lib function {func_name.upper()} returned: {results}")
-                if results is None:
-                    logger.error(f"TA-Lib function {func_name.upper()} returned None for {name}")
-                    return result_df
-                # Handle different return types
-                if isinstance(results, (np.ndarray, list)):
-                    # Single array result
-                    if len(output_names) > 0:
-                        result_df[f"{name}_{output_names[0]}"] = results
-                    else:
-                        result_df[name] = results
-                elif isinstance(results, tuple):
-                    # Multiple array results
-                    for i, output_name in enumerate(output_names):
-                        if i < len(results):
-                            result_df[f"{name}_{output_name}"] = results[i]
-                else:
-                    # Single value result
-                    result_df[name] = results
-                if result_df.empty:
-                    logger.error(f"Result DataFrame is empty for {name}")
-                # Handle NaN values in result
-                if isinstance(result_df, pd.DataFrame):
-                    result_df = result_df.fillna(method='ffill', axis=0).fillna(method='bfill', axis=0)
-                return result_df
-
-            elif config['type'] == 'pandas-ta':
-                func_name = config['name']
-                params = config['params']
-                required_cols = config.get('required_inputs', [])
-                missing_cols = [col for col in required_cols if col not in data.columns]
-                if missing_cols:
-                    logger.error(f"Missing required columns for {name}: {missing_cols}")
-                    return None
-                # Get pandas_ta function
-                ta_func = getattr(pta, func_name, None)
-                if not ta_func:
-                    raise ValueError(f"Unknown pandas-ta function: {func_name}")
-                # Prepare input arguments
-                func_args = {k: v['default'] if isinstance(v, dict) and 'default' in v else v for k, v in params.items()}
-                # Handle NaN values in input data
-                data = data.fillna(method='ffill', axis=0).fillna(method='bfill', axis=0)
-                # Call the function
-                result = ta_func(data, **func_args) if 'self' not in ta_func.__code__.co_varnames else ta_func(**{k: data[k] for k in required_cols}, **func_args)
-                # result can be a Series or DataFrame
-                if isinstance(result, pd.Series):
-                    result_df = pd.DataFrame({f"{name}": result})
-                else:
-                    result_df = result.add_prefix(f"{name}_")
-                # Handle NaN values in result
-                if isinstance(result_df, pd.DataFrame):
-                    result_df = result_df.fillna(method='ffill', axis=0).fillna(method='bfill', axis=0)
-                return result_df
-
-            elif config['type'] == 'custom':
-                # Map indicator name to function
-                custom_funcs = {
-                    'OBV_PRICE_DIVERGENCE': compute_obv_price_divergence,
-                    'VOLUME_OSCILLATOR': compute_volume_oscillator,
-                    'VWAP': compute_vwap,
-                    'PVI': compute_pvi,
-                    'NVI': compute_nvi,
-                    'RETURNS': compute_returns,
-                    'VOLATILITY': compute_volatility
-                }
-                
-                func = custom_funcs.get(name.upper())
-                if not func:
-                    raise ValueError(f"Unknown custom indicator: {name}")
-                
-                # Handle NaN values in input data for custom indicators
-                data = data.fillna(method='ffill', axis=0).fillna(method='bfill', axis=0)
-                
-                # Compute custom indicator
-                return func(data, **config['params'])
-
+            # Check for NaN values
+            if data.isna().any().any():
+                logger.warning("NaN values detected in input data")
+                data = data.fillna(method='ffill').fillna(method='bfill')
+            
+            # Get required columns from config
+            required_cols = config.get('required_columns', ['close'])
+            missing_cols = [col for col in required_cols if col not in data.columns]
+            if missing_cols:
+                raise ValueError(f"Missing required columns: {missing_cols}")
+            
+            # Get the indicator function
+            if indicator_type == 'talib':
+                ta_func = getattr(ta, indicator_name)
             else:
-                raise ValueError(f"Unsupported indicator type: {config['type']}")
-
+                ta_func = getattr(custom_indicators, f"compute_{indicator_name.lower()}")
+            
+            # Prepare input arrays for TA-Lib functions
+            inputs = {}
+            for param_name, col_name in config.get('input_mapping', {}).items():
+                if col_name in data.columns:
+                    inputs[param_name] = data[col_name].values
+            
+            # Add any additional parameters from config
+            inputs.update(config.get('params', {}))
+            
+            # Compute indicator
+            try:
+                results = ta_func(**inputs)
+            except TypeError as e:
+                # Handle positional arguments for TA-Lib functions
+                if "takes at least 1 positional argument" in str(e):
+                    # Convert inputs dict to positional args in correct order
+                    ordered_inputs = [inputs[param] for param in config.get('input_order', list(inputs.keys()))]
+                    results = ta_func(*ordered_inputs)
+                else:
+                    raise
+            
+            # Convert results to DataFrame
+            if isinstance(results, tuple):
+                # Handle multiple outputs
+                output_names = config.get('output_names', [f"{indicator_name}_{i}" for i in range(len(results))])
+                result_df = pd.DataFrame({name: values for name, values in zip(output_names, results)})
+            else:
+                # Single output
+                result_df = pd.DataFrame({indicator_name: results})
+            
+            # Set index to match input data
+            result_df.index = data.index
+            
+            return result_df
+        
         except Exception as e:
-            logger.error(f"Error computing indicator {name}: {e}", exc_info=True)
-            return pd.DataFrame(index=data.index, columns=[])
+            logger.error(f"Error computing indicator {indicator_name}: {str(e)}")
+            raise ValueError(f"Error computing indicator {indicator_name}: {str(e)}")
 
     def compute_indicators(self, data: pd.DataFrame, indicators: Optional[List[str]] = None) -> pd.DataFrame:
-        """Compute all or specified indicators for the given data."""
-        # Validate input data
-        if data is None or not isinstance(data, pd.DataFrame):
-            raise ValueError("Input data must be a pandas DataFrame")
+        """Compute indicators for the given data."""
+        if data is None:
+            raise ValueError("Input data cannot be None")
         if data.empty:
-            raise ValueError("Input data cannot be empty")
+            raise ValueError("Input data is empty")
         
-        if indicators is None:
-            indicators = list(self.indicator_params.keys())
+        # Validate required columns
+        required_cols = set()
+        for config in self.indicator_params.values():
+            required_cols.update(config.get('required_columns', ['close']))
+        missing_cols = [col for col in required_cols if col not in data.columns]
+        if missing_cols:
+            raise ValueError(f"Missing required columns: {missing_cols}")
         
-        result_df = data.copy()
-        for name in indicators:
-            if name not in self.indicator_params:
-                raise ValueError(f"Unknown indicator: {name}")
-                
-            config = self.indicator_params[name]
-            indicator_df = self._compute_single_indicator(data, name, config)
-            
-            if indicator_df is not None:
-                # Add new columns to result, handling duplicates by appending _new
-                for col in indicator_df.columns:
-                    if col in result_df.columns:
-                        new_col = f"{col}_new"
-                        result_df[new_col] = indicator_df[col]
-                    else:
-                        result_df[col] = indicator_df[col]
-            else:
-                logger.error(f"Failed to compute indicator: {name}")
+        # Filter indicators if specified
+        if indicators:
+            invalid_indicators = [ind for ind in indicators if ind not in self.indicator_params]
+            if invalid_indicators:
+                raise ValueError(f"Invalid indicators: {invalid_indicators}")
+            configs = {name: self.indicator_params[name] for name in indicators}
+        else:
+            configs = self.indicator_params
         
-        return result_df
+        # Initialize result DataFrame with input data
+        result = data.copy()
+        
+        # Compute each indicator
+        for indicator_name, config in configs.items():
+            try:
+                indicator_result = self._compute_single_indicator(data, indicator_name, config)
+                result = pd.concat([result, indicator_result], axis=1)
+            except Exception as e:
+                logger.error(f"Error computing {indicator_name}: {str(e)}")
+                continue
+        
+        return result
 
     def get_available_indicators(self) -> List[str]:
         """Get list of available indicators."""

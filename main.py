@@ -397,18 +397,44 @@ def _select_data_source_and_lag() -> Tuple[Path, str, str, pd.DataFrame, int, in
     db_path, symbol, timeframe = data_manager.manage_data_source()
     if not db_path or not symbol or not timeframe:
         raise ValueError("Invalid data source selection")
-        
-    # Initialize database with proper schema
-    if not _initialize_database(db_path, symbol, timeframe):
-        raise ValueError(f"Failed to initialize database {db_path}")
-        
-    # Load data
+
+    # Load data first to validate before database initialization
     try:
         data = data_manager.load_data(db_path)
     except ValueError as e:
         raise ValueError(str(e))
     if data is None or data.empty:
         raise ValueError(f"Failed to load data from {db_path}")
+
+    # Validate data before database initialization (reordered checks)
+    if not all(col in data.columns for col in ['open', 'high', 'low', 'close', 'volume']):
+        raise ValueError("Missing required columns in data")
+
+    if data.index.duplicated().any():
+        raise ValueError("Duplicate dates found in data")
+
+    if not data.index.is_monotonic_increasing:
+        raise ValueError("Dates must be monotonically increasing")
+
+    if len(data) < 100:  # Minimum required data points
+        raise ValueError("Insufficient data points")
+
+    # Check for large gaps in data (dynamic threshold based on timeframe)
+    time_diff = data.index.to_series().diff()
+    # For example, if timeframe is "1d", allow a 1-day gap; otherwise, use 4 hours.
+    if (timeframe == "1d"):
+         max_allowed_gap = pd.Timedelta(days=1)
+    else:
+         max_allowed_gap = (pd.Timedelta(hours=4))
+    if (time_diff > max_allowed_gap).any():
+         raise ValueError("Large gaps detected in data")
+
+    if (data['high'] < data['low']).any() or (data['high'] < data['open']).any() or (data['high'] < data['close']).any():
+         raise ValueError("Invalid values detected in data")
+    
+    # Initialize database with proper schema
+    if not _initialize_database(db_path, symbol, timeframe):
+        raise ValueError(f"Failed to initialize database {db_path}")
         
     # Get symbol and timeframe IDs
     conn = sqlite_manager.create_connection(str(db_path))
