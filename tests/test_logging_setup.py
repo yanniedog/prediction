@@ -449,6 +449,9 @@ def test_multiple_loggers(setup_logging):
     for name, logger in loggers.items():
         logger.info(f"Test message from {name} logger")
 
+    # Force flush to ensure messages are written
+    logging_setup.force_flush_logs()
+
     # Verify all messages were written
     log_file = next(Path(logging_setup.LOG_DIR).glob('*.txt'))
     with open(log_file, 'r') as f:

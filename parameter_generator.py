@@ -125,8 +125,17 @@ def generate_configurations(
         # Check for invalid default values
         if 'default' in param_def:
             default_val = param_def['default']
-            if default_val is not None and not isinstance(default_val, (int, float, bool, str)):
-                raise ValueError(f"Invalid default value for parameter '{param_name}': {default_val}")
+            if default_val is not None:
+                # Check if this should be a numeric parameter
+                min_val = param_def.get('min')
+                max_val = param_def.get('max')
+                is_numeric_param = (min_val is not None and isinstance(min_val, (int, float))) or \
+                                 (max_val is not None and isinstance(max_val, (int, float)))
+                
+                if is_numeric_param and not isinstance(default_val, (int, float)):
+                    raise ValueError(f"Invalid default value for numeric parameter '{param_name}': {default_val}")
+                elif not isinstance(default_val, (int, float, bool, str)):
+                    raise ValueError(f"Invalid default value for parameter '{param_name}': {default_val}")
         
         # Check for invalid min/max values
         for bound_key in ['min', 'max']:

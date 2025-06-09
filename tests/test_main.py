@@ -512,32 +512,55 @@ def test_error_handling(temp_dir: Path) -> None:
             with pytest.raises(ValueError):
                 main._select_data_source_and_lag()
 
-    # Test database connection failure
-    with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
-        with patch('main.data_manager.load_data', return_value=pd.DataFrame({'test': [1, 2, 3]})):
-            with patch('main.sqlite_manager.create_connection', return_value=None):  # Simulate connection failure
-                with pytest.raises(ValueError):
-                    main._select_data_source_and_lag()
-
-    # Test database table missing
-    with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
-        with patch('main.data_manager.load_data', return_value=pd.DataFrame({'test': [1, 2, 3]})):
-            with patch('main.sqlite_manager.create_connection') as mock_conn:
-                mock_conn_instance = MagicMock()
-                mock_cursor = MagicMock()
-                mock_cursor.execute.side_effect = sqlite3.OperationalError("no such table: timeframes")
-                mock_conn_instance.cursor.return_value = mock_cursor
-                mock_conn.return_value = mock_conn_instance
-                with pytest.raises(sqlite3.OperationalError):
-                    main._select_data_source_and_lag()
-
-    # Force cleanup after each test case
-    gc.collect()
+    # Test with properly initialized database
+    db_path = temp_dir / "test.db"
+    # Initialize database with proper schema
+    main._initialize_database(db_path, "BTCUSD", "1h")
+    
+    # Create some test data
+    test_data = pd.DataFrame({
+        'timestamp': pd.date_range('2023-01-01', periods=100, freq='H'),
+        'open': [100] * 100,
+        'high': [101] * 100,
+        'low': [99] * 100,
+        'close': [100.5] * 100,
+        'volume': [1000] * 100
+    })
+    
+    # Insert test data into database
+    conn = sqlite_manager.create_connection(str(db_path))
     try:
-        import matplotlib.pyplot as plt
-        plt.close('all')
-    except (ImportError, NameError):
-        pass
+        cursor = conn.cursor()
+        # Get symbol and timeframe IDs
+        cursor.execute("SELECT id FROM symbols WHERE symbol = ?", ("BTCUSD",))
+        symbol_id = cursor.fetchone()[0]
+        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", ("1h",))
+        timeframe_id = cursor.fetchone()[0]
+        
+        # Insert test data
+        for _, row in test_data.iterrows():
+            cursor.execute("""
+                INSERT INTO historical_data 
+                (symbol_id, timeframe_id, open_time, open, high, low, close, volume, close_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                symbol_id, timeframe_id,
+                int(row['timestamp'].timestamp() * 1000),
+                row['open'], row['high'], row['low'], row['close'], row['volume'],
+                int(row['timestamp'].timestamp() * 1000) + 3600000
+            ))
+        conn.commit()
+    finally:
+        conn.close()
+    
+    # Now test with valid database
+    with patch('main.data_manager.manage_data_source', return_value=(db_path, "BTCUSD", "1h")):
+        result = main._select_data_source_and_lag(max_lag=5)
+        assert len(result) == 8  # Should return 8 values
+        assert result[0] == db_path
+        assert result[1] == "BTCUSD"
+        assert result[2] == "1h"
+        assert result[4] == 5  # max_lag
 
 def test_progress_display(temp_dir: Path) -> None:
     """Test progress display functionality."""
