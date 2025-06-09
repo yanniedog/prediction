@@ -242,6 +242,30 @@ def _generate_random_valid_config(
     factor_params = ['fastlimit','slowlimit','acceleration','maximum','vfactor','smoothing']
     dev_scalar_params = ['scalar','nbdev','nbdevup','nbdevdn']
 
+    # First, check if conditions are impossible by trying with default values
+    default_params = {k: v.get('default') for k, v in parameter_definitions.items() if 'default' in v}
+    if default_params and not evaluate_conditions(default_params, conditions):
+        # Check if conditions are impossible by examining them
+        for condition in conditions:
+            for param, rules in condition.items():
+                for rule, value in rules.items():
+                    if rule in ['gt', 'lt'] and isinstance(value, str):
+                        # Check if this creates an impossible constraint
+                        if param in parameter_definitions and value in parameter_definitions:
+                            param_min = parameter_definitions[param].get('min')
+                            param_max = parameter_definitions[param].get('max')
+                            value_min = parameter_definitions[value].get('min')
+                            value_max = parameter_definitions[value].get('max')
+                            
+                            if rule == 'gt' and param_max is not None and value_min is not None:
+                                if param_max <= value_min:
+                                    logger.warning(f"Impossible condition: {param} > {value} but {param_max} <= {value_min}")
+                                    return None
+                            elif rule == 'lt' and param_min is not None and value_max is not None:
+                                if param_min >= value_max:
+                                    logger.warning(f"Impossible condition: {param} < {value} but {param_min} >= {value_max}")
+                                    return None
+
     while attempt < max_tries:
         attempt += 1
         candidate_params = {}; has_numeric = False

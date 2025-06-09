@@ -172,10 +172,26 @@ class IndicatorFactory:
                 else:
                     ta_func = getattr(ta, ta_func_name)
 
-            # Prepare inputs
+            # Prepare inputs - ensure they are numeric and not datetime
             inputs = {}
             for input_name in required_inputs:
-                inputs[input_name] = data[input_name].values
+                input_data = data[input_name]
+                # Convert datetime columns to numeric if needed
+                if pd.api.types.is_datetime64_any_dtype(input_data):
+                    # Convert datetime to numeric (timestamp)
+                    input_data = input_data.astype(np.int64) // 10**9  # Convert to seconds
+                elif not pd.api.types.is_numeric_dtype(input_data):
+                    # Try to convert to numeric
+                    try:
+                        input_data = pd.to_numeric(input_data, errors='coerce')
+                    except (ValueError, TypeError):
+                        raise ValueError(f"Input column '{input_name}' cannot be converted to numeric")
+                
+                # Ensure we have numeric values
+                if input_data.isna().all():
+                    raise ValueError(f"Input column '{input_name}' contains only NaN values")
+                
+                inputs[input_name] = input_data.values
 
             # Get parameters and merge with defaults
             config_params = indicator_def.get('params', {})

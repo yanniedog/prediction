@@ -73,8 +73,6 @@ def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_m
                     # Use basic print for errors during logging setup itself
                     print(f"Error closing handler {handler}: {e}", file=sys.stderr)
                 logger.removeHandler(handler)
-        # Reset logging system state if necessary
-        # logging.shutdown() # Can be too aggressive, only use if handlers persist strangely
 
     # Set root logger level to the lowest level needed by any handler
     # This ensures messages pass through the root logger to potentially reach handlers
@@ -216,6 +214,19 @@ def force_flush_logs():
     for handler in logger.handlers:
         if hasattr(handler, 'flush'):
             handler.flush()
+        # Also force close and reopen file handlers to ensure writes
+        if isinstance(handler, logging.FileHandler):
+            try:
+                handler.close()
+                # Reopen the file handler
+                log_filename = handler.baseFilename
+                new_handler = logging.FileHandler(log_filename, mode='a', encoding='utf-8')
+                new_handler.setLevel(handler.level)
+                new_handler.setFormatter(handler.formatter)
+                logger.removeHandler(handler)
+                logger.addHandler(new_handler)
+            except Exception:
+                pass
 
 # Example usage within main.py (adjust levels as needed):
 # import logging_setup

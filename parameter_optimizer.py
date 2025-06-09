@@ -240,7 +240,7 @@ def optimize_parameters_bayesian_per_lag(
     logger.info(f"--- Starting Bayesian Opt Per-Lag for: {indicator_name} ---")
     logger.info(f"Lags: 1-{max_lag}, Evals/Lag: {n_calls_per_lag}, Initials: {n_initial_points_per_lag}")
 
-    search_space, param_names, fixed_params, has_tunable = _define_search_space(indicator_def.get('parameters', {}))
+    search_space, param_names, param_bounds, has_tunable = _define_search_space(indicator_def.get('parameters', {}))
     if not has_tunable:
         logger.warning(f"'{indicator_name}' has no tunable parameters defined for optimization. Evaluating default only.")
         master_evaluated_configs_temp: Dict[str, Dict[str, Any]] = {} # Need a temp map for default processing
@@ -251,7 +251,7 @@ def optimize_parameters_bayesian_per_lag(
         else: logger.error("Cannot evaluate default: 'close' column missing.")
 
         default_id = _process_default_config_fast_eval(
-            indicator_name, indicator_def, fixed_params, param_names, db_path,
+            indicator_name, indicator_def, param_bounds, param_names, db_path,
             master_evaluated_configs_temp, base_data_with_required, max_lag,
             shifted_closes_global_cache_temp,
             interim_correlations_accumulator, max_lag, # Pass max_lag as max_lag_for_accumulator
@@ -263,7 +263,7 @@ def optimize_parameters_bayesian_per_lag(
              default_configs.append({'indicator_name': indicator_name, 'params': default_params, 'config_id': default_id})
         return {}, default_configs # Return empty best_per_lag, possibly default config list
 
-    logger.info(f"Opt Space Dimensions ({len(param_names)}): {param_names}, Fixed: {fixed_params}")
+    logger.info(f"Opt Space Dimensions ({len(param_names)}): {param_names}, Fixed: {param_bounds}")
 
     # --- Global Tracking ---
     master_evaluated_configs: Dict[str, Dict[str, Any]] = {} # Tracks all unique configs evaluated for this indicator
@@ -302,7 +302,7 @@ def optimize_parameters_bayesian_per_lag(
     # --- Evaluate Default Config First ---
     # This ensures the default is evaluated and its correlations are in the accumulator and leaderboard checked
     default_id = _process_default_config_fast_eval(
-        indicator_name, indicator_def, fixed_params, param_names, db_path,
+        indicator_name, indicator_def, param_bounds, param_names, db_path,
         master_evaluated_configs, base_data_with_required, max_lag,
         shifted_closes_global_cache,
         interim_correlations_accumulator, max_lag, # Pass max_lag as max_lag_for_accumulator
@@ -440,7 +440,7 @@ def optimize_parameters_bayesian_per_lag(
                      elif isinstance(v, np.floating): best_params_opt[k] = float(v)
 
                  # Combine with fixed parameters and get hash/ID
-                 best_params_full = {**fixed_params, **best_params_opt}
+                 best_params_full = {**param_bounds, **best_params_opt}
                  best_hash = _get_config_hash(best_params_full)
                  best_config_info = master_evaluated_configs.get(best_hash)
 
@@ -495,6 +495,7 @@ def _define_search_space(param_defs: Dict) -> Tuple[List, List[str], Dict, bool]
     """Creates the search space definition for skopt based on parameter definitions."""
     search_space = []
     param_names = []
+    param_bounds = {}  # Initialize param_bounds
     fixed_params = {}
     has_tunable = False
     # Define common period parameter names
@@ -513,6 +514,7 @@ def _define_search_space(param_defs: Dict) -> Tuple[List, List[str], Dict, bool]
             matype_values = list(range(9))  # TA-Lib MA types 0-8
             search_space.append(Categorical(categories=matype_values, name='matype'))
             param_names.append('matype')
+            param_bounds['matype'] = {'min': 0, 'max': 8, 'default': default}  # Add to param_bounds
             has_tunable = True
             logger.debug("Space 'matype': Categorical(0..8)")
         elif default is not None:  # If default is present but not >= 0, treat as fixed
@@ -568,6 +570,7 @@ def _define_search_space(param_defs: Dict) -> Tuple[List, List[str], Dict, bool]
                 high_int = max(low_int + 1, high_int)
 
                 search_space.append(Integer(low=low_int, high=high_int, name=name))
+                param_bounds[name] = {'min': low_int, 'max': high_int, 'default': default}  # Add to param_bounds
                 logger.debug(f"Space '{name}': Int({low_int},{high_int}) ({bound_source})")
             else: # Float type
                 # Apply specific semantic lower bounds if applicable
@@ -578,6 +581,7 @@ def _define_search_space(param_defs: Dict) -> Tuple[List, List[str], Dict, bool]
                 if low >= high: high = low + 0.01 # Add minimal separation
 
                 search_space.append(Real(low=float(low), high=float(high), prior='uniform', name=name))
+                param_bounds[name] = {'min': float(low), 'max': float(high), 'default': default}  # Add to param_bounds
                 logger.debug(f"Space '{name}': Real({float(low):.4f},{float(high):.4f}) ({bound_source})")
 
             param_names.append(name)
@@ -589,7 +593,7 @@ def _define_search_space(param_defs: Dict) -> Tuple[List, List[str], Dict, bool]
         else: # No default and no bounds - cannot process
             logger.warning(f"Param '{name}': Skipping - no default value and no valid min/max bounds provided.")
 
-    return search_space, param_names, fixed_params, has_tunable
+    return search_space, param_names, param_bounds, has_tunable
 
 
 def _process_default_config_fast_eval(
@@ -727,34 +731,44 @@ def _process_default_config_fast_eval(
 
 
 def _format_final_evaluated_configs(indicator_name: str, master_evaluated_configs: Dict) -> List[Dict[str, Any]]:
-    """Formats the master evaluated configs map into a list suitable for processing."""
-    final_list = []
-    for cfg_hash, cfg_data in master_evaluated_configs.items():
-         # Ensure the entry is valid before adding
-         if isinstance(cfg_data, dict) and 'params' in cfg_data and 'config_id' in cfg_data and isinstance(cfg_data['config_id'], int):
-             final_list.append({
-                 'indicator_name': indicator_name,
-                 'params': cfg_data['params'],
-                 'config_id': cfg_data['config_id']
-             })
-         else:
-             logger.warning(f"Master config data incomplete/invalid for hash {cfg_hash}. Skipping.")
-    return final_list
+    """Format final evaluated configurations for output."""
+    formatted_configs = []
+    for config_hash, config_data in master_evaluated_configs.items():
+        formatted_config = {
+            'indicator_name': indicator_name,
+            'params': config_data.get('params', {}),
+            'config_id': config_data.get('config_id'),
+            'correlations': config_data.get('correlations', {})  # Include correlations
+        }
+        formatted_configs.append(formatted_config)
+    return formatted_configs
 
 
 def _log_optimization_summary(indicator_name: str, max_lag: int, best_config_per_lag: Dict, final_all_evaluated_configs: List):
-    """Logs a summary of the optimization results for an indicator."""
-    logger.info(f"--- Bayesian Opt Per-Lag Finished: {indicator_name} ---")
-    logger.info(f"Evaluated {len(final_all_evaluated_configs)} unique configurations in total for this indicator.")
-    # Count how many lags had a successful optimization result stored
-    found_count = sum(1 for v in best_config_per_lag.values() if v is not None and 'config_id' in v)
-    logger.info(f"Found best configurations for {found_count}/{max_lag} lags during optimization.")
-    # Optionally log details of best per lag if needed (can be verbose)
-    # for lag, best_info in sorted(best_config_per_lag.items()):
-    #     if best_info:
-    #         logger.debug(f"  Lag {lag}: Best ID={best_info['config_id']}, Score={best_info.get('score_at_lag', 'N/A'):.4f}, Corr={best_info.get('correlation_at_lag', 'N/A')}")
-    #     else:
-    #         logger.debug(f"  Lag {lag}: No valid best config found.")
+    """Log optimization summary."""
+    logger.info(f"Optimization summary for {indicator_name}")
+    logger.info(f"Max lag: {max_lag}")
+    logger.info(f"Best configs per lag: {best_config_per_lag}")
+    logger.info(f"Total evaluated configs: {len(final_all_evaluated_configs)}")
+    
+    # Log details of best configs
+    for lag, config_info in best_config_per_lag.items():
+        if isinstance(config_info, dict):
+            config_id = config_info.get('config_id', 'N/A')
+            correlation = config_info.get('correlation', 'N/A')
+            logger.info(f"Lag {lag}: Config {config_id}, Correlation: {correlation}")
+        else:
+            logger.info(f"Lag {lag}: {config_info}")
+    
+    # Log summary of all evaluated configs
+    if final_all_evaluated_configs:
+        logger.info(f"Evaluated {len(final_all_evaluated_configs)} configurations")
+        for i, config in enumerate(final_all_evaluated_configs[:5]):  # Log first 5
+            config_id = config.get('config_id', 'N/A')
+            params = config.get('params', {})
+            logger.info(f"Config {i+1}: ID {config_id}, Params: {params}")
+        if len(final_all_evaluated_configs) > 5:
+            logger.info(f"... and {len(final_all_evaluated_configs) - 5} more configurations")
 
 def optimize_parameters_bayesian(data, indicator_def, n_trials=10):
     """Stub for Bayesian optimization. Returns best config and score using grid search for now."""
@@ -862,38 +876,42 @@ def objective_function(config, data, indicator_def):
         raise ValueError("Input data is empty.")
     if not indicator_def or not isinstance(indicator_def, dict):
         raise ValueError("Invalid indicator definition.")
-    param_defs = indicator_def.get("params") or indicator_def.get("parameters")
+    
+    # Handle the case where indicator_def is a dict with indicator name as key
+    if len(indicator_def) == 1:
+        # Extract the actual indicator definition
+        indicator_name = next(iter(indicator_def))
+        actual_def = indicator_def[indicator_name]
+        param_defs = actual_def.get("params") or actual_def.get("parameters")
+    else:
+        # Direct indicator definition
+        param_defs = indicator_def.get("params") or indicator_def.get("parameters")
+    
     if not param_defs or not isinstance(param_defs, dict):
         raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
+    
     factory = indicator_factory.IndicatorFactory()
-    param_names = list(param_defs.keys())
-    param_ranges = []
-    for p, spec in param_defs.items():
-        if "min" in spec and "max" in spec and "default" in spec:
-            if isinstance(spec["default"], int):
-                param_ranges.append([spec["min"], spec["max"], spec["default"]])
-            elif isinstance(spec["default"], float):
-                param_ranges.append([spec["min"], spec["max"], spec["default"]])
-            else:
-                param_ranges.append([spec["default"]])
+    
+    # Get the indicator name for computing
+    if len(indicator_def) == 1:
+        indicator_name = next(iter(indicator_def))
+    else:
+        indicator_name = indicator_def.get("name", "IND")
+    
+    try:
+        indicators = factory.compute_indicators(data, {indicator_name: config})
+        if indicator_name in indicators:
+            score = indicators[indicator_name].mean()
+            return score
         else:
-            param_ranges.append([spec.get("default")])
-    from itertools import product
-    best_params = None
-    best_score = float('-inf')
-    for values in product(*param_ranges):
-        params = dict(zip(param_names, values))
-        try:
-            indicators = factory.compute_indicators(data, {indicator_def.get("name", "IND"): params})
-            score = indicators[indicator_def.get("name", "IND")].mean()
-            if score > best_score:
-                best_score = score
-                best_params = params
-        except Exception:
-            continue
-    if best_params is None:
-        raise ValueError("No valid parameter set found")
-    return best_params, best_score
+            # Try to find any numeric column
+            for col in indicators.columns:
+                if pd.api.types.is_numeric_dtype(indicators[col]):
+                    return indicators[col].mean()
+            raise ValueError("No numeric indicator output found")
+    except Exception as e:
+        logger.error(f"Error computing indicator {indicator_name}: {e}")
+        return float('-inf')  # Return worst possible score on error
 
 def optimize_parameters_classical(data, indicator_def):
     """Classical optimization: grid search for best config by mean indicator value."""
@@ -947,7 +965,7 @@ def _prepare_optimization_data(data: pd.DataFrame, indicator_definition: dict) -
     """
     Prepares and validates optimization data and indicator definition for tests.
     Ensures indicator definition is loaded from indicator_params.json if not already in correct format.
-    Returns (data, indicator_def) where indicator_def is a dict with indicator name as key and correct 'params' key.
+    Returns (data, indicator_def) where indicator_def is a dict with indicator name as key.
     """
     import json
     import os
