@@ -756,6 +756,16 @@ def predict_price_movement(data, indicator_def, params, lag=1):
     Predict price movement using a simple difference or regression for demonstration.
     Raises if indicator is missing or params are invalid.
     """
+    # Validate inputs
+    if data is None or data.empty:
+        raise ValueError("Input data is empty")
+    if not isinstance(indicator_def, dict):
+        raise ValueError("Invalid indicator definition")
+    if not isinstance(params, dict):
+        raise ValueError("Invalid parameters")
+    if lag <= 0:
+        raise ValueError("Lag must be positive")
+    
     # Extract indicator name from indicator_def
     if isinstance(indicator_def, dict):
         if "name" in indicator_def:
@@ -778,6 +788,12 @@ def predict_price_movement(data, indicator_def, params, lag=1):
     else:
         indicator_name = str(indicator_def)
     
+    # Validate indicator type if present
+    if isinstance(indicator_def, dict) and "type" in indicator_def:
+        indicator_type = indicator_def["type"]
+        if indicator_type not in ["talib", "custom"]:
+            raise ValueError(f"Invalid indicator type: {indicator_type}")
+    
     if indicator_name not in data.columns:
         # Try to compute indicator if possible
         try:
@@ -785,9 +801,8 @@ def predict_price_movement(data, indicator_def, params, lag=1):
             indicators = factory.compute_indicators(data, {indicator_name: params})
             data[indicator_name] = indicators[indicator_name]
         except Exception:
-            raise Exception(f"Indicator {indicator_name} could not be computed or does not exist.")
-    if lag <= 0:
-        raise ValueError("Lag must be positive")
+            raise ValueError(f"Indicator {indicator_name} could not be computed or does not exist.")
+    
     # Simple prediction: difference between indicator and its lagged value
     pred = data[indicator_name] - data[indicator_name].shift(lag)
     pred = pred.fillna(0)
@@ -806,9 +821,17 @@ def calculate_indicators(data: pd.DataFrame, indicator_def: dict, config: dict) 
         raise ValueError("Input data is empty.")
     if not indicator_def or not isinstance(indicator_def, dict):
         raise ValueError("Invalid indicator definition.")
+
+    # Validate required columns
+    required_inputs = indicator_def.get('required_inputs', ['close'])
+    missing_cols = [col for col in required_inputs if col not in data.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
+
     param_defs = indicator_def.get("params") or indicator_def.get("parameters")
     if not param_defs or not isinstance(param_defs, dict):
         raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
+
     # Validate config against param_defs
     for p, spec in param_defs.items():
         if p not in config:
@@ -821,14 +844,16 @@ def calculate_indicators(data: pd.DataFrame, indicator_def: dict, config: dict) 
             raise ValueError(f"Parameter '{p}' below min: {val} < {spec['min']}")
         if "max" in spec and val > spec["max"]:
             raise ValueError(f"Parameter '{p}' above max: {val} > {spec['max']}")
+
     # Evaluate conditions if present
     conditions = indicator_def.get("conditions", [])
     import parameter_generator
     if hasattr(parameter_generator, "evaluate_conditions"):
         if not parameter_generator.evaluate_conditions(config, conditions):
             raise ValueError(f"Parameter conditions not met for indicator")
-    factory = indicator_factory.IndicatorFactory()
     
+    factory = indicator_factory.IndicatorFactory()
+
     # Extract indicator name properly
     if "name" in indicator_def:
         indicator_name = indicator_def["name"]
@@ -840,15 +865,50 @@ def calculate_indicators(data: pd.DataFrame, indicator_def: dict, config: dict) 
         else:
             # Fallback to a default name
             indicator_name = "RSI"  # Default for tests
-    
-    output_df = factory.compute_indicators(data, {indicator_name: config})
-    # Try to get the correct output series
-    if indicator_name not in output_df:
-        raise ValueError(f"Indicator output missing for {indicator_name}")
-    series = output_df[indicator_name]
-    if not isinstance(series, pd.Series) or series.empty or series.isna().all():
-        raise ValueError(f"Indicator output for {indicator_name} is empty or invalid")
-    return series
+
+    # Use the create_indicator method which handles parameter mapping properly
+    try:
+        indicator_df = factory.create_indicator(indicator_name, data, **config)
+        
+        # Try to get the correct output series - check multiple possible column names
+        possible_column_names = [
+            indicator_name,
+            indicator_name.upper(),
+            indicator_name.lower(),
+            indicator_def.get("name", indicator_name),
+            indicator_def.get("name", indicator_name).upper(),
+            indicator_def.get("name", indicator_name).lower()
+        ]
+
+        # Also check for any column that contains the indicator name
+        matching_columns = [col for col in indicator_df.columns if indicator_name.lower() in col.lower()]
+
+        # Combine all possible matches
+        all_possible = list(set(possible_column_names + matching_columns))
+
+        # Find the first matching column
+        found_column = None
+        for col in all_possible:
+            if col in indicator_df.columns:
+                found_column = col
+                break
+
+        if not found_column:
+            # If no exact match, try to find any column that's not in the original data
+            original_columns = set(data.columns)
+            new_columns = [col for col in indicator_df.columns if col not in original_columns]
+            if new_columns:
+                found_column = new_columns[0]  # Use the first new column
+            else:
+                raise ValueError(f"Indicator output missing for {indicator_name}. Available columns: {list(indicator_df.columns)}")
+
+        series = indicator_df[found_column]
+        if not isinstance(series, pd.Series) or series.empty or series.isna().all():
+            raise ValueError(f"Indicator output for {indicator_name} is empty or invalid")
+        return series
+        
+    except Exception as e:
+        raise ValueError(f"Indicator {indicator_name} could not be computed or does not exist.")
 
 
 def _calculate_correlation(indicator_series: pd.Series, price_series: pd.Series, lag: int) -> float:

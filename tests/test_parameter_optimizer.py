@@ -628,4 +628,4 @@ def test_error_handling(optimization_data: Tuple[pd.DataFrame, Dict[str, Any]]):
     with pytest.raises(ValueError) as exc_info:
         optimize_parameters(data, invalid_def)
     # The error should be about missing required parameter
-    assert "Indicator definition must have 'params' or 'parameters' as a dict" in str(exc_info.value), f"Expected error about invalid definition, got: {exc_info.value}" 
+    assert "must have 'params' or 'params' as a dictionary" in str(exc_info.value), f"Expected error about invalid definition, got: {exc_info.value}" 

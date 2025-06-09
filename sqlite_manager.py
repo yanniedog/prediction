@@ -14,6 +14,7 @@ import utils
 import shutil
 import time
 from datetime import datetime
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -573,7 +574,9 @@ class SQLiteManager:
         self.db_path = Path(db_path)
         self.timeout = timeout
         self.connection = None
-        self.initialize_database()
+        # Initialize database and set connection
+        if self.initialize_database():
+            self.connection = self.create_connection()
     
     def create_connection(self) -> Optional[sqlite3.Connection]:
         """Create a connection to the SQLite database."""
@@ -707,7 +710,32 @@ class SQLiteManager:
             
         Returns:
             bool: True if table was created successfully
+            
+        Raises:
+            ValueError: If table name is invalid or columns are invalid
         """
+        # Validate table name
+        if not table_name or not isinstance(table_name, str):
+            raise ValueError("Table name must be a non-empty string")
+        
+        # Check for invalid characters in table name
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
+            raise ValueError(f"Invalid table name: {table_name}. Must start with letter or underscore and contain only alphanumeric characters and underscores.")
+        
+        # Validate columns
+        if not columns or not isinstance(columns, dict):
+            raise ValueError("Columns must be a non-empty dictionary")
+        
+        for col_name, col_type in columns.items():
+            if not col_name or not isinstance(col_name, str):
+                raise ValueError("Column names must be non-empty strings")
+            if not col_type or not isinstance(col_type, str):
+                raise ValueError("Column types must be non-empty strings")
+            
+            # Check for invalid characters in column names
+            if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', col_name):
+                raise ValueError(f"Invalid column name: {col_name}. Must start with letter or underscore and contain only alphanumeric characters and underscores.")
+        
         try:
             conn = self.create_connection()
             if not conn:
@@ -792,15 +820,15 @@ class SQLiteManager:
                 conn.close()
             return False
     
-    def execute_query(self, query: str, params: Tuple = ()) -> List[Dict[str, Any]]:
-        """Execute a SQL query and return results as list of dictionaries.
+    def execute_query(self, query: str, params: Tuple = ()) -> List[Tuple]:
+        """Execute a SQL query and return results as list of tuples.
         
         Args:
             query: SQL query string
             params: Tuple of parameters for the query
             
         Returns:
-            List of dictionaries containing query results
+            List of tuples containing query results
         """
         try:
             conn = self.create_connection()
@@ -809,7 +837,7 @@ class SQLiteManager:
             
             cursor = conn.cursor()
             cursor.execute(query, params)
-            results = [dict(row) for row in cursor.fetchall()]
+            results = cursor.fetchall()
             conn.close()
             return results
             
@@ -842,7 +870,7 @@ class SQLiteManager:
             result = cursor.fetchone()
             
             if result:
-                id_ = result['id']
+                id_ = result[0]  # Access as tuple
             else:
                 # Insert new value
                 cursor.execute(f"INSERT INTO {table_name} ({name_column}) VALUES (?)", (value,))
@@ -909,3 +937,323 @@ class SQLiteManager:
         conn.commit()
         conn.close()
         return True
+
+    def table_exists(self, table_name: str) -> bool:
+        """Check if a table exists in the database.
+        
+        Args:
+            table_name: Name of the table to check
+            
+        Returns:
+            bool: True if table exists, False otherwise
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+            result = cursor.fetchone()
+            conn.close()
+            return result is not None
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error checking if table {table_name} exists: {e}")
+            return False
+
+    def query(self, query: str, params: Tuple = ()) -> List[Tuple]:
+        """Execute a SQL query and return results as list of tuples.
+        
+        Args:
+            query: SQL query string
+            params: Tuple of parameters for the query
+            
+        Returns:
+            List of tuples containing query results
+        """
+        return self.execute_query(query, params)
+
+    def update_data(self, table_name: str, data: Dict[str, Any], where_conditions: Dict[str, Any]) -> bool:
+        """Update rows in a table based on where conditions.
+        
+        Args:
+            table_name: Name of the table to update
+            data: Dictionary of column names and new values
+            where_conditions: Dictionary of column names and values for WHERE clause
+            
+        Returns:
+            bool: True if update was successful
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            
+            # Build SET clause
+            set_clause = ', '.join([f"{k} = ?" for k in data.keys()])
+            
+            # Build WHERE clause
+            where_clause = ' AND '.join([f"{k} = ?" for k in where_conditions.keys()])
+            
+            # Build complete query
+            query = f"UPDATE {table_name} SET {set_clause}"
+            if where_conditions:
+                query += f" WHERE {where_clause}"
+            
+            # Prepare parameters
+            params = list(data.values()) + list(where_conditions.values())
+            
+            cursor.execute(query, params)
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error updating data in {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+
+    def delete_data(self, table_name: str, where_conditions: Dict[str, Any]) -> bool:
+        """Delete rows from a table based on where conditions.
+        
+        Args:
+            table_name: Name of the table to delete from
+            where_conditions: Dictionary of column names and values for WHERE clause
+            
+        Returns:
+            bool: True if deletion was successful
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            
+            # Build WHERE clause
+            where_clause = ' AND '.join([f"{k} = ?" for k in where_conditions.keys()])
+            
+            # Build complete query
+            query = f"DELETE FROM {table_name}"
+            if where_conditions:
+                query += f" WHERE {where_clause}"
+            
+            # Execute query
+            cursor.execute(query, list(where_conditions.values()))
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error deleting data from {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+
+    def transaction(self):
+        """Context manager for database transactions.
+        
+        Returns:
+            Transaction context manager
+        """
+        return TransactionContext(self)
+
+    def query_to_dataframe(self, query: str, params: Tuple = ()) -> pd.DataFrame:
+        """Execute a SQL query and return results as a pandas DataFrame.
+        
+        Args:
+            query: SQL query string
+            params: Tuple of parameters for the query
+            
+        Returns:
+            pandas DataFrame containing query results
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return pd.DataFrame()
+            
+            df = pd.read_sql_query(query, conn, params=params)
+            conn.close()
+            return df
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error executing query to DataFrame: {e}")
+            if conn:
+                conn.close()
+            return pd.DataFrame()
+
+    def drop_table(self, table_name: str) -> bool:
+        """Drop a table from the database.
+        
+        Args:
+            table_name: Name of the table to drop
+            
+        Returns:
+            bool: True if table was dropped successfully
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error dropping table {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+
+    def backup_database(self, backup_path: str) -> bool:
+        """Create a backup of the database.
+        
+        Args:
+            backup_path: Path where to save the backup
+            
+        Returns:
+            bool: True if backup was successful
+        """
+        try:
+            if not self.db_path.exists():
+                logger.error(f"Source database {self.db_path} does not exist")
+                return False
+            
+            # Create backup directory if it doesn't exist
+            backup_path = Path(backup_path)
+            backup_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Copy the database file
+            shutil.copy2(self.db_path, backup_path)
+            logger.info(f"Database backed up to {backup_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error backing up database: {e}")
+            return False
+
+    def restore_database(self, backup_path: str) -> bool:
+        """Restore database from a backup.
+        
+        Args:
+            backup_path: Path to the backup file
+            
+        Returns:
+            bool: True if restore was successful
+        """
+        try:
+            backup_path = Path(backup_path)
+            if not backup_path.exists():
+                logger.error(f"Backup file {backup_path} does not exist")
+                return False
+            
+            # Close existing connection
+            if self.connection:
+                self.connection.close()
+                self.connection = None
+            
+            # Copy backup to current database location
+            shutil.copy2(backup_path, self.db_path)
+            logger.info(f"Database restored from {backup_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error restoring database: {e}")
+            return False
+
+    def delete_all(self, table_name: str) -> bool:
+        """Delete all rows from a table.
+        
+        Args:
+            table_name: Name of the table to delete from
+            
+        Returns:
+            bool: True if deletion was successful
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            cursor.execute(f"DELETE FROM {table_name}")
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error deleting all data from {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+
+    def get_table_schema(self, table_name: str) -> List[Dict[str, Any]]:
+        """Get the schema of a table.
+        
+        Args:
+            table_name: Name of the table
+            
+        Returns:
+            List of dictionaries containing column information
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return []
+            
+            cursor = conn.cursor()
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            schema = cursor.fetchall()
+            conn.close()
+            
+            # Convert to list of dictionaries
+            result = []
+            for row in schema:
+                result.append({
+                    'cid': row[0],
+                    'name': row[1],
+                    'type': row[2],
+                    'notnull': row[3],
+                    'dflt_value': row[4],
+                    'pk': row[5]
+                })
+            
+            return result
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error getting schema for table {table_name}: {e}")
+            if conn:
+                conn.close()
+            return []
+
+class TransactionContext:
+    """Context manager for database transactions."""
+    
+    def __init__(self, db_manager):
+        self.db_manager = db_manager
+        self.conn = None
+        
+    def __enter__(self):
+        self.conn = self.db_manager.create_connection()
+        if self.conn:
+            self.conn.execute("BEGIN TRANSACTION")
+        return self.db_manager
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.conn:
+            if exc_type is not None:
+                # Rollback on exception
+                self.conn.rollback()
+                logger.error(f"Transaction rolled back due to exception: {exc_val}")
+            else:
+                # Commit on success
+                self.conn.commit()
+            self.conn.close()

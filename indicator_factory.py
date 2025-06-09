@@ -142,150 +142,137 @@ class IndicatorFactory:
 
     def _compute_single_indicator(self, data: pd.DataFrame, indicator_name: str, config: Dict[str, Any], params: Dict[str, Any]) -> pd.DataFrame:
         """Compute a single indicator with the given configuration."""
+        logger = logging.getLogger(__name__)
+        
         try:
-            # Get the indicator definition from the factory's loaded params
-            indicator_def = self.indicator_params.get(indicator_name)
-            if not indicator_def:
-                raise ValueError(f"Unknown indicator: {indicator_name}")
+            # Validate inputs
+            if data is None or data.empty:
+                raise ValueError("Input data is empty")
+            if not indicator_name:
+                raise ValueError("Indicator name is required")
+            if not isinstance(config, dict):
+                raise ValueError("Config must be a dictionary")
+            if not isinstance(params, dict):
+                raise ValueError("Params must be a dictionary")
+
+            # Get indicator type and function
+            indicator_type = config.get('type', 'talib')
+            required_inputs = config.get('required_inputs', ['close'])
             
-            # Validate required inputs are present in data
-            # Use the config parameter's required_inputs if available, otherwise fall back to indicator_def
-            required_inputs = config.get('required_inputs', indicator_def.get('required_inputs', ['close']))
-            missing_inputs = [input_name for input_name in required_inputs if input_name not in data.columns]
+            # Validate required inputs
+            missing_inputs = [col for col in required_inputs if col not in data.columns]
             if missing_inputs:
-                raise ValueError(f"Missing required inputs for indicator '{indicator_name}': {missing_inputs}")
+                raise ValueError(f"Missing required inputs: {missing_inputs}")
+
+            # Filter parameters to only include those valid for this indicator
+            valid_params = {}
+            param_defs = config.get('params', {})
             
-            # Get the function based on indicator type
-            indicator_type = indicator_def.get('type')
-            if not indicator_type:
-                raise ValueError(f"Missing 'type' in indicator definition for {indicator_name}")
-                
-            if indicator_type == 'custom':
-                ta_func = _custom_indicator_registry.get(indicator_name.lower())
-                if not ta_func:
-                    raise ValueError(f"Custom indicator {indicator_name} not found")
+            for param_name, param_value in params.items():
+                # Only include parameters that are defined in the indicator config
+                if param_name in param_defs:
+                    valid_params[param_name] = param_value
+                # Also include standard talib parameters that might be mapped
+                elif param_name in ['timeperiod', 'nbdevup', 'nbdevdn', 'fastperiod', 'slowperiod', 'signalperiod']:
+                    valid_params[param_name] = param_value
+
+            # Handle different indicator types
+            if indicator_type == 'talib':
+                return self._compute_talib_indicator(data, indicator_name, valid_params)
+            elif indicator_type == 'custom':
+                return self._compute_custom_indicator(data, indicator_name, valid_params)
             else:
-                # Map indicator names to TA-Lib function names
-                ta_func_name = indicator_def.get('name', indicator_name.upper())
-                if ta_func_name == 'BBANDS':
-                    ta_func = getattr(ta, 'BBANDS')
-                else:
-                    ta_func = getattr(ta, ta_func_name)
+                raise ValueError(f"Unsupported indicator type: {indicator_type}")
 
-            # Prepare inputs - ensure they are numeric and not datetime
-            inputs = {}
-            for input_name in required_inputs:
-                input_data = data[input_name]
-                # Convert datetime columns to numeric if needed
-                if pd.api.types.is_datetime64_any_dtype(input_data):
-                    # Convert datetime to numeric (timestamp) - use safer conversion
-                    try:
-                        # Convert to pandas timestamp first, then to numeric
-                        input_data = pd.to_numeric(input_data, errors='coerce')
-                    except (ValueError, TypeError, OverflowError):
-                        # Fallback: convert to seconds since epoch
-                        input_data = input_data.astype('datetime64[s]').astype(np.int64)
-                elif not pd.api.types.is_numeric_dtype(input_data):
-                    # Try to convert to numeric
-                    try:
-                        input_data = pd.to_numeric(input_data, errors='coerce')
-                    except (ValueError, TypeError):
-                        raise ValueError(f"Input column '{input_name}' cannot be converted to numeric")
-                
-                # Ensure we have numeric values
-                if input_data.isna().all():
-                    raise ValueError(f"Input column '{input_name}' contains only NaN values")
-                
-                inputs[input_name] = input_data.values
+        except Exception as e:
+            logger.error(f"Error computing indicator {indicator_name}: {str(e)}")
+            raise ValueError(f"Error computing indicator {indicator_name}: {str(e)}")
 
-            # Get parameters and merge with defaults
-            config_params = indicator_def.get('params', {})
-            merged_params = {}
-
-            # Extract default values from config and merge with provided params
-            for param_name, param_def in config_params.items():
-                if isinstance(param_def, dict) and 'default' in param_def:
-                    merged_params[param_name] = param_def['default']
-                else:
-                    merged_params[param_name] = param_def
-
-            # Override with provided params
-            merged_params.update(params)
-
-            # Normalize parameter names for custom indicators
-            if indicator_type == 'custom':
-                # For custom indicators, map timeperiod to period if needed
-                if 'timeperiod' in merged_params and 'period' not in merged_params:
-                    merged_params['period'] = merged_params.pop('timeperiod')
-                elif 'timeperiod' in merged_params and 'period' in merged_params:
-                    # If both exist, prefer period for custom indicators
-                    merged_params['period'] = merged_params.pop('timeperiod')
-                
-                # Remove parameters that custom indicators don't accept
-                if indicator_name.lower() == 'returns':
-                    # compute_returns only accepts 'period' parameter
-                    if 'length' in merged_params:
-                        merged_params.pop('length')
-                    if 'timeperiod' in merged_params:
-                        merged_params.pop('timeperiod')
-                elif indicator_name.lower() in ['volatility', 'custom_rsi']:
-                    # These only accept 'period' parameter
-                    if 'length' in merged_params:
-                        merged_params.pop('length')
-                    if 'timeperiod' in merged_params:
-                        merged_params.pop('timeperiod')
+    def _compute_talib_indicator(self, data: pd.DataFrame, indicator_name: str, params: Dict[str, Any]) -> pd.DataFrame:
+        """Compute a TA-Lib indicator."""
+        try:
+            import talib
+            
+            # Get the indicator config to find the correct TA-Lib function name
+            config = None
+            if indicator_name.lower() in self.indicator_params:
+                config = self.indicator_params[indicator_name.lower()]
+            elif indicator_name.upper() in self.indicator_params:
+                config = self.indicator_params[indicator_name.upper()]
+            elif indicator_name in self.indicator_params:
+                config = self.indicator_params[indicator_name]
+            
+            # Use the name from config if available, otherwise use the input name
+            if config and 'name' in config:
+                func_name = config['name'].upper()
             else:
-                # Normalize parameter names for TA-Lib indicators
-                param_mapping = {
-                    'period': 'timeperiod',
-                    'length': 'timeperiod',
-                    'std_dev': 'nbdevup',
-                    'std_dev_lower': 'nbdevdn'
-                }
-                normalized_params = {}
-                for key, value in merged_params.items():
-                    if key in param_mapping:
-                        normalized_params[param_mapping[key]] = value
+                func_name = indicator_name.upper()
+            
+            if not hasattr(talib, func_name):
+                raise ValueError(f"TA-Lib function {func_name} not found")
+            
+            func = getattr(talib, func_name)
+            
+            # Filter parameters to only include those valid for this specific TA-Lib function
+            # Get the function signature to know which parameters are valid
+            sig = inspect.signature(func)
+            valid_params = list(sig.parameters.keys())
+            
+            # Filter params to only include valid ones
+            filtered_params = {}
+            for key, value in params.items():
+                if key in valid_params:
+                    filtered_params[key] = value
+            
+            # Prepare input data based on the function signature
+            # Check if the function expects OHLC data
+            if len(sig.parameters) > 1:  # More than just the first parameter
+                param_names = list(sig.parameters.keys())
+                if 'high' in param_names and 'low' in param_names and 'close' in param_names:
+                    if 'open' in param_names:
+                        input_data = (data['open'], data['high'], data['low'], data['close'])
                     else:
-                        normalized_params[key] = value
-                merged_params = normalized_params
-
-            # Handle special cases for different indicators
-            if indicator_name.upper() in ['BB', 'BBANDS']:
-                # Ensure proper parameter names for BBANDS
-                if 'timeperiod' in merged_params:
-                    timeperiod = merged_params.pop('timeperiod')
-                    merged_params['timeperiod'] = int(timeperiod)
-                if 'nbdevup' in merged_params:
-                    nbdevup = merged_params.pop('nbdevup')
-                    merged_params['nbdevup'] = float(nbdevup)
-                if 'nbdevdn' in merged_params:
-                    nbdevdn = merged_params.pop('nbdevdn')
-                    merged_params['nbdevdn'] = float(nbdevdn)
-
-            # Compute indicator
-            try:
-                if indicator_type == 'custom':
-                    results = ta_func(data, **merged_params)
+                        input_data = (data['high'], data['low'], data['close'])
+                elif 'close' in param_names:
+                    input_data = data['close']
+                elif 'volume' in param_names:
+                    input_data = data['volume']
                 else:
-                    results = ta_func(**inputs, **merged_params)
-            except TypeError as e:
-                # Handle positional arguments for TA-Lib functions
-                if "takes at least 1 positional argument" in str(e):
-                    # Convert inputs dict to positional args in correct order
-                    # Use the first required input as the default
-                    default_input = required_inputs[0]
-                    ordered_inputs = [inputs[default_input]]
-                    results = ta_func(*ordered_inputs, **merged_params)
-                else:
-                    raise
-
-            # Convert results to DataFrame
+                    # Default to close price
+                    input_data = data['close']
+            else:
+                # Single parameter function, default to close price
+                input_data = data['close']
+            
+            # Call the function
+            if isinstance(input_data, tuple):
+                results = func(*input_data, **filtered_params)
+            else:
+                results = func(input_data, **filtered_params)
+            
+            # Handle results
             if isinstance(results, tuple):
-                # Handle multiple outputs
-                output_names = indicator_def.get('output_names', [f"{indicator_name}_{i}" for i in range(len(results))])
-                result_df = pd.DataFrame({name: values for name, values in zip(output_names, results)})
-            elif isinstance(results, pd.Series):
+                # Multiple outputs
+                result_df = pd.DataFrame()
+                # Use output names from config if available
+                if config and 'output_names' in config:
+                    output_names = config['output_names']
+                    for i, result in enumerate(results):
+                        if i < len(output_names):
+                            col_name = output_names[i]
+                        else:
+                            col_name = f"{indicator_name}_{i}"
+                        result_df[col_name] = result
+                else:
+                    suffixes = self._get_ta_lib_output_suffixes(func_name)
+                    for i, result in enumerate(results):
+                        if i < len(suffixes):
+                            col_name = f"{indicator_name}_{suffixes[i]}"
+                        else:
+                            col_name = f"{indicator_name}_{i}"
+                        result_df[col_name] = result
+            elif isinstance(results, np.ndarray):
+                # Single output
                 result_df = pd.DataFrame({indicator_name: results})
             elif isinstance(results, pd.DataFrame):
                 result_df = results
@@ -298,8 +285,28 @@ class IndicatorFactory:
             return result_df
 
         except Exception as e:
-            logger.error(f"Error computing indicator {indicator_name}: {str(e)}")
-            raise ValueError(f"Error computing indicator {indicator_name}: {str(e)}")
+            logger.error(f"Error computing TA-Lib indicator {indicator_name}: {str(e)}")
+            raise ValueError(f"Error computing TA-Lib indicator {indicator_name}: {str(e)}")
+
+    def _compute_custom_indicator(self, data: pd.DataFrame, indicator_name: str, params: Dict[str, Any]) -> pd.DataFrame:
+        """Compute a custom indicator."""
+        try:
+            if indicator_name not in _custom_indicator_registry:
+                raise ValueError(f"Custom indicator {indicator_name} not found")
+            
+            func = _custom_indicator_registry[indicator_name]
+            results = func(data, **params)
+            
+            if isinstance(results, pd.Series):
+                return pd.DataFrame({indicator_name: results})
+            elif isinstance(results, pd.DataFrame):
+                return results
+            else:
+                return pd.DataFrame({indicator_name: pd.Series(results, index=data.index)})
+
+        except Exception as e:
+            logger.error(f"Error computing custom indicator {indicator_name}: {str(e)}")
+            raise ValueError(f"Error computing custom indicator {indicator_name}: {str(e)}")
 
     def compute_indicators(self, data: pd.DataFrame, indicators: Optional[Union[List[str], Dict[str, dict]]] = None) -> pd.DataFrame:
         """Compute indicators for the given data."""
@@ -912,5 +919,14 @@ def compute_configured_indicators(data: pd.DataFrame, indicator_configs: List[Di
     Returns:
         Tuple of (DataFrame with indicators, Set of failed config IDs)
     """
-    factory = IndicatorFactory()
-    return factory.compute_configured_indicators(data, indicator_configs)
+    try:
+        factory = IndicatorFactory()
+        return factory.compute_configured_indicators(data, indicator_configs)
+    except Exception as e:
+        logger.error(f"Error in compute_configured_indicators: {e}")
+        # Return original data and all config IDs as failed
+        failed_config_ids = {config.get('config_id', 0) for config in indicator_configs if isinstance(config.get('config_id'), int)}
+        return data.copy(), failed_config_ids
+
+# Export the module-level function
+__all__ = ['IndicatorFactory', 'compute_configured_indicators']
