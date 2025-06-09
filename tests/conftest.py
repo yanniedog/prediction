@@ -246,7 +246,7 @@ def handle_stdin(request):
 def test_data():
     """Provide test data with controlled size."""
     # Generate synthetic test data
-    dates = pd.date_range(start='2020-01-01', periods=50, freq='D')
+    dates = pd.date_range(start='2020-01-01', periods=50, freq='h')
     np.random.seed(42)  # For reproducibility
     
     data = pd.DataFrame({

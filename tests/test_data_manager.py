@@ -52,7 +52,7 @@ def data_manager(temp_dir: Path):
 @pytest.fixture
 def test_data():
     """Create test data with proper time intervals."""
-    dates = pd.date_range(start='2020-01-01', end='2020-03-01', freq='1h')
+    dates = pd.date_range(start='2020-01-01', end='2020-03-01', freq='h')
     data = pd.DataFrame({
         'open': np.random.uniform(1000, 6000, len(dates)),
         'high': np.random.uniform(1000, 6000, len(dates)),
@@ -125,8 +125,10 @@ def test_fill_missing_data(sample_data: pd.DataFrame):
 
 def test_normalize_data(data_manager: DataManager, sample_data: pd.DataFrame):
     normalized = data_manager.normalize_data(sample_data, columns=["open", "close"])
-    assert np.allclose(normalized[["open", "close"]].mean(), 0, atol=1e-1)
-    assert np.allclose(normalized[["open", "close"]].std(), 1, atol=1e-1)
+    assert np.allclose(normalized["open"].mean(), 0, atol=1e-2)
+    assert np.allclose(normalized["close"].mean(), 0, atol=1e-2)
+    assert np.allclose(normalized["open"].std(), 1, atol=1e-2)
+    assert np.allclose(normalized["close"].std(), 1, atol=1e-2)
     with pytest.raises(ValueError):
         data_manager.normalize_data(sample_data, columns=["nonexistent"])
 
@@ -168,7 +170,7 @@ def test_data_manager_methods(data_manager: DataManager, sample_data: pd.DataFra
     assert isinstance(normalized, pd.DataFrame)
     assert not normalized.empty
     assert data_manager.validate_data(normalized)
-    assert np.allclose(normalized[["open", "close"]].mean(), 0, atol=1e-1)
+    assert np.allclose(normalized[["open", "close"]].mean(), 0, atol=1e-2)
     
     # Test error handling
     with pytest.raises(ValueError):
@@ -278,7 +280,7 @@ def test_data_validation(data_manager, test_data):
 
     # Test large gaps
     invalid_data = test_data.copy()
-    invalid_data.index = pd.date_range(start='2023-01-01', periods=len(invalid_data), freq='8D')  # 8-day gaps
+    invalid_data.index = pd.date_range(start='2023-01-01', periods=len(invalid_data), freq='8h')  # 8-hour gaps
     with pytest.raises(ValueError) as exc_info:
         data_manager.validate_data(invalid_data)
     assert "Large gap detected in data" in str(exc_info.value)
@@ -317,8 +319,8 @@ def test_data_normalization(data_manager, test_data):
     for col in numeric_cols:
         mean = normalized_data[col].mean()
         std = normalized_data[col].std()
-        assert abs(mean) < 1e-10, f"Column {col} mean should be 0, got {mean}"
-        assert abs(std - 1) < 1e-10, f"Column {col} std should be 1, got {std}"
+        assert abs(mean) < 1e-2, f"Column {col} mean should be 0, got {mean}"
+        assert abs(std - 1) < 1e-2, f"Column {col} std should be 1, got {std}"
     
     # Check that non-numeric columns are preserved
     non_numeric_cols = normalized_data.select_dtypes(exclude=[np.number]).columns

@@ -492,6 +492,8 @@ def _initialize_database(db_path: Union[str, Path], symbol: str, timeframe: str)
             CREATE INDEX IF NOT EXISTS idx_leaderboard_lag ON leaderboard(lag);
             CREATE INDEX IF NOT EXISTS idx_leaderboard_lag_val ON leaderboard(lag, correlation_value);
             CREATE INDEX IF NOT EXISTS idx_leaderboard_indicator_config ON leaderboard(indicator_name, config_id_source_db);
+            CREATE INDEX IF NOT EXISTS idx_correlations_symbols ON correlations(symbol_id, timeframe_id);
+            CREATE INDEX IF NOT EXISTS idx_leaderboard_correlation ON leaderboard(correlation_value);
         """)
 
         # Insert symbol and timeframe

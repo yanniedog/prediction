@@ -352,15 +352,6 @@ def compute_volatility(data: pd.DataFrame, period: int = 20) -> pd.Series:
     volatility.name = f"volatility_{period}"
     return volatility
 
-# --- Removed apply_all_custom_indicators function ---
-# This function is no longer needed as main.py ensures custom indicator
-# defaults are added to the processing list if necessary.
-
-_custom_indicator_registry = {}
-
-def register_custom_indicator(name, func):
-    _custom_indicator_registry[name] = func
-
 def custom_rsi(data, period=14):
     import pandas as pd
     delta = data['close'].diff()
@@ -371,3 +362,32 @@ def custom_rsi(data, period=14):
     rs = avg_gain / (avg_loss + 1e-9)
     rsi = 100 - (100 / (1 + rs))
     return pd.DataFrame({'CUSTOM_RSI': rsi})
+
+# --- Removed apply_all_custom_indicators function ---
+# This function is no longer needed as main.py ensures custom indicator
+# defaults are added to the processing list if necessary.
+
+# Dictionary of all custom indicators for easy access
+custom_indicators = {
+    'obv_price_divergence': compute_obv_price_divergence,
+    'volume_oscillator': compute_volume_oscillator,
+    'vwap': compute_vwap,
+    'pvi': compute_pvi,
+    'nvi': compute_nvi,
+    'returns': compute_returns,
+    'volatility': compute_volatility,
+    'custom_rsi': custom_rsi
+}
+
+# Registry for dynamically registered custom indicators
+_custom_indicator_registry = {}
+
+def register_custom_indicator(name: str, func: Callable) -> None:
+    """Register a custom indicator function.
+    
+    Args:
+        name: Name of the indicator
+        func: Function that computes the indicator
+    """
+    _custom_indicator_registry[name] = func
+    custom_indicators[name] = func

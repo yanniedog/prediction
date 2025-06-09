@@ -8,7 +8,9 @@ import json
 import os
 from custom_indicators import (
     compute_obv_price_divergence, compute_volume_oscillator,
-    compute_vwap, compute_pvi, compute_nvi, compute_returns, compute_volatility
+    compute_vwap, compute_pvi, compute_nvi, compute_returns, compute_volatility,
+    custom_rsi, register_custom_indicator, _custom_indicator_registry,
+    custom_indicators
 )
 import pandas_ta as pta
 
@@ -22,6 +24,8 @@ class IndicatorFactory:
         self.params_file = params_file
         self.indicator_params = self._load_params()
         self._validate_params()
+        # Register built-in custom indicators
+        register_custom_indicator('custom_rsi', custom_rsi)
 
     def _load_params(self) -> Dict[str, Any]:
         """Load indicator parameters from JSON file."""
@@ -129,6 +133,9 @@ class IndicatorFactory:
             # Get indicator type from config or default to talib
             indicator_type = config.get('type', 'talib')
             
+            # Normalize indicator name case
+            indicator_name = indicator_name.upper() if indicator_type == 'talib' else indicator_name.lower()
+
             # Validate input data
             if data.empty:
                 raise ValueError("Input data is empty")
@@ -139,7 +146,7 @@ class IndicatorFactory:
                 data = data.ffill().bfill()
             
             # Get required columns from config
-            required_cols = config.get('required_columns', ['close'])
+            required_cols = config.get('required_inputs', ['close'])
             missing_cols = [col for col in required_cols if col not in data.columns]
             if missing_cols:
                 raise ValueError(f"Missing required columns: {missing_cols}")
@@ -147,12 +154,26 @@ class IndicatorFactory:
             # Get the indicator function
             if indicator_type == 'talib':
                 # Handle BB/BBANDS special case
-                if indicator_name.upper() in ['BB', 'BBANDS']:
+                if indicator_name in ['BB', 'BBANDS']:
                     ta_func = getattr(ta, 'BBANDS')
                 else:
-                    ta_func = getattr(ta, indicator_name)
+                    try:
+                        ta_func = getattr(ta, indicator_name)
+                    except AttributeError:
+                        # Try lowercase if uppercase fails
+                        ta_func = getattr(ta, indicator_name.lower())
+            elif indicator_type == 'custom':
+                # Try to get from custom registry first
+                if indicator_name.lower() in _custom_indicator_registry:
+                    ta_func = _custom_indicator_registry[indicator_name.lower()]
+                else:
+                    # Try to get from custom_indicators module
+                    try:
+                        ta_func = getattr(custom_indicators, f"compute_{indicator_name.lower()}")
+                    except AttributeError:
+                        raise ValueError(f"Custom indicator {indicator_name} not found")
             else:
-                ta_func = getattr(custom_indicators, f"compute_{indicator_name.lower()}")
+                raise ValueError(f"Unsupported indicator type: {indicator_type}")
             
             # Prepare input arrays for TA-Lib functions
             inputs = {}
@@ -165,18 +186,27 @@ class IndicatorFactory:
             # Add any additional parameters from config
             params = config.get('params', {})
             
+            # Convert parameter values from dict format if needed
+            processed_params = {}
+            for key, value in params.items():
+                if isinstance(value, dict):
+                    processed_params[key] = value.get('default', value.get('value', value))
+                else:
+                    processed_params[key] = value
+            params = processed_params
+            
             # Handle special cases for different indicators
-            if indicator_name.upper() in ['BB', 'BBANDS']:
+            if indicator_name in ['BB', 'BBANDS']:
                 # Ensure proper parameter names for BBANDS
                 if 'timeperiod' in params:
                     timeperiod = params.pop('timeperiod')
-                    params['timeperiod'] = timeperiod
+                    params['timeperiod'] = int(timeperiod)
                 if 'nbdevup' in params:
                     nbdevup = params.pop('nbdevup')
-                    params['nbdevup'] = nbdevup
+                    params['nbdevup'] = float(nbdevup)
                 if 'nbdevdn' in params:
                     nbdevdn = params.pop('nbdevdn')
-                    params['nbdevdn'] = nbdevdn
+                    params['nbdevdn'] = float(nbdevdn)
                 results = ta_func(inputs['real'], **params)
                 # Rename columns to match indicator name
                 if isinstance(results, tuple):
@@ -184,14 +214,13 @@ class IndicatorFactory:
                     result_df = pd.DataFrame({name: values for name, values in zip(output_names, results)})
                 else:
                     result_df = pd.DataFrame({f"{indicator_name}": results})
-            elif indicator_name == 'RSI' and 'timeperiod' in params:
-                timeperiod = params.pop('timeperiod')
-                results = ta_func(inputs['real'], timeperiod=timeperiod)
-                result_df = pd.DataFrame({indicator_name: results})
             else:
                 # Compute indicator with all parameters
                 try:
-                    results = ta_func(**inputs, **params)
+                    if indicator_type == 'custom':
+                        results = ta_func(data, **params)
+                    else:
+                        results = ta_func(**inputs, **params)
                 except TypeError as e:
                     # Handle positional arguments for TA-Lib functions
                     if "takes at least 1 positional argument" in str(e):
@@ -200,22 +229,24 @@ class IndicatorFactory:
                         results = ta_func(*ordered_inputs, **params)
                     else:
                         raise
-            
-            # Convert results to DataFrame if not already done
-            if not isinstance(result_df, pd.DataFrame):
+
+                # Convert results to DataFrame if not already done
                 if isinstance(results, tuple):
                     # Handle multiple outputs
                     output_names = config.get('output_names', [f"{indicator_name}_{i}" for i in range(len(results))])
                     result_df = pd.DataFrame({name: values for name, values in zip(output_names, results)})
+                elif isinstance(results, pd.Series):
+                    result_df = pd.DataFrame({indicator_name: results})
+                elif isinstance(results, pd.DataFrame):
+                    result_df = results
                 else:
                     # Single output
                     result_df = pd.DataFrame({indicator_name: results})
-            
+
             # Set index to match input data
             result_df.index = data.index
-            
             return result_df
-        
+
         except Exception as e:
             logger.error(f"Error computing indicator {indicator_name}: {str(e)}")
             raise ValueError(f"Error computing indicator {indicator_name}: {str(e)}")
@@ -310,17 +341,19 @@ class IndicatorFactory:
     def get_indicator_params(self, name: str) -> Optional[Dict[str, Any]]:
         """Get parameters for a specific indicator."""
         indicator_def = self.indicator_params.get(name)
+        if not indicator_def:
+            raise ValueError("Unknown indicator")
         return indicator_def.get('params') if indicator_def else None
 
     def create_custom_indicator(self, name: str, func, data: pd.DataFrame, **params):
         """Register and compute a custom indicator on the fly."""
         result = func(data, **params)
         if isinstance(result, pd.Series):
+            return pd.DataFrame({name: result})
+        elif isinstance(result, pd.DataFrame):
             return result
-        elif isinstance(result, pd.DataFrame) and result.shape[1] == 1:
-            return result.iloc[:, 0]
         else:
-            return pd.Series(result, name=name)
+            return pd.DataFrame({name: pd.Series(result, index=data.index)})
 
     def create_indicator(self, name: str, data: pd.DataFrame, **params):
         """Compute a standard indicator by name, using provided data and parameters."""
@@ -359,7 +392,7 @@ class IndicatorFactory:
                 merged_params['nbdevup'] = float(std_val)
                 merged_params['nbdevdn'] = float(std_val)
         
-        # Check for minimum data length if period/length/timeperiod is specified (in merged_params)
+        # Check for minimum data length if period/length/timeperiod is specified
         period_param = None
         period_key = None
         for key in ["period", "length", "timeperiod"]:
@@ -375,7 +408,7 @@ class IndicatorFactory:
                 else:
                     period_val = int(period_param)
                 if len(data) < period_val:
-                    raise ValueError(f"Input data length ({len(data)}) is less than required {period_key} ({period_val}) for indicator '{name}'")
+                    raise ValueError(f"Insufficient data: input data length ({len(data)}) is less than required {period_key} ({period_val}) for indicator '{name}'")
             except (ValueError, TypeError):
                 raise ValueError(f"Invalid {period_key} value '{period_param}' for indicator '{name}'")
         
@@ -395,18 +428,14 @@ class IndicatorFactory:
         elif config['type'] == 'pandas-ta':
             required_cols = config.get('required_inputs', [])
         elif config['type'] == 'custom':
-            # Custom indicators have their own validation
-            pass
-            
+            required_cols = config.get('required_inputs', [])
+        
         if required_cols:
             missing_cols = [col for col in required_cols if col not in data.columns]
             if missing_cols:
                 raise ValueError(f"Missing required columns for indicator '{name}': {missing_cols}")
         
         result = self._compute_single_indicator(data, name, config_for_compute)
-        # Return as Series if only one column, else DataFrame
-        if result is not None and isinstance(result, pd.DataFrame) and result.shape[1] == 1:
-            return result.iloc[:, 0]
         return result
 
     def plot_indicator(self, indicator_name: str, data: pd.DataFrame, params: Dict[str, Any], 
