@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import talib as ta
 import logging
-from typing import List, Optional
+from typing import List, Optional, Callable, Union, Any
 
 logger = logging.getLogger(__name__)
 
@@ -14,29 +14,76 @@ VWAP = 'vwap'
 PVI = 'pvi'
 NVI = 'nvi'
 
+class IndicatorError(Exception):
+    """Base exception for indicator calculation errors."""
+    pass
+
+class MissingColumnsError(IndicatorError):
+    """Raised when required columns are missing."""
+    pass
+
+class InvalidParameterError(IndicatorError):
+    """Raised when parameters are invalid."""
+    pass
+
+class UnsupportedMethodError(IndicatorError):
+    """Raised when an unsupported method is specified."""
+    pass
+
 # --- Helper for Required Columns ---
-def _check_required_cols(data: pd.DataFrame, required: List[str], indicator_name: str) -> bool:
-    """Checks if DataFrame contains required columns."""
-    missing = [col for col in required if col not in data.columns]
+def _check_required_cols(data: pd.DataFrame, required_cols: List[str], indicator_name: str) -> None:
+    """Check if required columns are present in the data.
+    
+    Args:
+        data: DataFrame to check
+        required_cols: List of required column names
+        indicator_name: Name of the indicator for error message
+        
+    Raises:
+        MissingColumnsError: If any required columns are missing
+    """
+    missing = [col for col in required_cols if col not in data.columns]
     if missing:
-        logger.error(f"Missing required columns for {indicator_name}: {missing}. Skipping.")
-        return False
-    return True
+        raise MissingColumnsError(f"Missing required columns for {indicator_name}: {missing}")
 
 # --- Custom Indicator Functions ---
 # These functions now return a DataFrame with ONLY the new column(s) or None on failure.
 
 def compute_obv_price_divergence(data: pd.DataFrame, method: str ="Difference", obv_method: str ="SMA", obv_period: int =14,
                                 price_input_type: str ="OHLC/4", price_method: str ="SMA", price_period: int =14,
-                                smoothing: float =0.01) -> Optional[pd.DataFrame]:
-    """Calculates OBV/Price divergence. Returns a DataFrame with the result or None."""
-    col_name = OBV_PRICE_DIVERGENCE
+                                smoothing: float =0.01) -> pd.DataFrame:
+    """Calculates OBV/Price divergence.
+    
+    Args:
+        data: DataFrame with OHLCV data
+        method: Divergence calculation method ("Difference", "Ratio", "Log Ratio")
+        obv_method: OBV smoothing method ("SMA", "EMA", "NONE")
+        obv_period: Period for OBV smoothing
+        price_input_type: Price series to use ("close", "open", "high", "low", "hl/2", "ohlc/4")
+        price_method: Price smoothing method ("SMA", "EMA", "NONE")
+        price_period: Period for price smoothing
+        smoothing: Smoothing factor for ratio calculations
+        
+    Returns:
+        DataFrame with OBV/Price divergence column
+        
+    Raises:
+        MissingColumnsError: If required columns are missing
+        InvalidParameterError: If parameters are invalid
+        UnsupportedMethodError: If method is not supported
+    """
     required_cols = ['open', 'high', 'low', 'close', 'volume']
-    if not _check_required_cols(data, required_cols, col_name):
-        return None # Return None on failure
+    _check_required_cols(data, required_cols, "OBV/Price Divergence")
+    
+    if not isinstance(obv_period, int) or obv_period < 1:
+        raise InvalidParameterError(f"Invalid obv_period: {obv_period}")
+    if not isinstance(price_period, int) or price_period < 1:
+        raise InvalidParameterError(f"Invalid price_period: {price_period}")
+    if not isinstance(smoothing, (int, float)) or smoothing <= 0:
+        raise InvalidParameterError(f"Invalid smoothing: {smoothing}")
 
-    logger.debug(f"Computing {col_name}: method={method}, obv={obv_method}/{obv_period}, price={price_input_type}/{price_method}/{price_period}")
-    result_df = pd.DataFrame(index=data.index) # Create new DataFrame
+    logger.debug(f"Computing OBV/Price Divergence: method={method}, obv={obv_method}/{obv_period}, price={price_input_type}/{price_method}/{price_period}")
+    result_df = pd.DataFrame(index=data.index)
 
     try:
         # Select Price Series
@@ -46,98 +93,120 @@ def compute_obv_price_divergence(data: pd.DataFrame, method: str ="Difference", 
             "ohlc/4": (data['open'] + data['high'] + data['low'] + data['close']) / 4
         }
         selected_price = price_map.get(price_input_type.lower())
-        if selected_price is None: raise ValueError(f"Unsupported price input type: {price_input_type}")
+        if selected_price is None:
+            raise UnsupportedMethodError(f"Unsupported price input type: {price_input_type}")
 
         # Calculate OBV and smoothed OBV
         obv = ta.OBV(data['close'], data['volume'])
         obv_ma = obv
-        # Handle potential None or empty string for methods
         safe_obv_method = str(obv_method).upper() if obv_method else "NONE"
-        if safe_obv_method == "SMA": obv_ma = ta.SMA(obv, timeperiod=obv_period)
-        elif safe_obv_method == "EMA": obv_ma = ta.EMA(obv, timeperiod=obv_period)
-        elif safe_obv_method != "NONE": raise ValueError(f"Unsupported obv_method: {obv_method}")
+        if safe_obv_method == "SMA":
+            obv_ma = ta.SMA(obv, timeperiod=obv_period)
+        elif safe_obv_method == "EMA":
+            obv_ma = ta.EMA(obv, timeperiod=obv_period)
+        elif safe_obv_method != "NONE":
+            raise UnsupportedMethodError(f"Unsupported obv_method: {obv_method}")
 
         # Calculate Smoothed Price
         price_ma = selected_price
         safe_price_method = str(price_method).upper() if price_method else "NONE"
-        if safe_price_method == "SMA": price_ma = ta.SMA(selected_price, timeperiod=price_period)
-        elif safe_price_method == "EMA": price_ma = ta.EMA(selected_price, timeperiod=price_period)
-        elif safe_price_method != "NONE": raise ValueError(f"Unsupported price_method: {price_method}")
+        if safe_price_method == "SMA":
+            price_ma = ta.SMA(selected_price, timeperiod=price_period)
+        elif safe_price_method == "EMA":
+            price_ma = ta.EMA(selected_price, timeperiod=price_period)
+        elif safe_price_method != "NONE":
+            raise UnsupportedMethodError(f"Unsupported price_method: {price_method}")
 
         # Calculate Percentage Changes robustly
-        obv_change_percent = obv_ma.pct_change().multiply(100).replace([np.inf, -np.inf], np.nan)
-        price_change_percent = price_ma.pct_change().multiply(100).replace([np.inf, -np.inf], np.nan)
+        obv_change_percent = obv_ma.pct_change(fill_method=None).multiply(100).replace([np.inf, -np.inf], np.nan)
+        price_change_percent = price_ma.pct_change(fill_method=None).multiply(100).replace([np.inf, -np.inf], np.nan)
 
         # Calculate Divergence Metric
         metric = pd.Series(np.nan, index=data.index)
-        safe_method = str(method).capitalize() if method else ""
+        safe_method = str(method).strip().lower() if method else ""
         
-        if safe_method == "Difference":
+        if safe_method == "difference":
             metric = obv_change_percent - price_change_percent
-        elif safe_method == "Ratio":
-            # Add epsilon to denominator to avoid division by zero
+        elif safe_method == "ratio":
             denominator = price_change_percent.abs().add(max(1e-9, smoothing))
             metric = obv_change_percent.divide(denominator)
-        elif safe_method == "Log Ratio":
-            # Clip ratios to avoid log(0) or log(negative) issues
+        elif safe_method == "log ratio":
             obv_shifted = obv_ma.shift(1).replace(0, np.nan)
             price_shifted = price_ma.shift(1).replace(0, np.nan)
             obv_ratio = obv_ma.divide(obv_shifted).clip(lower=1e-9)
             price_ratio = price_ma.divide(price_shifted).clip(lower=1e-9)
-            # Use np.log1p on (ratio - 1) for better precision near 1? No, simple log is fine.
-            metric = np.log(obv_ratio.divide(price_ratio.replace(0, np.nan))) # Avoid div by zero in final step too
-        else: raise ValueError(f"Unsupported divergence method: {method}")
+            metric = np.log(obv_ratio.divide(price_ratio.replace(0, np.nan)))
+        else:
+            raise UnsupportedMethodError(f"Unsupported divergence method: {method}")
 
-        result_df[col_name] = metric.replace([np.inf, -np.inf], np.nan) # Add to new DF
+        result_df[OBV_PRICE_DIVERGENCE] = metric.replace([np.inf, -np.inf], np.nan)
         return result_df
 
     except Exception as e:
-        logger.error(f"Error calculating {col_name}: {e}", exc_info=True)
-        return None # Return None on failure
+        if isinstance(e, (MissingColumnsError, InvalidParameterError, UnsupportedMethodError)):
+            raise
+        logger.error(f"Error calculating OBV/Price Divergence: {e}", exc_info=True)
+        raise IndicatorError(f"Failed to calculate OBV/Price Divergence: {e}")
 
-def compute_volume_oscillator(data: pd.DataFrame, window: int = 20) -> Optional[pd.DataFrame]:
-    """Calculates Volume Oscillator. Returns a DataFrame with the result or None."""
-    col_name = VOLUME_OSCILLATOR
-    if not _check_required_cols(data, ['volume'], col_name):
-        return None
+def compute_volume_oscillator(data: pd.DataFrame, window: int = 20) -> pd.DataFrame:
+    """Calculates Volume Oscillator.
+    
+    Args:
+        data: DataFrame with volume data
+        window: Window size for moving average
+        
+    Returns:
+        DataFrame with Volume Oscillator column
+        
+    Raises:
+        MissingColumnsError: If volume column is missing
+        InvalidParameterError: If window is invalid
+    """
+    _check_required_cols(data, ['volume'], "Volume Oscillator")
+    
     if not isinstance(window, int) or window < 2:
-        logger.error(f"Window ({window}) must be an integer >= 2 for {col_name}. Skipping.")
-        return None
+        raise InvalidParameterError(f"Window ({window}) must be an integer >= 2")
 
-    logger.debug(f"Computing {col_name}: window={window}")
-    result_df = pd.DataFrame(index=data.index) # Create new DataFrame
+    logger.debug(f"Computing Volume Oscillator: window={window}")
+    result_df = pd.DataFrame(index=data.index)
+    
     try:
-        # Use min_periods=1 to avoid NaN at the start if window > length
         vol_ma = data['volume'].rolling(window=window, min_periods=1).mean()
-        
-        # Create mask for zero volumes (either current or MA)
         zero_mask = (data['volume'] == 0) | (vol_ma == 0)
-        
-        # Calculate oscillator only for non-zero volumes
-        result_df[col_name] = pd.Series(np.nan, index=data.index)  # Initialize with NaN
+        result_df[VOLUME_OSCILLATOR] = pd.Series(np.nan, index=data.index)
         non_zero_mask = ~zero_mask
         if non_zero_mask.any():
-            result_df.loc[non_zero_mask, col_name] = (
+            result_df.loc[non_zero_mask, VOLUME_OSCILLATOR] = (
                 (data.loc[non_zero_mask, 'volume'] - vol_ma[non_zero_mask])
                 .divide(vol_ma[non_zero_mask])
                 .replace([np.inf, -np.inf], np.nan)
             )
-        
         return result_df
 
     except Exception as e:
-        logger.error(f"Error calculating {col_name}: {e}", exc_info=True)
-        return None
+        if isinstance(e, (MissingColumnsError, InvalidParameterError)):
+            raise
+        logger.error(f"Error calculating Volume Oscillator: {e}", exc_info=True)
+        raise IndicatorError(f"Failed to calculate Volume Oscillator: {e}")
 
 
-def compute_vwap(data: pd.DataFrame) -> Optional[pd.DataFrame]:
-    """Calculates Volume Weighted Average Price (VWAP) cumulatively. Returns a DataFrame with the result or None."""
-    col_name = VWAP
-    if not _check_required_cols(data, ['high', 'low', 'close', 'volume'], col_name):
-        return None
+def compute_vwap(data: pd.DataFrame) -> pd.DataFrame:
+    """Calculates Volume Weighted Average Price (VWAP) cumulatively.
+    Returns a DataFrame with the result.
 
-    logger.debug(f"Computing {col_name}")
-    result_df = pd.DataFrame(index=data.index) # Create new DataFrame
+    Args:
+        data: DataFrame with OHLCV data
+    Returns:
+        DataFrame with VWAP column
+    Raises:
+        MissingColumnsError: If required columns are missing
+        IndicatorError: For other calculation errors
+    """
+    required_cols = ['high', 'low', 'close', 'volume']
+    _check_required_cols(data, required_cols, 'VWAP')
+
+    logger.debug(f"Computing VWAP")
+    result_df = pd.DataFrame(index=data.index)
     try:
         # Use typical price for VWAP
         typical_price = (data['high'] + data['low'] + data['close']) / 3
@@ -146,73 +215,179 @@ def compute_vwap(data: pd.DataFrame) -> Optional[pd.DataFrame]:
         cum_vol = safe_volume.cumsum()
         cum_vol_price = (typical_price * safe_volume).cumsum()
         # Avoid division by zero
-        result_df[col_name] = cum_vol_price.divide(cum_vol.replace(0, np.nan)).replace([np.inf, -np.inf], np.nan) # Add to new DF
+        vwap = cum_vol_price.divide(cum_vol).replace([np.inf, -np.inf], np.nan)
+        # Set VWAP to NaN where current volume is zero
+        vwap[data['volume'] == 0] = np.nan
+        result_df[VWAP] = vwap
         return result_df
-
     except Exception as e:
-        logger.error(f"Error calculating {col_name}: {e}", exc_info=True)
-        return None
+        if isinstance(e, MissingColumnsError):
+            raise
+        logger.error(f"Error calculating VWAP: {e}", exc_info=True)
+        raise IndicatorError(f"Failed to calculate VWAP: {e}")
 
 
-def _compute_volume_index(data: pd.DataFrame, col_name: str, volume_condition: callable) -> Optional[pd.DataFrame]:
-    """Helper for PVI and NVI calculation. Returns a DataFrame with the result or None."""
-    if not _check_required_cols(data, ['close', 'volume'], col_name):
-        return None
-
+def _compute_volume_index(data: pd.DataFrame, col_name: str, volume_condition: Callable[[float], bool]) -> Optional[pd.DataFrame]:
+    """Helper function to compute volume-based indices (PVI/NVI).
+    
+    Args:
+        data: DataFrame with OHLCV data
+        col_name: Name of the index column to compute
+        volume_condition: Function that takes a volume difference and returns bool
+    Returns:
+        DataFrame with the computed index column, or None if calculation fails
+    """
     logger.debug(f"Computing {col_name}")
-    result_df = pd.DataFrame(index=data.index) # Create new DataFrame
+    result_df = pd.DataFrame(index=data.index)
     try:
+        # If all volume is zero, return all NaN
+        if 'volume' in data.columns and (data['volume'] == 0).all():
+            result_df[col_name] = np.nan
+            return result_df
+
         # Calculate differences and percentage changes
         vol_diff = data['volume'].diff()
-        price_change_ratio = data['close'].pct_change().fillna(0.0) # Fill first NaN with 0 change
+        price_change_ratio = data['close'].pct_change().fillna(0.0)
 
         index_series = pd.Series(np.nan, index=data.index, dtype=float)
-        index_series.iloc[0] = 1000.0 # Start value
+        index_series.iloc[0] = 1000.0  # Start value
 
-        # Iterative approach for PVI/NVI logic
-        # Using vectorized operations where possible is faster, but the logic is inherently sequential.
-        # The loop remains the clearest way to implement this specific logic.
         for i in range(1, len(data)):
             prev_index = index_series.iloc[i-1]
-            if pd.isna(prev_index): # Should not happen after setting iloc[0]
-                 logger.error(f"Previous {col_name} is NaN at index {i-1}. Cannot proceed."); return None
+            if pd.isna(prev_index):
+                logger.error(f"Previous {col_name} is NaN at index {i-1}. Cannot proceed.")
+                return None
 
-            # Check volume condition
-            current_vol_diff = vol_diff.iloc[i]
-            if pd.notna(current_vol_diff) and volume_condition(current_vol_diff):
-                # Apply price change if volume condition met
-                current_price_change = price_change_ratio.iloc[i]
-                # Avoid extreme changes that might skew the index excessively
-                if pd.notna(current_price_change) and abs(current_price_change) < 10.0: # Limit change factor
-                    index_series.iloc[i] = prev_index * (1.0 + current_price_change)
+            current_vol_diff: Union[float, Any] = vol_diff.iloc[i]
+            if pd.notna(current_vol_diff) and isinstance(current_vol_diff, (int, float)) and volume_condition(float(current_vol_diff)):
+                current_price_change: Union[float, Any] = price_change_ratio.iloc[i]
+                if pd.notna(current_price_change) and isinstance(current_price_change, (int, float)) and abs(float(current_price_change)) < 10.0:
+                    index_series.iloc[i] = prev_index * (1.0 + float(current_price_change))
                 else:
-                    # If change is extreme or NaN, keep previous index value
-                    if pd.notna(current_price_change):
-                         logger.warning(f"{col_name} calc: Skipping extreme price change ({current_price_change:.2f}) at index {i}. Using previous {col_name}.")
+                    if pd.notna(current_price_change) and isinstance(current_price_change, (int, float)):
+                        logger.warning(f"{col_name} calc: Skipping extreme price change ({float(current_price_change):.2f}) at index {i}. Using previous {col_name}.")
                     index_series.iloc[i] = prev_index
             else:
-                # If volume condition not met, index remains unchanged
                 index_series.iloc[i] = prev_index
 
-        # Handle potential infinities just in case, although checks should prevent them
-        result_df[col_name] = index_series.replace([np.inf, -np.inf], np.nan) # Add to new DF
-        # Forward fill any remaining NaNs (should only be at the very start if price calc failed)
+        result_df[col_name] = index_series.replace([np.inf, -np.inf], np.nan)
         result_df[col_name] = result_df[col_name].ffill()
-
         return result_df
 
     except Exception as e:
         logger.error(f"Error calculating {col_name}: {e}", exc_info=True)
         return None
 
-def compute_pvi(data: pd.DataFrame) -> Optional[pd.DataFrame]:
-    """Calculates Positive Volume Index (PVI)."""
-    return _compute_volume_index(data, PVI, lambda vol_diff: vol_diff > 0)
+def compute_pvi(data: pd.DataFrame) -> pd.DataFrame:
+    """Calculates Positive Volume Index (PVI) cumulatively.
+    Returns a DataFrame with the result.
 
-def compute_nvi(data: pd.DataFrame) -> Optional[pd.DataFrame]:
-    """Calculates Negative Volume Index (NVI)."""
-    return _compute_volume_index(data, NVI, lambda vol_diff: vol_diff < 0)
+    Args:
+        data: DataFrame with OHLCV data
+    Returns:
+        DataFrame with PVI column
+    Raises:
+        MissingColumnsError: If required columns are missing
+        IndicatorError: For other calculation errors
+    """
+    required_cols = ['close', 'volume']
+    _check_required_cols(data, required_cols, 'PVI')
+
+    logger.debug(f"Computing PVI")
+    result_df = _compute_volume_index(data, PVI, lambda x: x > 0)
+    if result_df is None:
+        raise IndicatorError("Failed to calculate PVI")
+    return result_df
+
+def compute_nvi(data: pd.DataFrame) -> pd.DataFrame:
+    """Calculates Negative Volume Index (NVI) cumulatively.
+    Returns a DataFrame with the result.
+
+    Args:
+        data: DataFrame with OHLCV data
+    Returns:
+        DataFrame with NVI column
+    Raises:
+        MissingColumnsError: If required columns are missing
+        IndicatorError: For other calculation errors
+    """
+    required_cols = ['close', 'volume']
+    _check_required_cols(data, required_cols, 'NVI')
+
+    logger.debug(f"Computing NVI")
+    result_df = _compute_volume_index(data, NVI, lambda x: x < 0)
+    if result_df is None:
+        raise IndicatorError("Failed to calculate NVI")
+    return result_df
+
+def compute_returns(data: pd.DataFrame, period: int = 1) -> pd.Series:
+    """Compute simple returns for the given period on the 'close' column."""
+    # Accept period as int or dict (from JSON params)
+    if isinstance(period, dict):
+        period = int(period.get('default', 1))
+    _check_required_cols(data, ['close'], 'Returns')
+    if not isinstance(period, int) or period < 1:
+        raise InvalidParameterError(f"Invalid period: {period}")
+    if len(data) < period + 1:
+        # Not enough data, return a Series of NaN with correct index
+        returns = pd.Series([np.nan] * len(data), index=data.index, name=f"returns_{period}")
+        return returns
+    returns = data['close'].pct_change(periods=period)
+    returns.name = f"returns_{period}"
+    return returns
+
+def compute_volatility(data: pd.DataFrame, period: int = 20) -> pd.Series:
+    """Compute rolling volatility (stddev of returns) for the given period on the 'close' column."""
+    if isinstance(period, dict):
+        period = int(period.get('default', 20))
+    _check_required_cols(data, ['close'], 'Volatility')
+    if not isinstance(period, int) or period < 1:
+        raise InvalidParameterError(f"Invalid period: {period}")
+    if len(data) < period + 1:
+        # Not enough data, return a Series of NaN with correct index
+        volatility = pd.Series([np.nan] * len(data), index=data.index, name=f"volatility_{period}")
+        return volatility
+    returns = data['close'].pct_change()
+    volatility = returns.rolling(window=period).std()
+    volatility.name = f"volatility_{period}"
+    return volatility
+
+def custom_rsi(data, period=14):
+    import pandas as pd
+    delta = data['close'].diff()
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    avg_gain = gain.rolling(window=period, min_periods=period).mean()
+    avg_loss = loss.rolling(window=period, min_periods=period).mean()
+    rs = avg_gain / (avg_loss + 1e-9)
+    rsi = 100 - (100 / (1 + rs))
+    return pd.DataFrame({'CUSTOM_RSI': rsi})
 
 # --- Removed apply_all_custom_indicators function ---
 # This function is no longer needed as main.py ensures custom indicator
 # defaults are added to the processing list if necessary.
+
+# Dictionary of all custom indicators for easy access
+custom_indicators = {
+    'obv_price_divergence': compute_obv_price_divergence,
+    'volume_oscillator': compute_volume_oscillator,
+    'vwap': compute_vwap,
+    'pvi': compute_pvi,
+    'nvi': compute_nvi,
+    'returns': compute_returns,
+    'volatility': compute_volatility,
+    'custom_rsi': custom_rsi
+}
+
+# Registry for dynamically registered custom indicators
+_custom_indicator_registry = {}
+
+def register_custom_indicator(name: str, func: Callable) -> None:
+    """Register a custom indicator function.
+    
+    Args:
+        name: Name of the indicator
+        func: Function that computes the indicator
+    """
+    _custom_indicator_registry[name] = func
+    custom_indicators[name] = func

@@ -20,7 +20,6 @@ import shutil
 # (Adjust based on actual function locations if refactored)
 import sqlite_manager
 import leaderboard_manager
-import visualization_generator
 import config as app_config
 
 try:
@@ -452,6 +451,9 @@ def run_interim_reports(
         stage_name: Name of the analysis stage
         correlation_data: Optional pre-fetched correlation data
     """
+    # Import here to avoid circular dependency
+    import visualization_generator
+    
     logger.info(f"--- Starting {stage_name} Reports ---")
     
     interim_correlations = correlation_data
@@ -522,3 +524,321 @@ def run_interim_reports(
 
     logger.info(f"--- Finished {stage_name} Reports ---")
 # --- End of Interim Report Function ---
+
+def is_valid_symbol(symbol: str) -> bool:
+    """Validate trading symbol format.
+    
+    Args:
+        symbol: Trading symbol to validate
+        
+    Returns:
+        bool: True if valid symbol format
+        
+    Valid symbols must:
+    - Be uppercase alphanumeric
+    - Start with a letter
+    - Be at least 2 characters long
+    - End with USDT, BTC, ETH, or BUSD
+    """
+    if not isinstance(symbol, str):
+        return False
+    # Must be uppercase alphanumeric, start with letter, at least 2 chars
+    if not re.match(r'^[A-Z][A-Z0-9]{1,}$', symbol):
+        return False
+    # Must end with valid quote currency
+    return bool(re.match(r'^[A-Z0-9]+(USDT|BTC|ETH|BUSD)$', symbol))
+
+def is_valid_timeframe(timeframe: str) -> bool:
+    """Validate timeframe format.
+    
+    Args:
+        timeframe: Timeframe to validate (e.g. 1h, 4h, 1d)
+        
+    Returns:
+        bool: True if valid timeframe format
+        
+    Valid timeframes are:
+    - Minutes: 1m, 3m, 5m, 15m, 30m
+    - Hours: 1h, 2h, 4h, 6h, 8h, 12h
+    - Days: 1d, 3d
+    - Weeks: 1w
+    - Month: 1M (capital M)
+    """
+    if not isinstance(timeframe, str):
+        return False
+    # Must match exactly one of the valid timeframes
+    valid_timeframes = {
+        '1m', '3m', '5m', '15m', '30m',  # Minutes
+        '1h', '2h', '4h', '6h', '8h', '12h',  # Hours
+        '1d', '3d',  # Days
+        '1w',  # Weeks
+        '1M'  # Month (capital M)
+    }
+    return timeframe in valid_timeframes
+
+def get_max_lag(data: pd.DataFrame) -> int:
+    """Calculate maximum valid lag based on data length.
+    
+    Args:
+        data: DataFrame with price data
+        
+    Returns:
+        int: Maximum valid lag value
+    """
+    if data is None or data.empty:
+        return 0
+        
+    # Minimum points needed for regression
+    min_points = app_config.DEFAULTS.get("min_regression_points", 30)
+    
+    # Estimate NaN rows (up to 5% of data)
+    estimated_nan_rows = min(100, int(len(data) * 0.05))
+    effective_data_len = max(0, len(data) - estimated_nan_rows)
+    
+    # Calculate max possible lag
+    max_possible_lag = max(0, effective_data_len - min_points - 1)
+    
+    # Limit to reasonable value
+    default_max = app_config.DEFAULTS.get("max_lag", 7)
+    suggested_max = min(max_possible_lag, max(30, int(effective_data_len * 0.1)), 500)
+    
+    return min(suggested_max, default_max)
+
+def get_data_date_range(data: pd.DataFrame) -> str:
+    """Get date range string from data.
+    Args:
+        data: DataFrame with date column or DatetimeIndex
+    Returns:
+        str: Date range string in YYYY-MM-DD-YYYY-MM-DD format
+    Raises:
+        ValueError: If the date range is invalid (e.g., non-monotonic or contains future dates)
+    """
+    if data is None or data.empty:
+        return "Unknown"
+    try:
+        # Prefer 'date' column if present, else use DatetimeIndex
+        if 'date' in data.columns:
+            min_date = data['date'].min()
+            max_date = data['date'].max()
+            date_series = data['date']
+        elif isinstance(data.index, pd.DatetimeIndex):
+            min_date = data.index.min()
+            max_date = data.index.max()
+            date_series = data.index
+        else:
+            return "Unknown"
+        if pd.isna(min_date) or pd.isna(max_date):
+            raise ValueError("Invalid date range: NaN values present")
+        # Ensure UTC timezone
+        if hasattr(min_date, 'tzinfo') and min_date.tzinfo is None:
+            min_date = min_date.tz_localize('UTC')
+        if hasattr(max_date, 'tzinfo') and max_date.tzinfo is None:
+            max_date = max_date.tz_localize('UTC')
+        # Check for non-monotonic dates
+        if hasattr(date_series, 'is_monotonic_increasing') and not date_series.is_monotonic_increasing:
+            raise ValueError("Invalid date range: Dates must be monotonically increasing")
+        # Check for future dates
+        now = pd.Timestamp.now(tz='UTC')
+        if max_date > now:
+            raise ValueError("Invalid date range: Contains future dates")
+        return f"{min_date.strftime('%Y-%m-%d')}-{max_date.strftime('%Y-%m-%d')}"
+    except ValueError:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting date range: {e}")
+        return "Error"
+
+def flatten_dict(d: Dict[str, Any], parent_key: str = '', sep: str = '.') -> Dict[str, Any]:
+    """Flattens a nested dictionary into a single level dictionary.
+    
+    Args:
+        d: The dictionary to flatten
+        parent_key: The parent key for nested dictionaries
+        sep: The separator to use between nested keys
+        
+    Returns:
+        A flattened dictionary with keys joined by the separator
+    """
+    items: List[Tuple[str, Any]] = []
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.extend(flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
+
+def dict_hash(d: Dict[str, Any]) -> str:
+    """Generates a stable hash for a dictionary.
+    
+    Args:
+        d: The dictionary to hash
+        
+    Returns:
+        A hexadecimal string hash of the dictionary
+    """
+    # First flatten the dictionary to handle nested structures
+    flat_dict = flatten_dict(d)
+    # Round any floats for consistency
+    rounded_dict = round_floats_for_hashing(flat_dict)
+    # Sort keys and convert to JSON string
+    dict_str = json.dumps(rounded_dict, sort_keys=True, separators=(',', ':'))
+    # Generate SHA256 hash
+    return hashlib.sha256(dict_str.encode('utf-8')).hexdigest()
+
+def safe_divide(numerator: float, denominator: float) -> float:
+    """Safely divide two numbers, returning 0 if denominator is 0."""
+    if denominator == 0:
+        return 0.0
+    return numerator / denominator
+
+# --- Missing Functions for Tests ---
+
+def format_timedelta(seconds: int) -> str:
+    """Format seconds into a human-readable time string."""
+    if seconds < 60:
+        return f"{seconds}s"
+    elif seconds < 3600:
+        minutes = seconds // 60
+        remaining_seconds = seconds % 60
+        if remaining_seconds == 0:
+            return f"{minutes}m"
+        return f"{minutes}m {remaining_seconds}s"
+    else:
+        hours = seconds // 3600
+        remaining_minutes = (seconds % 3600) // 60
+        remaining_seconds = seconds % 60
+        if remaining_minutes == 0 and remaining_seconds == 0:
+            return f"{hours}h"
+        elif remaining_seconds == 0:
+            return f"{hours}h {remaining_minutes}m"
+        return f"{hours}h {remaining_minutes}m {remaining_seconds}s"
+
+class Timer:
+    """Simple timer class for measuring execution time."""
+    def __init__(self):
+        self.start_time = None
+        self.end_time = None
+    
+    def start(self):
+        """Start the timer."""
+        self.start_time = datetime.now()
+        return self
+    
+    def stop(self):
+        """Stop the timer."""
+        self.end_time = datetime.now()
+        return self.elapsed
+    
+    @property
+    def elapsed(self) -> timedelta:
+        """Get elapsed time."""
+        if self.start_time is None:
+            return timedelta(0)
+        end = self.end_time or datetime.now()
+        return end - self.start_time
+    
+    def elapsed_seconds(self) -> float:
+        """Get elapsed time in seconds."""
+        return self.elapsed.total_seconds()
+    
+    def __enter__(self):
+        """Context manager entry."""
+        self.start()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.stop()
+
+def human_readable_size(size_bytes: int) -> str:
+    """Convert bytes to human readable format."""
+    if size_bytes == 0:
+        return "0.0 B"
+    
+    size_names = ["B", "KB", "MB", "GB", "TB"]
+    i = 0
+    while size_bytes >= 1024 and i < len(size_names) - 1:
+        size_bytes /= 1024.0
+        i += 1
+    
+    return f"{size_bytes:.1f} {size_names[i]}"
+
+def rolling_apply(arr: np.ndarray, window: int, func: Callable) -> np.ndarray:
+    """Apply a function to rolling windows of an array."""
+    if len(arr) < window:
+        return np.array([])
+    
+    # Initialize result array with NaN
+    result = np.full(len(arr), np.nan)
+    
+    # Apply function to rolling windows starting from index window-1
+    for i in range(window - 1, len(arr)):
+        window_data = arr[i - window + 1:i + 1]
+        result[i] = func(window_data)
+    
+    return result
+
+def chunks(lst: list, n: int):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
+def retry(tries: int = 3, delay: float = 1.0):
+    """Decorator to retry a function on failure."""
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            last_exception = None
+            for attempt in range(tries):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    last_exception = e
+                    if attempt < tries - 1:
+                        import time
+                        time.sleep(delay)
+            raise last_exception
+        return wrapper
+    return decorator
+
+def parse_timeframe(timeframe: str) -> int:
+    """Parse timeframe string into seconds."""
+    if not timeframe:
+        raise ValueError("Timeframe cannot be empty")
+    
+    # Handle common timeframe formats
+    timeframe = timeframe.upper()
+    
+    if timeframe.endswith('M'):
+        minutes = int(timeframe[:-1])
+        return minutes * 60
+    elif timeframe.endswith('H'):
+        hours = int(timeframe[:-1])
+        return hours * 3600
+    elif timeframe.endswith('D'):
+        days = int(timeframe[:-1])
+        return days * 86400
+    elif timeframe.endswith('W'):
+        weeks = int(timeframe[:-1])
+        return weeks * 604800
+    elif timeframe.endswith('Y'):
+        years = int(timeframe[:-1])
+        return years * 31536000
+    else:
+        # Assume minutes if no unit specified
+        minutes = int(timeframe)
+        return minutes * 60
+
+def is_number(value: Any) -> bool:
+    """Check if a value is a number."""
+    try:
+        float(value)
+        return True
+    except (TypeError, ValueError):
+        return False
+
+def ensure_dir(directory: Union[str, Path]) -> Path:
+    """Ensure a directory exists, creating it if necessary."""
+    dir_path = Path(directory)
+    dir_path.mkdir(parents=True, exist_ok=True)
+    return dir_path

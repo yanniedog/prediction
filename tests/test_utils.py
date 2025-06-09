@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Any, Tuple, Generator, cast
 import json
 import os
+import time
 
 # Import the module to test
 import utils
@@ -318,4 +319,109 @@ def test_run_interim_reports(temp_dir: Path, monkeypatch) -> None:
     
     # Verify no report files were created for empty data
     empty_report_files = list(temp_dir.glob("test_empty_EMPTY_*.txt"))
-    assert len(empty_report_files) == 0 
+    assert len(empty_report_files) == 0
+
+def test_safe_divide():
+    assert utils.safe_divide(10, 2) == 5
+    assert utils.safe_divide(10, 0) == 0
+    assert utils.safe_divide(0, 10) == 0
+    assert utils.safe_divide(-10, 2) == -5
+    assert utils.safe_divide(10, -2) == -5
+
+def test_rolling_apply():
+    arr = np.arange(10)
+    result = utils.rolling_apply(arr, 3, np.mean)
+    assert np.allclose(result[2:], [1, 2, 3, 4, 5, 6, 7, 8])
+    assert np.isnan(result[0]) and np.isnan(result[1])
+    # Edge case: window larger than array
+    arr = np.arange(2)
+    result = utils.rolling_apply(arr, 3, np.mean)
+    assert np.all(np.isnan(result))
+
+def test_flatten_dict():
+    d = {"a": {"b": 1, "c": {"d": 2}}, "e": 3}
+    flat = utils.flatten_dict(d)
+    assert flat["a.b"] == 1
+    assert flat["a.c.d"] == 2
+    assert flat["e"] == 3
+
+def test_dict_hash():
+    d1 = {"a": 1, "b": 2}
+    d2 = {"b": 2, "a": 1}
+    assert utils.dict_hash(d1) == utils.dict_hash(d2)
+    d3 = {"a": 1, "b": 3}
+    assert utils.dict_hash(d1) != utils.dict_hash(d3)
+
+def test_chunks():
+    l = list(range(10))
+    c = list(utils.chunks(l, 3))
+    assert c[0] == [0, 1, 2]
+    assert c[-1] == [9]
+    # Edge case: chunk size larger than list
+    c = list(utils.chunks(l, 20))
+    assert c[0] == l
+
+def test_is_number():
+    assert utils.is_number(1)
+    assert utils.is_number(1.5)
+    assert utils.is_number("1")
+    assert not utils.is_number("a")
+    assert not utils.is_number(None)
+
+def test_parse_timeframe():
+    assert utils.parse_timeframe("1h") == 3600
+    assert utils.parse_timeframe("1d") == 86400
+    assert utils.parse_timeframe("15m") == 900
+    with pytest.raises(ValueError):
+        utils.parse_timeframe("bad")
+
+def test_format_timedelta():
+    assert utils.format_timedelta(3661) == "1h 1m 1s"
+    assert utils.format_timedelta(59) == "59s"
+    assert utils.format_timedelta(3600) == "1h"
+
+def test_human_readable_size():
+    assert utils.human_readable_size(1023) == "1023.0 B"
+    assert utils.human_readable_size(1024) == "1.0 KB"
+    assert utils.human_readable_size(1024**2) == "1.0 MB"
+    assert utils.human_readable_size(1024**3) == "1.0 GB"
+
+def test_ensure_dir(tmp_path):
+    d = tmp_path / "subdir"
+    utils.ensure_dir(d)
+    assert d.exists() and d.is_dir()
+    # Should not raise if already exists
+    utils.ensure_dir(d)
+
+def test_retry():
+    calls = {"count": 0}
+    
+    @utils.retry(tries=3, delay=0.01)
+    def flaky():
+        calls["count"] += 1
+        if calls["count"] < 2:
+            raise ValueError("fail")
+        return 42
+    
+    assert flaky() == 42
+    
+    # Should raise after max tries
+    calls["count"] = 0
+    
+    @utils.retry(tries=2, delay=0.01)
+    def always_fail():
+        raise ValueError("fail")
+    
+    with pytest.raises(ValueError):
+        always_fail()
+
+def test_timer():
+    t = utils.Timer()
+    t.start()
+    time.sleep(0.01)
+    elapsed = t.stop()
+    assert elapsed.total_seconds() > 0
+    # Timer context manager
+    with utils.Timer() as timer:
+        time.sleep(0.01)
+    assert timer.elapsed.total_seconds() > 0 

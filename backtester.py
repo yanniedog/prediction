@@ -33,9 +33,48 @@ logger = logging.getLogger(__name__)
 # Get constant from config
 MIN_REGRESSION_POINTS = config.DEFAULTS.get("min_regression_points", 30) # Fallback default
 
+class Strategy:
+    """A class representing a trading strategy with entry and exit conditions."""
+    def __init__(self, entry_condition: Callable, exit_condition: Callable):
+        """
+        Initialize a Strategy with entry and exit conditions.
+        
+        Args:
+            entry_condition: A function that takes (data, params) and returns a Series of entry signals
+            exit_condition: A function that takes (data, params) and returns a Series of exit signals
+        """
+        self.entry_condition = entry_condition
+        self.exit_condition = exit_condition
+    
+    def __call__(self, data: pd.DataFrame, params: Dict[str, Any]) -> pd.Series:
+        """
+        Execute the strategy on the given data.
+        
+        Args:
+            data: DataFrame containing price/indicator data
+            params: Dictionary of strategy parameters
+            
+        Returns:
+            pd.Series: Series of position signals (1 for long, -1 for short, 0 for neutral)
+        """
+        entry_signals = self.entry_condition(data, params)
+        exit_signals = self.exit_condition(data, params)
+        
+        # Combine signals (entry overrides exit)
+        positions = pd.Series(0, index=data.index)
+        positions[entry_signals > 0] = 1
+        positions[entry_signals < 0] = -1
+        positions[exit_signals != 0] = 0
+        
+        return positions
+
 class Backtester:
     def __init__(self, data_manager, indicator_factory):
         """Initialize the Backtester with data and indicator managers."""
+        if data_manager is None:
+            raise ValueError("data_manager cannot be None")
+        if indicator_factory is None:
+            raise ValueError("indicator_factory cannot be None")
         self.data_manager = data_manager
         self.indicator_factory = indicator_factory
         self._validate_dependencies()
@@ -103,6 +142,9 @@ class Backtester:
 
     def calculate_returns(self, data: pd.DataFrame, positions: pd.Series, transaction_cost: float = 0.0) -> pd.Series:
         """Calculate strategy returns including transaction costs."""
+        # Handle empty data or missing 'close' column
+        if data is None or data.empty or 'close' not in data.columns or positions is None or positions.empty:
+            return pd.Series(dtype=float)
         # Calculate price returns
         price_returns = data['close'].pct_change()
         
@@ -221,6 +263,11 @@ class Backtester:
                             params: Dict[str, Any], train_size: float = 0.7, 
                             step_size: float = 0.1) -> Dict[str, Any]:
         """Perform walk-forward analysis."""
+        # Validate train_size and step_size
+        if not (0 < train_size < 1):
+            raise ValueError("train_size must be between 0 and 1 (exclusive)")
+        if not (0 < step_size < 1):
+            raise ValueError("step_size must be between 0 and 1 (exclusive)")
         n_points = len(data)
         train_size_points = int(n_points * train_size)
         step_size_points = int(n_points * step_size)
@@ -247,9 +294,23 @@ class Backtester:
             test_results = self.run_strategy(test_data, strategy_func, params)
             test_metrics.append(self.calculate_performance_metrics(test_results['returns']))
         
+        # Calculate combined metrics by averaging across all windows
+        combined_metrics = {}
+        if train_metrics and test_metrics:
+            # Average metrics across all windows
+            for metric in train_metrics[0].keys():
+                train_values = [m[metric] for m in train_metrics]
+                test_values = [m[metric] for m in test_metrics]
+                combined_metrics[metric] = {
+                    'train': np.mean(train_values),
+                    'test': np.mean(test_values),
+                    'overall': np.mean(train_values + test_values)
+                }
+        
         return {
             'train_metrics': train_metrics,
-            'test_metrics': test_metrics
+            'test_metrics': test_metrics,
+            'combined_metrics': combined_metrics
         }
 
     def run_monte_carlo_simulation(self, returns: pd.Series, n_simulations: int = 1000, 
@@ -257,7 +318,9 @@ class Backtester:
         """Run Monte Carlo simulation of strategy returns."""
         if not self.SCIPY_AVAILABLE:
             raise ImportError("scipy required for Monte Carlo simulation")
-        
+        # Validate parameters
+        if n_simulations <= 0 or time_steps <= 0:
+            raise ValueError("n_simulations and time_steps must be positive integers")
         # Calculate mean and standard deviation of returns
         mean_return = returns.mean()
         std_return = returns.std()
@@ -314,8 +377,8 @@ class Backtester:
             # Try to convert from ms since epoch
             returns = returns.copy()
             returns.index = pd.to_datetime(returns.index, unit='ms')
-        # Resample returns to monthly frequency
-        monthly_returns = returns.resample('M').apply(lambda x: (1 + x).prod() - 1)
+        # Resample returns to monthly frequency (use 'ME' instead of deprecated 'M')
+        monthly_returns = returns.resample('ME').apply(lambda x: (1 + x).prod() - 1)
         # Create a DataFrame with year and month as indices
         monthly_returns_df = pd.DataFrame({
             'year': monthly_returns.index.year,
@@ -329,7 +392,7 @@ class Backtester:
             values='returns'
         )
         # Create the heatmap
-        fig, ax = plt.subplots(figsize=(12, 8))
+        fig, ax = plt.subplots(figsize=(12, 6))
         sns.heatmap(heatmap_data, annot=True, fmt='.2%', cmap='RdYlGn', 
                    center=0, ax=ax)
         ax.set_title('Monthly Returns Heatmap')
@@ -368,6 +431,10 @@ class Backtester:
     def compare_with_benchmark(self, strategy_returns: pd.Series, 
                              benchmark_returns: pd.Series) -> Dict[str, Any]:
         """Compare strategy performance with a benchmark."""
+        # Validate input series lengths
+        if len(strategy_returns) != len(benchmark_returns):
+            raise ValueError("Strategy returns and benchmark returns must have the same length")
+            
         # Calculate metrics for both strategy and benchmark
         strategy_metrics = self.calculate_performance_metrics(strategy_returns)
         benchmark_metrics = self.calculate_performance_metrics(benchmark_returns)
@@ -392,6 +459,97 @@ class Backtester:
             'correlation': correlation,
             'information_ratio': information_ratio
         }
+
+def _calculate_returns(positions: pd.Series, prices: pd.Series) -> pd.Series:
+    """Calculate strategy returns from positions and prices."""
+    if positions.empty or prices.empty:
+        raise ValueError("Empty positions or prices series")
+    if not positions.index.equals(prices.index):
+        raise ValueError("Position and price indices must match")
+    
+    # Calculate price returns
+    price_returns = prices.pct_change()
+    
+    # Calculate strategy returns (using previous day's position)
+    strategy_returns = positions.shift(1) * price_returns
+    
+    return strategy_returns
+
+def _calculate_drawdown(returns: pd.Series) -> pd.Series:
+    """Calculate drawdown series from returns."""
+    if returns.empty:
+        raise ValueError("Empty returns series")
+    
+    # Calculate cumulative returns
+    cum_returns = (1 + returns).cumprod()
+    
+    # Calculate running maximum
+    running_max = cum_returns.expanding().max()
+    
+    # Calculate drawdown
+    drawdown = cum_returns / running_max - 1
+    
+    return drawdown
+
+def _calculate_max_drawdown(returns: pd.Series) -> float:
+    """Calculate maximum drawdown from returns."""
+    drawdown = _calculate_drawdown(returns)
+    return drawdown.min()
+
+def _calculate_sharpe_ratio(returns: pd.Series, risk_free_rate: float = 0.02) -> float:
+    """Calculate Sharpe ratio from returns."""
+    if returns.empty:
+        raise ValueError("Empty returns series")
+    
+    # Annualized return
+    annual_return = returns.mean() * 252
+    
+    # Annualized volatility
+    annual_vol = returns.std() * np.sqrt(252)
+    
+    # Sharpe ratio
+    if annual_vol == 0:
+        return 0.0
+    
+    return (annual_return - risk_free_rate) / annual_vol
+
+def _calculate_sortino_ratio(returns: pd.Series, risk_free_rate: float = 0.02) -> float:
+    """Calculate Sortino ratio from returns."""
+    if returns.empty:
+        raise ValueError("Empty returns series")
+    
+    # Annualized return
+    annual_return = returns.mean() * 252
+    
+    # Downside deviation (only negative returns)
+    downside_returns = returns[returns < 0]
+    if len(downside_returns) == 0:
+        return float('inf')  # No downside returns
+    
+    downside_deviation = downside_returns.std() * np.sqrt(252)
+    
+    # Sortino ratio
+    if downside_deviation == 0:
+        return float('inf')
+    
+    return (annual_return - risk_free_rate) / downside_deviation
+
+def _calculate_win_rate(returns: pd.Series) -> float:
+    """Calculate win rate from returns."""
+    if returns.empty:
+        raise ValueError("Empty returns series")
+    
+    # Count winning trades (positive returns)
+    winning_trades = (returns > 0).sum()
+    
+    # Count total trades (non-zero returns)
+    total_trades = (returns != 0).sum()
+    
+    # Calculate win rate
+    if total_trades == 0:
+        return 0.0
+    
+    return winning_trades / total_trades
 
 def run_backtest(
     db_path: Path,
@@ -494,9 +652,8 @@ def run_backtest(
 
     # --- Historical Check Loop ---
     backtest_results = []
-    # Cache indicators calculated during this check (local scope)
+    positions_by_lag = {}
     indicator_series_cache_local: Dict[int, pd.DataFrame] = {}
-
     total_iterations = max_lag_backtest * num_backtest_points
     completed_iterations = 0
 
@@ -548,6 +705,9 @@ def run_backtest(
 
         logger.info(f"Historical Check Lag {lag}: Using Predictor CfgID {cfg_id} ('{ind_name}') from FINAL leaderboard.")
 
+        # Prepare a list to collect positions for this lag
+        lag_positions = []
+        lag_indices = []
         for i in range(num_backtest_points):
             # t = index for predictor calculation
             # target_idx = index for actual price verification
@@ -631,6 +791,16 @@ def run_backtest(
                 error = predicted_price - actual_price
                 pct_error = (error / actual_price) * 100 if actual_price != 0 else np.inf
 
+                # Determine position: 1 if predicted > actual, -1 if predicted < actual, 0 if equal
+                if predicted_price > actual_price:
+                    position = 1
+                elif predicted_price < actual_price:
+                    position = -1
+                else:
+                    position = 0
+                lag_positions.append(position)
+                lag_indices.append(full_historical_data.index[target_idx])
+
                 backtest_results.append({
                     'Lag': lag,
                     'Test Point Index (i)': i,
@@ -651,13 +821,17 @@ def run_backtest(
             finally:
                 completed_iterations += 1 # Ensure progress increments even on error within loop
 
+        # After loop, create a Series for this lag's positions
+        if lag_positions and lag_indices:
+            positions_by_lag[lag] = pd.Series(lag_positions, index=lag_indices, name=f'positions_lag_{lag}')
+
     print("\nHistorical check iterations complete.") # Final newline after progress indicator
 
     # 4. Analyze and Report Results
     if not backtest_results:
         print("\nHistorical check finished with no results.")
         logger.warning("Historical check completed but no results were generated.")
-        return
+        return {"positions_by_lag": positions_by_lag, "results_df": None}
 
     results_df = pd.DataFrame(backtest_results)
 
@@ -710,6 +884,8 @@ def run_backtest(
     except Exception as e:
         print(f"\nError saving detailed historical check results: {e}")
         logger.error(f"Failed to save historical check CSV: {e}", exc_info=True)
+    # Return positions_by_lag and results_df for further analysis
+    return {"positions_by_lag": positions_by_lag, "results_df": results_df}
 
 # Example of how to potentially call it (e.g., from main.py prompt)
 # if __name__ == '__main__':

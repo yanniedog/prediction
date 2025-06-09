@@ -307,45 +307,121 @@ def process_correlations(
                 logger.error(f"Error closing correlation DB connection: {close_err}")
 
 class CorrelationCalculator:
+    """Calculate and analyze correlations between financial indicators and price data."""
+    
     def __init__(self):
-        """Initialize the CorrelationCalculator."""
-        self._validate_dependencies()
-        self.logger = logging.getLogger(__name__)
-
-    def _validate_dependencies(self):
-        """Validate that all required dependencies are available."""
-        try:
-            import scipy
-            self.SCIPY_AVAILABLE = True
-        except ImportError:
-            logger.warning("scipy not available. Some functionality may be limited.")
-            self.SCIPY_AVAILABLE = False
-        
+        """Initialize correlation calculator with improved error handling and dependency checks."""
+        self.min_correlation = -1.0
+        self.max_correlation = 1.0
+        self.min_data_points = 100
+        self.max_lag = 100
+        # Dependency flags
         try:
             import sklearn
             self.SKLEARN_AVAILABLE = True
         except ImportError:
-            logger.warning("scikit-learn not available. Some functionality may be limited.")
             self.SKLEARN_AVAILABLE = False
-
-    def calculate_correlation(self, data1: pd.Series, data2: pd.Series, method: Literal['pearson', 'kendall', 'spearman'] = 'pearson') -> float:
-        """Calculate correlation between two series."""
-        if not self.SCIPY_AVAILABLE:
-            raise ImportError("scipy required for correlation calculation")
+        try:
+            import scipy
+            self.SCIPY_AVAILABLE = True
+        except ImportError:
+            self.SCIPY_AVAILABLE = False
+        try:
+            import networkx
+            self.NETWORKX_AVAILABLE = True
+        except ImportError:
+            self.NETWORKX_AVAILABLE = False
         
-        # Handle missing values
-        valid_data = pd.concat([data1, data2], axis=1).dropna()
-        if len(valid_data) < 2:
+    def calculate_correlation(self, data1: pd.Series, data2: pd.Series, method: str = 'pearson') -> float:
+        """Calculate correlation between two series.
+        
+        Args:
+            data1: First data series
+            data2: Second data series
+            method: Correlation method ('pearson', 'spearman', 'kendall')
+            
+        Returns:
+            float: Correlation coefficient
+        """
+        if not isinstance(data1, pd.Series) or not isinstance(data2, pd.Series):
+            raise TypeError("data1 and data2 must be pandas Series")
+        
+        # Drop any NaN values
+        valid_mask = ~(data1.isna() | data2.isna())
+        if not valid_mask.any():
             return np.nan
         
-        if method == 'pearson':
-            correlation, _ = pearsonr(valid_data.iloc[:, 0].values, valid_data.iloc[:, 1].values)
-            return float(correlation)
-        elif method == 'spearman':
-            correlation = valid_data.iloc[:, 0].corr(valid_data.iloc[:, 1], method='spearman')
-            return float(correlation)
-        else:
-            raise ValueError(f"Unsupported correlation method: {method}")
+        return data1[valid_mask].corr(data2[valid_mask], method=method)
+
+    def calculate_correlations(self, data: pd.DataFrame, indicator: str, max_lag: int) -> Optional[Dict[int, float]]:
+        """Calculate correlations for all lags with improved error handling."""
+        try:
+            if not isinstance(data, pd.DataFrame):
+                raise ValueError("Data must be a pandas DataFrame")
+                
+            if indicator not in data.columns:
+                raise ValueError(f"Indicator {indicator} not found in data")
+                
+            if not isinstance(max_lag, int) or max_lag < 0:
+                raise ValueError(f"Invalid max_lag value: {max_lag}")
+                
+            if max_lag > self.max_lag:
+                raise ValueError(f"max_lag exceeds maximum allowed value of {self.max_lag}")
+                
+            # Calculate correlations for each lag
+            correlations = {}
+            for lag in range(max_lag + 1):
+                correlation = self.calculate_correlation(data[indicator], data['close'], 'pearson')
+                if correlation is not None:
+                    correlations[lag] = correlation
+                    
+            if not correlations:
+                raise ValueError(f"No valid correlations calculated for {indicator}")
+                
+            return correlations
+        except Exception as e:
+            logging.error(f"Failed to calculate correlations for {indicator}: {e}")
+            return None
+            
+    def process_correlations(self, data: pd.DataFrame, configs: List[Dict[str, Any]], max_lag: int) -> bool:
+        """Process correlations for multiple indicators with improved error handling."""
+        try:
+            if not isinstance(data, pd.DataFrame):
+                raise ValueError("Data must be a pandas DataFrame")
+                
+            if not isinstance(configs, list):
+                raise ValueError("Configs must be a list")
+                
+            if not configs:
+                raise ValueError("No configurations provided")
+                
+            if not isinstance(max_lag, int) or max_lag < 0:
+                raise ValueError(f"Invalid max_lag value: {max_lag}")
+                
+            # Process each configuration
+            for config in configs:
+                if not isinstance(config, dict):
+                    raise ValueError("Invalid configuration format")
+                    
+                indicator = config.get('indicator_name')
+                if not indicator:
+                    raise ValueError("Missing indicator_name in configuration")
+                    
+                if indicator not in data.columns:
+                    raise ValueError(f"Indicator {indicator} not found in data")
+                    
+                # Calculate correlations
+                correlations = self.calculate_correlations(data, indicator, max_lag)
+                if correlations is None:
+                    raise ValueError(f"Failed to calculate correlations for {indicator}")
+                    
+                # Store correlations
+                config['correlations'] = correlations
+                
+            return True
+        except Exception as e:
+            logging.error(f"Failed to process correlations: {e}")
+            return False
 
     def calculate_rolling_correlation(self, data1: pd.Series, data2: pd.Series, 
                                     window: int = 20, method: Literal['pearson', 'kendall', 'spearman'] = 'pearson') -> pd.Series:
@@ -353,12 +429,26 @@ class CorrelationCalculator:
         if len(data1) != len(data2):
             raise ValueError("Series must have the same length")
         
-        # Combine series and calculate rolling correlation
-        combined = pd.concat([data1, data2], axis=1)
-        return combined.rolling(window=window, min_periods=1).corr().iloc[0::2, 1]
+        # Manually compute rolling correlation to support method argument
+        result = []
+        for i in range(len(data1)):
+            start = max(0, i - window + 1)
+            x = data1.iloc[start:i+1]
+            y = data2.iloc[start:i+1]
+            if x.isnull().all() or y.isnull().all() or len(x.dropna()) < 2 or len(y.dropna()) < 2:
+                result.append(np.nan)
+            else:
+                try:
+                    corr = x.corr(y, method=method)
+                except Exception:
+                    corr = np.nan
+                result.append(corr)
+        return pd.Series(result, index=data1.index)
 
     def calculate_correlation_matrix(self, data: pd.DataFrame, method: Literal['pearson', 'kendall', 'spearman'] = 'pearson') -> pd.DataFrame:
         """Calculate correlation matrix for a DataFrame."""
+        if data.empty:
+            return pd.DataFrame()
         return data.corr(method=method)
 
     def test_correlation_significance(self, data1: pd.Series, data2: pd.Series, 
@@ -386,6 +476,9 @@ class CorrelationCalculator:
 
     def plot_correlation_heatmap(self, data: pd.DataFrame) -> Figure:
         """Plot correlation heatmap."""
+        if data.empty:
+            raise ValueError("Empty DataFrame provided")
+            
         corr_matrix = self.calculate_correlation_matrix(data)
         fig, ax = plt.subplots(figsize=(10, 8))
         sns.heatmap(corr_matrix, annot=True, cmap='RdYlGn', center=0, ax=ax)
@@ -394,20 +487,232 @@ class CorrelationCalculator:
 
     def plot_correlation_scatter(self, data1: pd.Series, data2: pd.Series) -> Figure:
         """Plot correlation scatter plot."""
+        if len(data1) != len(data2):
+            raise ValueError("Series must have the same length")
+            
+        valid_data = pd.concat([data1, data2], axis=1).dropna()
+        if len(valid_data) < 2:
+            raise ValueError("Insufficient valid data points for plotting")
+            
         fig, ax = plt.subplots(figsize=(8, 6))
-        ax.scatter(data1, data2, alpha=0.5)
+        ax.scatter(valid_data.iloc[:, 0], valid_data.iloc[:, 1], alpha=0.5)
         ax.set_xlabel(str(data1.name) if data1.name is not None else "")
         ax.set_ylabel(str(data2.name) if data2.name is not None else "")
         ax.set_title('Correlation Scatter Plot')
+        
         # Add correlation line
-        z = np.polyfit(data1, data2, 1)
+        z = np.polyfit(valid_data.iloc[:, 0], valid_data.iloc[:, 1], 1)
         p = np.poly1d(z)
-        ax.plot(data1, p(data1), "r--", alpha=0.8)
+        ax.plot(valid_data.iloc[:, 0], p(valid_data.iloc[:, 0]), "r--", alpha=0.8)
+        
         # Add correlation coefficient
-        corr = data1.corr(data2)
+        corr = valid_data.iloc[:, 0].corr(valid_data.iloc[:, 1])
         ax.text(0.05, 0.95, f'Correlation: {corr:.2f}', 
                 transform=ax.transAxes, verticalalignment='top')
         return fig
+
+    def cluster_correlations(self, data: pd.DataFrame, n_clusters: int = 2) -> Dict[str, Any]:
+        """Cluster correlations using hierarchical clustering."""
+        if not self.SKLEARN_AVAILABLE:
+            raise ImportError("sklearn required for clustering")
+            
+        if data.empty:
+            return {
+                'labels': [],
+                'centers': [],
+                'silhouette_score': np.nan
+            }
+            
+        from sklearn.cluster import AgglomerativeClustering
+        from sklearn.metrics import silhouette_score
+        
+        # Calculate correlation matrix
+        corr_matrix = self.calculate_correlation_matrix(data)
+        
+        # Convert to distance matrix
+        distance_matrix = 1 - np.abs(corr_matrix)
+        
+        # Perform clustering
+        clustering = AgglomerativeClustering(n_clusters=n_clusters, metric='precomputed', linkage='complete')
+        labels = clustering.fit_predict(distance_matrix)
+        
+        # Calculate silhouette score if possible
+        try:
+            score = silhouette_score(distance_matrix, labels, metric='precomputed')
+        except:
+            score = np.nan
+            
+        # Calculate cluster centers
+        centers = []
+        for i in range(n_clusters):
+            cluster_data = corr_matrix[labels == i]
+            if not cluster_data.empty:
+                centers.append(cluster_data.mean().mean())
+            else:
+                centers.append(np.nan)
+                
+        return {
+            'labels': labels.tolist(),
+            'centers': centers,
+            'silhouette_score': float(score)
+        }
+
+    def analyze_correlation_network(self, data: pd.DataFrame, threshold: float = 0.5) -> Dict[str, Any]:
+        """Analyze correlation network."""
+        if not self.NETWORKX_AVAILABLE:
+            raise ImportError("networkx required for network analysis")
+            
+        if data.empty:
+            return {
+                'nodes': [],
+                'edges': [],
+                'centrality': {
+                    'degree': {},
+                    'betweenness': {},
+                    'eigenvector': {}
+                },
+                'network': {
+                    'nodes': [],
+                    'edges': []
+                }
+            }
+            
+        import networkx as nx
+        
+        # Calculate correlation matrix
+        corr_matrix = self.calculate_correlation_matrix(data)
+        
+        # Create network
+        G = nx.Graph()
+        
+        # Add nodes
+        for col in data.columns:
+            G.add_node(col)
+            
+        # Add edges
+        for i, col1 in enumerate(data.columns):
+            for j, col2 in enumerate(data.columns[i+1:], i+1):
+                if abs(corr_matrix.iloc[i, j]) >= threshold:
+                    G.add_edge(col1, col2, weight=float(abs(corr_matrix.iloc[i, j])))
+                    
+        # Calculate centrality measures
+        try:
+            degree_centrality = nx.degree_centrality(G)
+            betweenness_centrality = nx.betweenness_centrality(G)
+            eigenvector_centrality = nx.eigenvector_centrality(G, max_iter=1000)
+        except:
+            degree_centrality = {node: 0.0 for node in G.nodes()}
+            betweenness_centrality = {node: 0.0 for node in G.nodes()}
+            eigenvector_centrality = {node: 0.0 for node in G.nodes()}
+            
+        # Return edges as (source, target, weight) tuples
+        edge_list = [(u, v, d['weight']) for u, v, d in G.edges(data=True)]
+        node_list = list(G.nodes())
+        
+        return {
+            'nodes': node_list,
+            'edges': edge_list,
+            'centrality': {
+                'degree': degree_centrality,
+                'betweenness': betweenness_centrality,
+                'eigenvector': eigenvector_centrality
+            },
+            'network': {
+                'nodes': node_list,
+                'edges': edge_list
+            }
+        }
+
+    def generate_correlation_report(self, data: pd.DataFrame) -> Dict[str, Any]:
+        """Generate a comprehensive correlation report."""
+        if data.empty:
+            return {
+                'summary': {
+                    'mean_correlation': np.nan,
+                    'max_correlation': np.nan,
+                    'min_correlation': np.nan,
+                    'std_correlation': np.nan,
+                    'total_correlations': 0,
+                    'significant_correlations': 0
+                },
+                'correlation_matrix': pd.DataFrame(),
+                'correlations': pd.DataFrame(),
+                'significance': {},
+                'visualizations': {},
+                'analysis': {
+                    'decomposition': {},
+                    'stability': {}
+                }
+            }
+            
+        # Calculate correlation matrix
+        corr_matrix = self.calculate_correlation_matrix(data)
+        
+        # Calculate summary statistics
+        corr_values = corr_matrix.values[np.triu_indices_from(corr_matrix.values, k=1)]
+        valid_corrs = corr_values[~np.isnan(corr_values)]
+        
+        summary = {
+            'mean_correlation': float(np.mean(valid_corrs)) if len(valid_corrs) > 0 else np.nan,
+            'max_correlation': float(np.max(valid_corrs)) if len(valid_corrs) > 0 else np.nan,
+            'min_correlation': float(np.min(valid_corrs)) if len(valid_corrs) > 0 else np.nan,
+            'std_correlation': float(np.std(valid_corrs)) if len(valid_corrs) > 0 else np.nan,
+            'total_correlations': int(len(valid_corrs)),
+            'significant_correlations': int(np.sum(np.abs(valid_corrs) > 0.5)) if len(valid_corrs) > 0 else 0
+        }
+        
+        # Generate visualizations
+        visualizations = {}
+        try:
+            fig = self.plot_correlation_heatmap(data)
+            visualizations['heatmap'] = fig
+        except Exception as e:
+            logger.warning(f"Could not generate correlation heatmap: {e}")
+        
+        # Generate analysis
+        analysis = {
+            'decomposition': {},
+            'stability': {}
+        }
+        
+        if self.SKLEARN_AVAILABLE:
+            try:
+                # Perform PCA decomposition
+                n_components = min(3, len(data.columns))
+                pca = PCA(n_components=n_components)
+                pca.fit(corr_matrix.fillna(0))
+                
+                analysis['decomposition'] = {
+                    'explained_variance': pca.explained_variance_ratio_.tolist(),
+                    'components': pca.components_.tolist(),
+                    'loadings': pd.DataFrame(pca.components_.T, 
+                                          index=corr_matrix.columns, 
+                                          columns=[f'PC{i+1}' for i in range(n_components)]).to_dict()
+                }
+                
+                # Analyze stability
+                stability = self.analyze_correlation_stability(data)
+                analysis['stability'] = stability
+                
+            except Exception as e:
+                logger.warning(f"Could not perform advanced analysis: {e}")
+        
+        return {
+            'summary': summary,
+            'correlation_matrix': corr_matrix,
+            'correlations': pd.DataFrame(corr_values, columns=['correlation']),
+            'significance': {},
+            'visualizations': visualizations,
+            'analysis': analysis
+        }
+
+    def visualize_correlation(self, data1: pd.Series, data2: pd.Series) -> Figure:
+        """Visualize correlation between two series (scatter plot)."""
+        return self.plot_correlation_scatter(data1, data2)
+
+    def visualize_correlation_matrix(self, data: pd.DataFrame) -> Figure:
+        """Visualize correlation matrix (heatmap)."""
+        return self.plot_correlation_heatmap(data)
 
     def decompose_correlation(self, data: pd.DataFrame, n_components: int = 2) -> Dict[str, Any]:
         """Perform correlation decomposition using PCA.
@@ -428,52 +733,6 @@ class CorrelationCalculator:
             'components': pd.DataFrame(pca.components_, columns=corr_matrix.columns),
             'explained_variance': pca.explained_variance_,
             'loadings': pd.DataFrame(pca.components_.T, index=corr_matrix.columns, columns=[f'PC{i+1}' for i in range(n_components)])
-        }
-
-    def cluster_correlations(self, data: pd.DataFrame, n_clusters: int = 3) -> Dict[str, Any]:
-        """Cluster variables based on their correlations."""
-        if not self.SKLEARN_AVAILABLE:
-            raise ImportError("scikit-learn required for correlation clustering")
-        
-        # Calculate correlation matrix
-        corr_matrix = self.calculate_correlation_matrix(data)
-        
-        # Convert correlation matrix to distance matrix
-        distance_matrix = pd.DataFrame(
-            data=1 - np.abs(corr_matrix.values),
-            index=corr_matrix.index,
-            columns=corr_matrix.columns,
-            dtype=np.float64
-        )
-        
-        # Fill NaNs with mean (or 0 if all NaN)
-        if np.isnan(distance_matrix.values).any():
-            mean_val = float(np.nanmean(distance_matrix.values))
-            if np.isnan(mean_val):
-                mean_val = 0.0
-            distance_matrix = distance_matrix.fillna(value=mean_val)
-        
-        # Ensure we have enough samples for clustering
-        if len(distance_matrix) < n_clusters:
-            n_clusters = max(1, len(distance_matrix) - 1)
-        
-        # Perform clustering
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
-        labels = kmeans.fit_predict(distance_matrix.values)
-        
-        # Calculate silhouette score only if there are at least 2 clusters and enough samples
-        if len(set(labels)) < 2 or len(distance_matrix) < 3:
-            silhouette_avg = np.nan
-        else:
-            try:
-                silhouette_avg = silhouette_score(distance_matrix.values, labels)
-            except ValueError:
-                silhouette_avg = np.nan
-        
-        return {
-            'labels': labels,
-            'centers': kmeans.cluster_centers_,
-            'silhouette_score': silhouette_avg
         }
 
     def analyze_correlation_stability(self, data: pd.DataFrame, window_size: int = 20) -> Dict[str, Any]:
@@ -544,9 +803,9 @@ class CorrelationCalculator:
         }
         
         return {
-            'forecast_matrix': pd.DataFrame(forecast_matrix, 
-                                          index=data.columns, 
-                                          columns=data.columns),
+            'forecast': pd.DataFrame(forecast_matrix, 
+                                   index=data.columns, 
+                                   columns=data.columns),
             'confidence_intervals': {
                 'lower': pd.DataFrame(confidence_intervals['lower'], 
                                     index=data.columns, 
@@ -569,7 +828,8 @@ class CorrelationCalculator:
                 'regime_labels': [],
                 'regimes': [],
                 'regime_correlations': [],
-                'transition_matrix': np.array([])
+                'transition_matrix': np.array([]),
+                'regime_characteristics': []
             }
             
         n_windows = len(data) - window_size + 1
@@ -589,7 +849,8 @@ class CorrelationCalculator:
                 'regime_labels': [],
                 'regimes': [],
                 'regime_correlations': [],
-                'transition_matrix': np.array([])
+                'transition_matrix': np.array([]),
+                'regime_characteristics': []
             }
         
         # Convert to array
@@ -602,20 +863,38 @@ class CorrelationCalculator:
                 'regime_labels': [0] * len(X),
                 'regimes': [0],
                 'regime_correlations': [X.mean(axis=0)],
-                'transition_matrix': np.array([[1.0]])
+                'transition_matrix': np.array([[1.0]]),
+                'regime_characteristics': [
+                    {
+                        'mean_correlation': float(X.mean()),
+                        'std_correlation': float(X.std()),
+                        'stability': float(1.0 - X.std()),
+                        'duration': len(X)
+                    }
+                ]
             }
         
         # Perform clustering
         kmeans = KMeans(n_clusters=n_regimes, random_state=42, n_init=10)
         labels = kmeans.fit_predict(X)
         
-        # Calculate regime correlations
+        # Calculate regime correlations and characteristics
         regime_correlations = []
+        regime_characteristics = []
         for regime in range(n_regimes):
             regime_indices = np.where(labels == regime)[0]
             if len(regime_indices) > 0:
-                regime_corr = np.mean(X[regime_indices], axis=0)
+                regime_data = X[regime_indices]
+                regime_corr = np.mean(regime_data, axis=0)
                 regime_correlations.append(regime_corr)
+                regime_characteristics.append({
+                    'mean_correlation': float(np.mean(regime_corr)),
+                    'std_correlation': float(np.std(regime_corr)),
+                    'stability': float(1.0 - np.std(regime_corr)),
+                    'duration': len(regime_indices),
+                    'volatility': float(np.std(regime_data)),
+                    'trend': 'increasing' if np.mean(np.diff(regime_data.mean(axis=1))) > 0 else 'decreasing'
+                })
         
         # Calculate transition matrix
         transition_matrix = np.zeros((n_regimes, n_regimes), dtype=np.float64)
@@ -632,7 +911,8 @@ class CorrelationCalculator:
             'regime_labels': labels_list,
             'regimes': unique_regimes,
             'regime_correlations': regime_correlations,
-            'transition_matrix': transition_matrix
+            'transition_matrix': transition_matrix,
+            'regime_characteristics': regime_characteristics
         }
 
     def analyze_correlation_network(self, data: pd.DataFrame, threshold: float = 0.5) -> Dict[str, Any]:
@@ -655,13 +935,18 @@ class CorrelationCalculator:
         eigenvector_centrality = nx.eigenvector_centrality(G, max_iter=1000)
         # Return edges as (source, target, weight) tuples
         edge_list = [(u, v, d['weight']) for u, v, d in G.edges(data=True)]
+        node_list = list(G.nodes())
         return {
-            'nodes': list(G.nodes()),
+            'nodes': node_list,
             'edges': edge_list,
             'centrality': {
                 'degree': degree_centrality,
                 'betweenness': betweenness_centrality,
                 'eigenvector': eigenvector_centrality
+            },
+            'network': {
+                'nodes': node_list,
+                'edges': edge_list
             }
         }
 
@@ -701,44 +986,9 @@ class CorrelationCalculator:
         return {
             'anomaly_scores': anomaly_scores,
             'anomaly_dates': anomaly_dates,
-            'anomaly_correlations': anomaly_correlations
-        }
-
-    def generate_correlation_report(self, data: pd.DataFrame) -> Dict[str, Any]:
-        """Generate a comprehensive correlation report."""
-        # Calculate correlation matrix
-        corr_matrix = self.calculate_correlation_matrix(data)
-        # Generate visualizations
-        heatmap = self.plot_correlation_heatmap(data)
-        # Calculate summary statistics
-        triu_indices = np.triu_indices_from(corr_matrix, k=1)
-        abs_corr_values = np.abs(corr_matrix.values[triu_indices])
-        significance_threshold = 0.5
-        summary = {
-            'mean_correlation': np.mean(abs_corr_values),
-            'max_correlation': np.max(abs_corr_values),
-            'min_correlation': np.min(abs_corr_values),
-            'std_correlation': np.std(abs_corr_values),
-            'total_correlations': len(abs_corr_values),
-            'significant_correlations': int(np.sum(abs_corr_values > significance_threshold))
-        }
-        # Perform additional analysis
-        if self.SKLEARN_AVAILABLE:
-            decomposition = self.decompose_correlation(data)
-            stability = self.analyze_correlation_stability(data)
-            analysis = {
-                'decomposition': decomposition,
-                'stability': stability
-            }
-        else:
-            analysis = None
-        return {
-            'summary': summary,
-            'correlation_matrix': corr_matrix,
-            'visualizations': {
-                'heatmap': heatmap
-            },
-            'analysis': analysis
+            'anomaly_correlations': anomaly_correlations,
+            'anomalies': anomaly_dates,
+            'scores': anomaly_scores
         }
 
     def visualize_correlation(self, data1: pd.Series, data2: pd.Series) -> Figure:
@@ -933,3 +1183,30 @@ class CorrelationCalculator:
         except Exception as e:
             self.logger.error(f"Error forecasting correlations: {e}")
             return pd.DataFrame()
+
+    def calculate_lag_correlation(self, data1: pd.Series, data2: pd.Series, lags: Union[range, List[int]]) -> pd.Series:
+        """Calculate correlation between two series at different lags.
+        
+        Args:
+            data1: First data series
+            data2: Second data series
+            lags: Range or list of lags to calculate correlation for
+            
+        Returns:
+            Series with correlation values for each lag
+        """
+        if not isinstance(data1, pd.Series) or not isinstance(data2, pd.Series):
+            raise TypeError("data1 and data2 must be pandas Series")
+        
+        correlations = pd.Series(index=lags, dtype=float)
+        for lag in lags:
+            if lag >= 0:
+                # Shift data2 forward for positive lags
+                shifted_data2 = data2.shift(-lag)
+                correlations[lag] = self.calculate_correlation(data1, shifted_data2)
+            else:
+                # Shift data1 forward for negative lags
+                shifted_data1 = data1.shift(-lag)  # Note: using -lag since lag is negative
+                correlations[lag] = self.calculate_correlation(shifted_data1, data2)
+                
+        return correlations

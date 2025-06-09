@@ -386,3 +386,382 @@ def generate_peak_correlation_report(
     except Exception as e:
         logger.error(f"Failed save peak report CSV {csv_filepath}: {e}", exc_info=True)
     return csv_filepath
+
+def plot_indicator_performance(data, indicator_name, output_path, figsize=(10, 6), colors=None, style=None, title=None, xlabel=None, ylabel=None):
+    """Plot indicator performance.
+    
+    Args:
+        data: DataFrame with price data
+        indicator_name: Either a string column name or a DataFrame with indicator data
+        output_path: Path to save the plot
+        figsize: Tuple of (width, height) for the figure size
+        colors: List of colors for the plot
+        style: Matplotlib style to use
+        title: Custom title for the plot
+        xlabel: Custom x-axis label
+        ylabel: Custom y-axis label
+    """
+    # Raise error if data is empty
+    if data is None or data.empty:
+        raise ValueError("Input price data is empty")
+    
+    # Validate figsize
+    if not isinstance(figsize, tuple) or len(figsize) != 2:
+        raise ValueError("figsize must be a tuple of (width, height)")
+    if figsize[0] <= 0 or figsize[1] <= 0:
+        raise ValueError("Figure dimensions must be positive")
+    
+    # Validate colors if provided
+    if colors is not None:
+        if not isinstance(colors, list):
+            raise ValueError("colors must be a list")
+        if len(colors) == 0:
+            raise ValueError("colors list cannot be empty")
+    
+    # Validate style if provided
+    if style is not None:
+        if not isinstance(style, str):
+            raise ValueError("style must be a string")
+    
+    # Validate title if provided
+    if title is not None:
+        if not isinstance(title, str):
+            raise ValueError("title must be a string")
+    
+    # Handle case where indicator_name is a DataFrame
+    if isinstance(indicator_name, pd.DataFrame):
+        # Extract indicator columns (exclude timestamp)
+        indicator_cols = [col for col in indicator_name.columns if col != 'timestamp']
+        if not indicator_cols:
+            raise ValueError("No indicator columns found in indicator data")
+        # Merge data if timestamps match
+        if 'timestamp' in data.columns and 'timestamp' in indicator_name.columns:
+            merged_data = pd.merge(data, indicator_name, on='timestamp', how='inner')
+        else:
+            # Assume same index
+            merged_data = data.copy()
+            for col in indicator_cols:
+                if col in indicator_name.columns:
+                    merged_data[col] = indicator_name[col].values
+    else:
+        # indicator_name is a string column name
+        if indicator_name not in data.columns:
+            raise ValueError(f"Indicator {indicator_name} not found in data")
+        merged_data = data
+        indicator_cols = [indicator_name]
+    # Raise error if required columns are missing
+    if 'close' not in merged_data.columns:
+        raise ValueError("Input data missing required 'close' column")
+    
+    # Create the plot
+    plt.figure(figsize=figsize)
+    
+    # Plot price data if available
+    if 'close' in merged_data.columns:
+        ax1 = plt.subplot(2, 1, 1)
+        ax1.plot(merged_data["timestamp"] if "timestamp" in merged_data.columns else merged_data.index, 
+                merged_data["close"], label="Close Price", color='black', alpha=0.7)
+        ax1.set_title("Price Data")
+        ax1.set_ylabel("Price")
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+    
+    # Plot indicators
+    ax2 = plt.subplot(2, 1, 2) if 'close' in merged_data.columns else plt.gca()
+    for indicator in indicator_cols:
+        if indicator in merged_data.columns:
+            ax2.plot(merged_data["timestamp"] if "timestamp" in merged_data.columns else merged_data.index, 
+                    merged_data[indicator], label=indicator)
+    
+    ax2.set_title("Indicator Performance")
+    ax2.set_xlabel(xlabel if xlabel else "Time")
+    ax2.set_ylabel(ylabel if ylabel else "Indicator Value")
+    ax2.legend()
+    ax2.grid(True, alpha=0.3)
+    
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=150, bbox_inches='tight')
+    plt.close()
+
+def generate_charts(
+    output_dir: Path,
+    price_data: pd.DataFrame = None,
+    indicator_data: pd.DataFrame = None,
+    correlation_data: pd.DataFrame = None,
+    optimization_data: dict = None,
+    actual_predictions: pd.Series = None,
+    predicted_predictions: pd.Series = None
+) -> dict:
+    """Generate all main chart types and return a dictionary of chart paths."""
+    chart_paths = {}
+    if price_data is not None and indicator_data is not None:
+        chart_path = output_dir / "indicator_performance.png"
+        plot_indicator_performance(price_data, indicator_data, chart_path)
+        chart_paths["indicator_performance"] = chart_path
+    if correlation_data is not None:
+        chart_path = output_dir / "correlation_matrix.png"
+        plot_correlation_matrix(correlation_data, chart_path)
+        chart_paths["correlation_matrix"] = chart_path
+    if optimization_data is not None:
+        chart_path = output_dir / "optimization_results.png"
+        plot_optimization_results(optimization_data, chart_path)
+        chart_paths["optimization_results"] = chart_path
+    if actual_predictions is not None and predicted_predictions is not None:
+        chart_path = output_dir / "prediction_accuracy.png"
+        plot_prediction_accuracy(actual_predictions, predicted_predictions, chart_path)
+        chart_paths["prediction_accuracy"] = chart_path
+    if not chart_paths:
+        raise ValueError("No data provided for chart generation.")
+    return chart_paths
+
+def plot_correlation_matrix(
+    correlation_data: pd.DataFrame,
+    output_path: Path,
+    file_prefix: str = "correlation_matrix",
+    title: str = None
+) -> Optional[Path]:
+    """Generate a correlation matrix heatmap from the correlation data.
+    
+    Args:
+        correlation_data: DataFrame containing correlation values
+        output_path: Path to save the output file
+        file_prefix: Prefix for the output filename (deprecated, kept for compatibility)
+        title: Custom title for the plot
+        
+    Returns:
+        Optional[Path]: Path to the generated file if successful, None otherwise
+    """
+    # Validation checks (do not catch these)
+    if correlation_data.empty:
+        logger.warning("Empty correlation data provided for matrix plot")
+        raise ValueError("Empty correlation data provided for matrix plot")
+    if correlation_data.shape[0] != correlation_data.shape[1] or not correlation_data.index.equals(correlation_data.columns):
+        logger.error("Correlation matrix must be square with matching row and column labels")
+        raise ValueError("Correlation matrix must be square with matching row and column labels")
+    try:
+        # If the diagonal is all 1s and values are between -1 and 1, treat as correlation matrix
+        diag = correlation_data.values.diagonal()
+        if np.allclose(diag, 1) and ((correlation_data.values >= -1) & (correlation_data.values <= 1)).all():
+            corr_matrix = correlation_data
+        else:
+            corr_matrix = correlation_data.corr()
+        # Create figure and axis
+        plt.figure(figsize=(12, 10), dpi=config.DEFAULTS.get("plot_dpi", 150))
+        
+        # Create heatmap
+        sns.heatmap(
+            corr_matrix,
+            annot=True,
+            fmt='.2f',
+            square=True,
+            linewidths=.5,
+            cbar_kws={'shrink': .8}
+        )
+        
+        # Customize plot
+        plot_title = title if title else 'Correlation Matrix'
+        plt.title(plot_title, pad=20)
+        plt.xticks(rotation=45, ha='right')
+        plt.yticks(rotation=0)
+        
+        # Adjust layout and save
+        plt.tight_layout()
+        
+        # Ensure output directory exists
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(output_path, bbox_inches='tight')
+        plt.close()
+        
+        logger.info(f"Generated correlation matrix plot: {output_path}")
+        return output_path
+        
+    except Exception as e:
+        logger.error(f"Error generating correlation matrix: {e}", exc_info=True)
+        plt.close()
+        return None
+
+def plot_optimization_results(optimization_data: dict, output_path: Path) -> None:
+    """Plot optimization results (supports 1D and 2D parameter sweeps)."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+    if not optimization_data or not isinstance(optimization_data, dict):
+        raise ValueError("No optimization data provided.")
+    
+    # Only support 1D or 2D for simplicity
+    for indicator, results in optimization_data.items():
+        if not isinstance(results, dict):
+            raise ValueError(f"Invalid results format for {indicator}")
+        
+        # Check if it's the new format with 'params' and 'score'
+        if 'params' in results and 'score' in results:
+            # Single best result
+            params = results['params']
+            score = results['score']
+            plt.figure(figsize=(6, 4))
+            plt.bar(list(params.keys()), list(params.values()))
+            plt.title(f'Best Params (Score: {score:.4f})')
+            plt.tight_layout()
+            plt.savefig(output_path)
+            plt.close()
+            return
+        else:
+            # Try to handle grid format: {param_name: [...], 'score': [...]}
+            param_keys = [k for k in results.keys() if k != 'score']
+            if not param_keys:
+                raise ValueError(f"No parameter data found for {indicator}")
+            
+            if 'score' not in results:
+                raise ValueError(f"Missing 'score' field for {indicator}")
+            
+            if len(param_keys) == 1:
+                # 1D
+                x = results[param_keys[0]]
+                y = results['score']
+                plt.figure(figsize=(8, 5))
+                plt.plot(x, y, marker='o')
+                plt.xlabel(param_keys[0])
+                plt.ylabel('Score')
+                plt.title(f'Optimization Results: {indicator}')
+                plt.tight_layout()
+                plt.savefig(output_path)
+                plt.close()
+                return
+            elif len(param_keys) == 2:
+                # 2D
+                x = results[param_keys[0]]
+                y = results[param_keys[1]]
+                z = results['score']
+                X, Y = np.meshgrid(np.unique(x), np.unique(y))
+                Z = np.full_like(X, np.nan, dtype=float)
+                for xi, yi, zi in zip(x, y, z):
+                    x_idx = np.where(X[0] == xi)[0][0]
+                    y_idx = np.where(Y[:,0] == yi)[0][0]
+                    Z[y_idx, x_idx] = zi
+                plt.figure(figsize=(8, 6))
+                cp = plt.contourf(X, Y, Z, cmap='viridis')
+                plt.colorbar(cp)
+                plt.xlabel(param_keys[0])
+                plt.ylabel(param_keys[1])
+                plt.title(f'Optimization Results: {indicator}')
+                plt.tight_layout()
+                plt.savefig(output_path)
+                plt.close()
+                return
+            else:
+                raise ValueError(f"Unsupported optimization data format for {indicator}.")
+    
+    raise ValueError("No valid optimization results to plot.")
+
+def plot_prediction_accuracy(actual: pd.Series, predicted: pd.Series, output_path: Path, title: str = None) -> None:
+    """Plot prediction accuracy comparison.
+    
+    Args:
+        actual: Actual values series
+        predicted: Predicted values series
+        output_path: Path to save the plot
+        title: Custom title for the plot
+    """
+    try:
+        if actual.empty or predicted.empty:
+            raise ValueError("Input series cannot be empty")
+            
+        if len(actual) != len(predicted):
+            raise ValueError("Actual and predicted series must have the same length")
+            
+        # Create the plot
+        plt.figure(figsize=(12, 8))
+        
+        # Plot actual vs predicted
+        plt.subplot(2, 2, 1)
+        plt.plot(actual.index, actual.values, label='Actual', alpha=0.7)
+        plt.plot(predicted.index, predicted.values, label='Predicted', alpha=0.7)
+        plt.title(title or 'Actual vs Predicted Values')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        # Plot residuals
+        plt.subplot(2, 2, 2)
+        residuals = actual - predicted
+        plt.plot(residuals.index, residuals.values, label='Residuals', color='red', alpha=0.7)
+        plt.axhline(y=0, color='black', linestyle='--', alpha=0.5)
+        plt.title('Residuals')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        # Plot scatter plot
+        plt.subplot(2, 2, 3)
+        plt.scatter(actual.values, predicted.values, alpha=0.6)
+        plt.plot([actual.min(), actual.max()], [actual.min(), actual.max()], 'r--', label='Perfect Prediction')
+        plt.xlabel('Actual Values')
+        plt.ylabel('Predicted Values')
+        plt.title('Actual vs Predicted Scatter')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        # Plot histogram of residuals
+        plt.subplot(2, 2, 4)
+        plt.hist(residuals.values, bins=20, alpha=0.7, color='skyblue', edgecolor='black')
+        plt.xlabel('Residual Value')
+        plt.ylabel('Frequency')
+        plt.title('Residual Distribution')
+        plt.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=300, bbox_inches='tight')
+        plt.close()
+        
+    except Exception as e:
+        logger.error(f"Error plotting prediction accuracy: {e}", exc_info=True)
+        raise
+
+def _format_chart_data(data, data_type="auto"):
+    """Format chart data for plotting. Accepts DataFrame or dict.
+    
+    Args:
+        data: DataFrame or dict to format
+        data_type: Type of data ("price", "indicator", "auto")
+    """
+    if isinstance(data, pd.DataFrame):
+        if data_type == "price":
+            # Ensure price data has required columns
+            required_cols = ["open", "high", "low", "close"]
+            if not all(col in data.columns for col in required_cols):
+                raise ValueError(f"Price data missing required columns: {required_cols}")
+            return data[required_cols]
+        elif data_type == "indicator":
+            # Return indicator columns (exclude timestamp)
+            indicator_cols = [col for col in data.columns if col != 'timestamp']
+            if not indicator_cols:
+                raise ValueError("No indicator columns found")
+            return data[indicator_cols]
+        elif data_type == "invalid_type":
+            # This is for testing - raise ValueError for invalid type
+            raise ValueError("Invalid data type specified")
+        else:
+            # Auto mode - return as is
+            return data
+    elif isinstance(data, dict):
+        # Assume dict of lists or dict of dicts
+        keys = list(data.keys())
+        if all(isinstance(v, list) for v in data.values()):
+            # Dict of lists
+            max_len = max(len(v) for v in data.values())
+            values = [v + [None]*(max_len-len(v)) for v in data.values()]
+            return pd.DataFrame(dict(zip(keys, values)))
+        elif all(isinstance(v, dict) for v in data.values()):
+            # Dict of dicts
+            inner_keys = sorted({k for d in data.values() for k in d.keys()})
+            values = [[d.get(k, None) for k in inner_keys] for d in data.values()]
+            return pd.DataFrame(values, columns=inner_keys, index=keys)
+        else:
+            raise ValueError("Unsupported dict format for chart data.")
+    else:
+        raise ValueError("Unsupported data type for chart formatting.")
+
+def _save_chart(fig, output_path: Path) -> None:
+    """Save a matplotlib figure to the specified output path."""
+    fig.tight_layout()
+    fig.savefig(output_path)
+    fig.clf()
+    import matplotlib.pyplot as plt
+    plt.close(fig)

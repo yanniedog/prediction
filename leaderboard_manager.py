@@ -15,6 +15,8 @@ import utils
 
 logger = logging.getLogger(__name__)
 
+LEADERBOARD_DB_PATH = config.LEADERBOARD_DB_PATH
+
 # --- Database Connection Helper ---
 def _create_leaderboard_connection() -> Optional[sqlite3.Connection]:
     """Creates a connection to the leaderboard SQLite database."""
@@ -141,6 +143,12 @@ def check_and_update_single_lag(
     if not pd.notna(correlation_value) or not isinstance(correlation_value, (float, int)):
         logger.debug(f"Skipping leaderboard check: Non-numeric correlation {correlation_value} (Lag {lag}, ID {config_id})")
         return False
+    
+    # Validate correlation value is within valid range (-1 to 1)
+    if not (-1.0 <= correlation_value <= 1.0):
+        logger.debug(f"Skipping leaderboard check: Correlation {correlation_value} outside valid range [-1, 1] (Lag {lag}, ID {config_id})")
+        return False
+    
     if config_id is None or not isinstance(config_id, int): # Ensure we have a valid source config ID
          logger.error(f"Skipping leaderboard check: Invalid/missing source config_id ({config_id}) (Lag {lag}, Ind {indicator_name})")
          return False
@@ -240,66 +248,164 @@ def update_leaderboard(
     symbol: str,
     timeframe: str,
     data_daterange: str,
-    source_db_name: str
-) -> None:
+    source_db_name: str,
+    min_correlation_threshold: float = 0.0,
+    max_updates_per_config: Optional[int] = None
+) -> Dict[int, Dict[str, Any]]:
+    """Update leaderboard with new correlation results.
+    
+    Args:
+        current_run_correlations: Dictionary mapping config IDs to lists of correlation values for each lag
+        indicator_configs: List of indicator configurations used in the current run
+        max_lag: Maximum lag value used in the analysis
+        symbol: Symbol being analyzed
+        timeframe: Timeframe being analyzed
+        data_daterange: Date range of the dataset
+        source_db_name: Name of the source database
+        min_correlation_threshold: Minimum correlation value to consider (default: 0.0)
+        max_updates_per_config: Maximum number of updates to allow per config (default: None)
+        
+    Returns:
+        Dictionary mapping config IDs to their best correlation results
     """
-    Compares current run's results against the leaderboard and updates if better correlation found.
-    Uses the `check_and_update_single_lag` function internally, which handles DB updates and exports.
-    """
-    logger.info(f"Starting leaderboard update comparison (Batch Mode) for {symbol}_{timeframe} (Max Lag: {max_lag})...")
-
-    config_details_map = {cfg['config_id']: cfg for cfg in indicator_configs if 'config_id' in cfg}
-    updates_triggered_in_batch = 0
-    total_checks = 0
-    num_configs_to_check = len(current_run_correlations)
-    configs_checked = 0
-
-    # Iterate through results and call the single-lag update function
-    for config_id, correlations in current_run_correlations.items():
-        configs_checked += 1
-        # No print statement needed here, progress is handled by the calling function (main.py)
-
-        if not isinstance(correlations, list):
-            logger.warning(f"Invalid correlation data type for ID {config_id}. Skipping.")
-            continue
-
-        config_info = config_details_map.get(config_id)
-        # Ensure config info and ID are valid
-        if not config_info or config_info.get('config_id') is None or not isinstance(config_info['config_id'], int):
-            logger.warning(f"Config details missing or invalid for ID {config_id}. Skipping batch update.")
-            continue
-
-        indicator_name = config_info.get('indicator_name', 'Unknown')
-        params = config_info.get('params', {})
-
-        # Check each lag for this config
-        for lag_idx, value in enumerate(correlations):
-            lag = lag_idx + 1
-            if lag > max_lag: break # Don't process beyond the target max_lag
-            total_checks += 1
-
-            # Call the single update function which handles validation, DB write, and export
-            if pd.notna(value) and isinstance(value, (float, int)):
-                updated = check_and_update_single_lag(
-                    lag=lag,
-                    correlation_value=float(value),
-                    indicator_name=indicator_name,
-                    params=params,
-                    config_id=config_info['config_id'], # Pass the validated config_id
-                    symbol=symbol,
-                    timeframe=timeframe,
-                    data_daterange=data_daterange,
-                    source_db_name=source_db_name
-                )
-                if updated:
-                    updates_triggered_in_batch += 1
-            # else: NaN or invalid value - check_and_update_single_lag handles logging if needed
-
-    # Log summary without printing to console
-    if updates_triggered_in_batch > 0:
-        logger.info(f"Leaderboard batch comparison finished. Triggered {updates_triggered_in_batch} real-time updates/exports during {total_checks} checks.")
-    else:
-        logger.info(f"Leaderboard batch comparison finished. No updates triggered during {total_checks} checks (already optimal or updates handled earlier).")
+    try:
+        # Validate inputs
+        if not current_run_correlations or not indicator_configs:
+            logger.warning("No correlations or configs provided for leaderboard update")
+            return {}
+        
+        if not isinstance(current_run_correlations, dict):
+            raise ValueError("current_run_correlations must be a dictionary")
+        
+        if not isinstance(indicator_configs, list):
+            raise ValueError("indicator_configs must be a list")
+        
+        # Create connection
+        conn = _create_leaderboard_connection()
+        if not conn:
+            raise ValueError("Failed to create database connection")
+        
+        cursor = conn.cursor()
+        updates = {}
+        
+        try:
+            # Process each configuration
+            for config in indicator_configs:
+                config_id = config.get('config_id')
+                if not config_id:
+                    logger.warning("Skipping config without ID")
+                    continue
+                
+                if config_id not in current_run_correlations:
+                    logger.warning(f"No correlations found for config {config_id}")
+                    continue
+                
+                correlations = current_run_correlations[config_id]
+                if not correlations:
+                    continue
+                
+                # Get current best correlations for this config
+                cursor.execute("""
+                    SELECT lag, correlation_type, correlation_value
+                    FROM leaderboard
+                    WHERE config_id_source_db = ? AND symbol = ? AND timeframe = ?
+                    ORDER BY correlation_value DESC
+                """, (config_id, symbol, timeframe))
+                
+                current_best = {
+                    (row['lag'], row['correlation_type']): row['correlation_value']
+                    for row in cursor.fetchall()
+                }
+                
+                # Process each lag's correlations
+                config_updates = []
+                for lag, corr_value in enumerate(correlations, 1):
+                    if lag > max_lag:
+                        break
+                    
+                    if corr_value is None or abs(corr_value) < min_correlation_threshold:
+                        continue
+                    
+                    # Determine correlation type
+                    corr_type = 'positive' if corr_value > 0 else 'negative'
+                    abs_corr = abs(corr_value)
+                    
+                    # Check if this is better than current best
+                    current_best_key = (lag, corr_type)
+                    current_best_value = current_best.get(current_best_key, 0.0)
+                    
+                    if abs_corr > current_best_value:
+                        # Prepare update data
+                        update_data = {
+                            'lag': lag,
+                            'correlation_type': corr_type,
+                            'correlation_value': abs_corr,
+                            'indicator_name': config['indicator_name'],
+                            'config_json': json.dumps(config['params']),
+                            'symbol': symbol,
+                            'timeframe': timeframe,
+                            'dataset_daterange': data_daterange,
+                            'calculation_timestamp': datetime.now().isoformat(),
+                            'config_id_source_db': config_id,
+                            'source_db_name': source_db_name
+                        }
+                        
+                        # Update or insert record
+                        cursor.execute("""
+                            INSERT INTO leaderboard (
+                                lag, correlation_type, correlation_value,
+                                indicator_name, config_json, symbol, timeframe,
+                                dataset_daterange, calculation_timestamp,
+                                config_id_source_db, source_db_name
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ON CONFLICT (lag, correlation_type)
+                            DO UPDATE SET
+                                correlation_value = excluded.correlation_value,
+                                indicator_name = excluded.indicator_name,
+                                config_json = excluded.config_json,
+                                symbol = excluded.symbol,
+                                timeframe = excluded.timeframe,
+                                dataset_daterange = excluded.dataset_daterange,
+                                calculation_timestamp = excluded.calculation_timestamp,
+                                config_id_source_db = excluded.config_id_source_db,
+                                source_db_name = excluded.source_db_name
+                            WHERE excluded.correlation_value > leaderboard.correlation_value
+                        """, (
+                            update_data['lag'], update_data['correlation_type'],
+                            update_data['correlation_value'], update_data['indicator_name'],
+                            update_data['config_json'], update_data['symbol'],
+                            update_data['timeframe'], update_data['dataset_daterange'],
+                            update_data['calculation_timestamp'], update_data['config_id_source_db'],
+                            update_data['source_db_name']
+                        ))
+                        
+                        config_updates.append(update_data)
+                
+                # Apply updates if within limit
+                if config_updates:
+                    if max_updates_per_config is None or len(config_updates) <= max_updates_per_config:
+                        conn.commit()
+                        updates[config_id] = {
+                            'updates': config_updates,
+                            'best_correlation': max(update['correlation_value'] for update in config_updates)
+                        }
+                    else:
+                        logger.warning(f"Too many updates ({len(config_updates)}) for config {config_id}")
+                        conn.rollback()
+        
+        except sqlite3.Error as e:
+            logger.error(f"Database error during leaderboard update: {e}")
+            conn.rollback()
+            raise
+        
+        finally:
+            conn.close()
+        
+        return updates
+        
+    except Exception as e:
+        logger.error(f"Error updating leaderboard: {e}", exc_info=True)
+        raise
 
 
 # --- Export Leaderboard to Text File ---
@@ -606,7 +712,7 @@ def generate_consistency_report(
         logger.warning("No correlation data or invalid max_lag for consistency report.")
         return False
 
-    output_filepath = output_dir / f"{file_prefix}_consistency_report.txt"
+    output_filepath = output_dir / f"{file_prefix}_report.txt"
     current_timestamp_str = datetime.now(timezone.utc).isoformat(timespec='milliseconds') + 'Z'
     # Create a quick lookup map for configs
     configs_dict = {cfg['config_id']: cfg for cfg in indicator_configs_processed if 'config_id' in cfg}
@@ -729,6 +835,24 @@ def generate_consistency_report(
         output_filepath.parent.mkdir(parents=True, exist_ok=True)
         output_filepath.write_text(output_string, encoding='utf-8')
         logger.info(f"Consistency report saved to: {output_filepath}")
+        
+        # Generate heatmap visualization
+        try:
+            import visualization_generator
+            heatmap_path = visualization_generator.generate_enhanced_heatmap(
+                correlations_by_config_id=correlations_by_config_id,
+                indicator_configs_processed=indicator_configs_processed,
+                max_lag=max_lag,
+                output_dir=output_dir,
+                file_prefix=file_prefix
+            )
+            if heatmap_path:
+                logger.info(f"Consistency heatmap saved to: {heatmap_path}")
+            else:
+                logger.warning("Failed to generate consistency heatmap")
+        except Exception as heatmap_error:
+            logger.error(f"Error generating consistency heatmap: {heatmap_error}")
+        
         # ** Removed print statement **
         return True
     except Exception as e:
@@ -736,12 +860,16 @@ def generate_consistency_report(
         return False
 
 class LeaderboardManager:
-    def __init__(self):
-        """Initialize the leaderboard manager."""
+    """Class-based interface for leaderboard management."""
+    
+    def __init__(self, db_path=None):
+        """Initialize with optional custom database path."""
+        self.db_path = db_path or LEADERBOARD_DB_PATH
+        # Ensure database is initialized
         self._initialize_db()
     
     def _initialize_db(self) -> bool:
-        """Initialize the database on class instantiation."""
+        """Initialize the database if it doesn't exist."""
         return initialize_leaderboard_db()
     
     def create_connection(self) -> Optional[sqlite3.Connection]:
@@ -749,7 +877,7 @@ class LeaderboardManager:
         return _create_leaderboard_connection()
     
     def load_leaderboard(self) -> Dict[Tuple[int, str], Dict[str, Any]]:
-        """Load current leaderboard data from the database."""
+        """Load leaderboard data."""
         return load_leaderboard()
     
     def check_and_update_single_lag(
@@ -764,10 +892,10 @@ class LeaderboardManager:
         data_daterange: str,
         source_db_name: str
     ) -> bool:
-        """Check and update a single lag in the leaderboard."""
+        """Check and update a single lag correlation."""
         return check_and_update_single_lag(
-            lag, correlation_value, indicator_name, params,
-            config_id, symbol, timeframe, data_daterange, source_db_name
+            lag, correlation_value, indicator_name, params, config_id,
+            symbol, timeframe, data_daterange, source_db_name
         )
     
     def update_leaderboard(
@@ -778,12 +906,20 @@ class LeaderboardManager:
         symbol: str,
         timeframe: str,
         data_daterange: str,
-        source_db_name: str
-    ) -> None:
-        """Update the leaderboard with new correlation data."""
+        source_db_name: str,
+        min_correlation_threshold: float = 0.0,
+        max_updates_per_config: Optional[int] = None
+    ) -> Dict[int, Dict[str, Any]]:
+        """Update leaderboard with new correlation results."""
+        # Ensure database is initialized before updating
+        if not self._initialize_db():
+            logger.error("Failed to initialize leaderboard database")
+            return {}
+        
         return update_leaderboard(
             current_run_correlations, indicator_configs,
-            max_lag, symbol, timeframe, data_daterange, source_db_name
+            max_lag, symbol, timeframe, data_daterange, source_db_name,
+            min_correlation_threshold, max_updates_per_config
         )
     
     def export_leaderboard_to_text(self) -> bool:
@@ -812,3 +948,45 @@ class LeaderboardManager:
             correlations_by_config_id, indicator_configs_processed,
             max_lag, output_dir, file_prefix, abs_corr_threshold
         )
+
+# Module-level functions for backward compatibility and testing
+def create_connection() -> Optional[sqlite3.Connection]:
+    """Module-level function to create a connection to the leaderboard database."""
+    return _create_leaderboard_connection()
+
+def initialize_leaderboard() -> bool:
+    """Module-level function to initialize the leaderboard database."""
+    return initialize_leaderboard_db()
+
+def update_single_lag(lag: int, correlation_value: float, indicator_name: str, params: Dict[str, Any], 
+                     config_id: int, symbol: str, timeframe: str, data_daterange: str, source_db_name: str) -> bool:
+    """Module-level function to update a single lag in the leaderboard."""
+    return check_and_update_single_lag(lag, correlation_value, indicator_name, params, config_id, 
+                                     symbol, timeframe, data_daterange, source_db_name)
+
+def update_leaderboard_bulk(current_run_correlations: Dict[int, List[Optional[float]]], 
+                           indicator_configs: List[Dict[str, Any]], max_lag: int, symbol: str, 
+                           timeframe: str, data_daterange: str, source_db_name: str, 
+                           min_correlation_threshold: float = 0.0, 
+                           max_updates_per_config: Optional[int] = None) -> Dict[int, Dict[str, Any]]:
+    """Module-level function to update the leaderboard in bulk."""
+    return update_leaderboard(current_run_correlations, indicator_configs, max_lag, symbol, 
+                            timeframe, data_daterange, source_db_name, min_correlation_threshold, 
+                            max_updates_per_config)
+
+def find_best_predictor(target_lag: int) -> Optional[Dict[str, Any]]:
+    """Module-level function to find the best predictor for a target lag."""
+    return find_best_predictor_for_lag(target_lag)
+
+def export_leaderboard() -> bool:
+    """Module-level function to export the leaderboard to text."""
+    return export_leaderboard_to_text()
+
+def generate_reports() -> bool:
+    """Module-level function to generate reports."""
+    return generate_leading_indicator_report()
+
+def handle_errors() -> bool:
+    """Module-level function to handle errors."""
+    # This is a placeholder for error handling logic
+    return True

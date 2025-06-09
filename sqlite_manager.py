@@ -2,7 +2,7 @@
 import sqlite3
 import json
 import logging
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, Union
 import numpy as np
 import pandas as pd
 import config
@@ -11,6 +11,10 @@ from pathlib import Path
 import hashlib
 import math # Added for ceiling division in batching
 import utils
+import shutil
+import time
+from datetime import datetime
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -18,114 +22,235 @@ logger = logging.getLogger(__name__)
 # Check your specific SQLite version if needed, but 900 is generally safe.
 SQLITE_MAX_VARIABLE_NUMBER = config.DEFAULTS.get("sqlite_max_variable_number", 900)
 
-def create_connection(db_path: str) -> Optional[sqlite3.Connection]:
-    """Creates a database connection to the SQLite database."""
+def create_connection(db_path: Union[str, Path], timeout: float = 30.0) -> Optional[sqlite3.Connection]:
+    """Create a database connection with retry logic."""
+    db_path = Path(db_path)
+    max_retries = 3
+    retry_delay = 1.0
+    
+    for attempt in range(max_retries):
+        try:
+            # Create parent directories if they don't exist
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Connect with timeout and other optimizations
+            conn = sqlite3.connect(str(db_path), timeout=timeout)
+            
+            # Set pragmas for better performance and reliability
+            conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging
+            conn.execute("PRAGMA synchronous=NORMAL")  # Faster writes
+            conn.execute("PRAGMA foreign_keys=ON")  # Enforce foreign key constraints
+            conn.execute("PRAGMA busy_timeout=5000")  # 5 second busy timeout
+            
+            return conn
+            
+        except sqlite3.Error as e:
+            if attempt < max_retries - 1:
+                logger.warning(f"Database connection attempt {attempt + 1} failed: {e}. Retrying...")
+                time.sleep(retry_delay * (2 ** attempt))  # Exponential backoff
+            else:
+                logger.error(f"Failed to connect to database after {max_retries} attempts: {e}")
+                raise
+                
+    return None
+
+def initialize_database(db_path: Union[str, Path], symbol: str, timeframe: str) -> bool:
+    """Initialize database with required tables and constraints."""
     conn = None
     try:
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        # Increased timeout, set isolation_level=None for autocommit behavior unless BEGIN used
-        conn = sqlite3.connect(db_path, timeout=15.0, isolation_level=None)
-        # Enable WAL mode for better concurrency (allows readers and one writer)
-        conn.execute("PRAGMA journal_mode=WAL;")
-        # Enable foreign key support (important for data integrity if using FKs)
-        conn.execute("PRAGMA foreign_keys = ON;")
-        # Set busy timeout to wait if the database is locked (in milliseconds)
-        conn.execute("PRAGMA busy_timeout = 10000;") # Wait 10 seconds
-        logger.debug(f"Connected to database: {db_path}")
-        return conn
-    except sqlite3.Error as e:
-        logger.error(f"Error connecting to database '{db_path}': {e}", exc_info=True)
-        return None
-    except Exception as e: # Catch other potential errors like permission issues
-        logger.error(f"Unexpected error connecting to database '{db_path}': {e}", exc_info=True)
-        return None
+        db_path = Path(db_path)
+        
+        # Create parent directories if they don't exist
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Check if database exists and is corrupted
+        if db_path.exists():
+            try:
+                test_conn = create_connection(db_path)
+                if test_conn:
+                    # Check if tables exist and have required columns
+                    cursor = test_conn.cursor()
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='symbols'")
+                    if not cursor.fetchone():
+                        logger.warning(f"Database {db_path} exists but is missing required tables. Recreating...")
+                        test_conn.close()
+                        db_path.unlink()
+                    else:
+                        # Verify symbol and timeframe exist
+                        cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
+                        symbol_id = cursor.fetchone()
+                        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
+                        timeframe_id = cursor.fetchone()
+                        if not symbol_id or not timeframe_id:
+                            logger.warning(f"Database {db_path} exists but missing required symbol/timeframe. Recreating...")
+                            test_conn.close()
+                            db_path.unlink()
+                        else:
+                            test_conn.close()
+                            return True
+            except sqlite3.DatabaseError:
+                logger.warning(f"Database {db_path} appears to be corrupted. Removing...")
+                db_path.unlink()
 
+        # Create new database
+        conn = create_connection(db_path)
+        if not conn:
+            raise sqlite3.DatabaseError("Failed to create database connection")
 
-def initialize_database(db_path: str) -> bool:
-    """Initializes or verifies the database schema."""
-    conn = create_connection(db_path)
-    if conn is None: return False
-    try:
         cursor = conn.cursor()
-        # Use DEFERRED transaction for initialization (less locking needed for schema checks/creation)
-        conn.execute("BEGIN DEFERRED;")
 
-        # --- Metadata Tables ---
-        cursor.execute("CREATE TABLE IF NOT EXISTS symbols (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT UNIQUE NOT NULL);")
-        cursor.execute("CREATE TABLE IF NOT EXISTS timeframes (id INTEGER PRIMARY KEY AUTOINCREMENT, timeframe TEXT UNIQUE NOT NULL);")
-        cursor.execute("CREATE TABLE IF NOT EXISTS indicators (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL);")
-
-        # --- Indicator Configuration Table ---
-        # Check if table exists and potentially recreate if schema is old (optional, safer to just create if not exists)
-        # For simplicity, we'll just ensure it exists with the correct schema.
-        # Add indices here for faster lookups.
+        # Create tables
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS indicator_configs (
-            config_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            indicator_id INTEGER NOT NULL,
-            config_hash TEXT NOT NULL, -- SHA256 hash of the sorted JSON parameters
-            config_json TEXT NOT NULL, -- Store exact parameters as JSON string
-            FOREIGN KEY (indicator_id) REFERENCES indicators(id) ON DELETE CASCADE,
-            UNIQUE (indicator_id, config_hash) -- Ensure uniqueness based on indicator and params hash
-        );""")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_indicator_configs_indicator_id ON indicator_configs(indicator_id);")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_indicator_configs_hash ON indicator_configs(config_hash);") # Index hash for lookups
+            CREATE TABLE IF NOT EXISTS symbols (
+                id INTEGER PRIMARY KEY,
+                symbol TEXT UNIQUE NOT NULL
+            )
+        """)
 
-        # --- Historical Data Table ---
-        # Use REAL for prices/volumes, INTEGER for timestamps/counts
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS historical_data (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol_id INTEGER NOT NULL,
-            timeframe_id INTEGER NOT NULL,
-            open_time INTEGER NOT NULL, -- Unix timestamp milliseconds (UTC)
-            open REAL NOT NULL,
-            high REAL NOT NULL,
-            low REAL NOT NULL,
-            close REAL NOT NULL,
-            volume REAL NOT NULL,
-            close_time INTEGER NOT NULL, -- Unix timestamp milliseconds (UTC)
-            quote_asset_volume REAL,
-            number_of_trades INTEGER,
-            taker_buy_base_asset_volume REAL,
-            taker_buy_quote_asset_volume REAL,
-            FOREIGN KEY (symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
-            FOREIGN KEY (timeframe_id) REFERENCES timeframes(id) ON DELETE CASCADE,
-            UNIQUE(symbol_id, timeframe_id, open_time) -- Prevent duplicate klines
-        );""")
-        # Index for efficient querying by symbol, timeframe, and time
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_historical_data_symbol_timeframe_opentime ON historical_data(symbol_id, timeframe_id, open_time);")
+            CREATE TABLE IF NOT EXISTS timeframes (
+                id INTEGER PRIMARY KEY,
+                timeframe TEXT UNIQUE NOT NULL
+            )
+        """)
 
-        # --- Correlation Results Table ---
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS correlations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            symbol_id INTEGER NOT NULL,
-            timeframe_id INTEGER NOT NULL,
-            indicator_config_id INTEGER NOT NULL,
-            lag INTEGER NOT NULL,
-            correlation_value REAL, -- Allow NULL if calculation fails or insufficient data
-            FOREIGN KEY (symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
-            FOREIGN KEY (timeframe_id) REFERENCES timeframes(id) ON DELETE CASCADE,
-            FOREIGN KEY (indicator_config_id) REFERENCES indicator_configs(config_id) ON DELETE CASCADE,
-            UNIQUE(symbol_id, timeframe_id, indicator_config_id, lag) -- Prevent duplicate correlation entries
-        );""")
-        # Indices for common correlation lookups
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_main ON correlations (symbol_id, timeframe_id, indicator_config_id, lag);")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_config_lag ON correlations (indicator_config_id, lag);") # Useful for fetching all lags for a config
+            CREATE TABLE IF NOT EXISTS indicators (
+                id INTEGER PRIMARY KEY,
+                name TEXT UNIQUE NOT NULL,
+                type TEXT NOT NULL
+            )
+        """)
 
-        # Ensure Foreign Keys are ON before committing (should be set by create_connection now)
-        # cursor.execute("PRAGMA foreign_keys=ON;")
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS indicator_configs (
+                id INTEGER PRIMARY KEY,
+                indicator_id INTEGER NOT NULL,
+                config_hash TEXT NOT NULL,
+                config_json TEXT NOT NULL,
+                UNIQUE(indicator_id, config_hash),
+                FOREIGN KEY (indicator_id) REFERENCES indicators(id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS historical_data (
+                id INTEGER PRIMARY KEY,
+                symbol_id INTEGER NOT NULL,
+                timeframe_id INTEGER NOT NULL,
+                open_time TIMESTAMP NOT NULL,
+                open REAL NOT NULL,
+                high REAL NOT NULL,
+                low REAL NOT NULL,
+                close REAL NOT NULL,
+                volume REAL NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS correlations (
+                id INTEGER PRIMARY KEY,
+                symbol_id INTEGER NOT NULL,
+                timeframe_id INTEGER NOT NULL,
+                indicator_config_id INTEGER NOT NULL,
+                lag INTEGER NOT NULL,
+                correlation_value REAL NOT NULL,
+                calculation_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
+                FOREIGN KEY (indicator_config_id) REFERENCES indicator_configs(id)
+            )
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS leaderboard (
+                id INTEGER PRIMARY KEY,
+                lag INTEGER NOT NULL,
+                correlation_type TEXT NOT NULL,
+                correlation_value REAL NOT NULL,
+                indicator_name TEXT NOT NULL,
+                config_json TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                timeframe TEXT NOT NULL,
+                dataset_daterange TEXT NOT NULL,
+                calculation_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                config_id_source_db INTEGER,
+                source_db_name TEXT
+            )
+        """)
+
+        # Create indices
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_historical_data_symbol_timeframe ON historical_data(symbol_id, timeframe_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_historical_data_open_time ON historical_data(open_time)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_symbols ON correlations(symbol_id, timeframe_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_indicators ON correlations(indicator_config_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_correlation ON leaderboard(correlation_type, correlation_value)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_lag ON leaderboard(lag)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_lag_val ON leaderboard(lag, correlation_value)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_indicator_config ON leaderboard(indicator_name, config_json)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_symbol_timeframe ON leaderboard(symbol, timeframe)")
+
+        # Insert initial data
+        cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol,))
+        cursor.execute("INSERT OR IGNORE INTO timeframes (timeframe) VALUES (?)", (timeframe,))
+
         conn.commit()
-        logger.info(f"Database schema initialized/verified: {db_path}")
         return True
+
     except sqlite3.Error as e:
-        logger.error(f"Error operating on DB schema '{db_path}': {e}", exc_info=True)
-        try: conn.rollback() # Attempt rollback on error
-        except Exception as rb_err: logger.error(f"Rollback failed during schema init: {rb_err}")
+        logger.error(f"Error initializing database: {e}", exc_info=True)
+        if conn:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            try:
+                conn.close()
+            except Exception:
+                pass
         return False
     finally:
-        if conn: conn.close()
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+def recover_database(db_path: str, symbol: str, timeframe: str) -> bool:
+    """Attempt to recover a corrupted database."""
+    try:
+        # First try to backup the corrupted file
+        backup_path = f"{db_path}.bak"
+        if os.path.exists(db_path):
+            shutil.copy2(db_path, backup_path)
+        # Try to repair using SQLite's built-in recovery
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA integrity_check;")
+            result = cursor.fetchone()
+            if result[0] != "ok":
+                raise sqlite3.DatabaseError("Database integrity check failed")
+            conn.close()
+            return True
+        except sqlite3.DatabaseError:
+            # If corrupted, try to recover
+            if os.path.exists(db_path):
+                os.remove(db_path)  # Remove corrupted file
+            # Recreate schema
+            if not initialize_database(db_path, symbol, timeframe):
+                raise sqlite3.DatabaseError("Failed to recreate database schema")
+            return True
+    except Exception as e:
+        logger.error(f"Error recovering database: {e}", exc_info=True)
+        # Restore from backup if available
+        backup_path = f"{db_path}.bak"
+        if os.path.exists(backup_path):
+            shutil.copy2(backup_path, db_path)
+        return False
 
 def _get_or_create_id(conn: sqlite3.Connection, table: str, column: str, value: Any) -> int:
     """Gets ID for value in lookup table, creating if necessary (case-insensitive lookup). Assumes caller handles transactions."""
@@ -137,36 +262,29 @@ def _get_or_create_id(conn: sqlite3.Connection, table: str, column: str, value: 
     lookup_value = str_value.lower()
 
     try:
+        # Map table names to their actual column names
+        column_map = {
+            'symbols': 'symbol',
+            'timeframes': 'timeframe',
+            'indicators': 'name'
+        }
+        actual_column = column_map.get(table, column)
+        
         # Check if the value (case-insensitive) already exists
-        cursor.execute(f"SELECT id FROM {table} WHERE LOWER({column}) = ?", (lookup_value,))
+        cursor.execute(f"SELECT id FROM {table} WHERE LOWER({actual_column}) = ?", (lookup_value,))
         result = cursor.fetchone()
         if result:
-            return result[0] # Return existing ID
-        else:
-            # Insert the new value (using original case)
-            cursor.execute(f"INSERT INTO {table} ({column}) VALUES (?)", (str_value,))
-            new_id = cursor.lastrowid
-            # Verify insertion and ID retrieval
-            if new_id is None:
-                 # This can happen in rare cases, re-query to be sure
-                 logger.warning(f"Insert into '{table}' for '{str_value}' did not return lastrowid. Re-querying.")
-                 cursor.execute(f"SELECT id FROM {table} WHERE LOWER({column}) = ?", (lookup_value,))
-                 result = cursor.fetchone()
-                 if result: return result[0]
-                 else: raise sqlite3.OperationalError(f"Cannot retrieve ID for '{str_value}' in '{table}' after insert.")
-            # logger.debug(f"Inserted '{str_value}' into '{table}', ID: {new_id}") # Reduce log noise
-            return new_id
-    except sqlite3.IntegrityError: # Handle potential race condition if another process inserts concurrently
-        logger.warning(f"IntegrityError inserting '{str_value}' into '{table}'. Re-querying.")
-        cursor.execute(f"SELECT id FROM {table} WHERE LOWER({column}) = ?", (lookup_value,))
-        result = cursor.fetchone()
-        if result: return result[0]
-        else: # This should ideally not happen if IntegrityError occurred due to uniqueness
-            logger.critical(f"CRITICAL: Cannot retrieve ID for '{str_value}' in '{table}' after IntegrityError.")
-            raise
+            return result[0]
+            
+        # Insert new value
+        cursor.execute(f"INSERT INTO {table} ({actual_column}) VALUES (?)", (str_value,))
+        # Don't commit here - let the caller handle the transaction
+        return cursor.lastrowid
+        
     except sqlite3.Error as e:
-        logger.error(f"DB error getting/creating ID for '{str_value}' in '{table}': {e}", exc_info=True)
-        raise # Re-raise the original SQLite error
+        logger.error(f"DB error getting/creating ID for '{value}' in '{table}': {e}", exc_info=True)
+        # Don't rollback here - let the caller handle the transaction
+        raise
 
 def get_or_create_indicator_config_id(conn: sqlite3.Connection, indicator_name: str, params: Dict[str, Any]) -> int:
     """Gets the ID for an indicator config, creating if necessary. Manages its own transaction."""
@@ -182,7 +300,7 @@ def get_or_create_indicator_config_id(conn: sqlite3.Connection, indicator_name: 
         config_str = json.dumps(params, sort_keys=True, separators=(',', ':'))
 
         # Check if this exact config (indicator_id + hash) already exists
-        cursor.execute("SELECT config_id, config_json FROM indicator_configs WHERE indicator_id = ? AND config_hash = ?", (indicator_id, config_hash))
+        cursor.execute("SELECT id, config_json FROM indicator_configs WHERE indicator_id = ? AND config_hash = ?", (indicator_id, config_hash))
         result = cursor.fetchone()
 
         if result:
@@ -202,7 +320,7 @@ def get_or_create_indicator_config_id(conn: sqlite3.Connection, indicator_name: 
                 new_config_id = cursor.lastrowid
                 if new_config_id is None:
                     # Re-query if insert didn't return ID (should be rare)
-                    cursor.execute("SELECT config_id FROM indicator_configs WHERE indicator_id = ? AND config_hash = ?", (indicator_id, config_hash))
+                    cursor.execute("SELECT id FROM indicator_configs WHERE indicator_id = ? AND config_hash = ?", (indicator_id, config_hash))
                     result_requery = cursor.fetchone()
                     if result_requery: new_config_id = result_requery[0]
                     else: raise sqlite3.Error("INSERT successful but could not retrieve new config_id.")
@@ -213,7 +331,7 @@ def get_or_create_indicator_config_id(conn: sqlite3.Connection, indicator_name: 
                 conn.rollback() # Rollback the failed insert attempt
                 logger.warning(f"IntegrityError inserting config for indicator ID {indicator_id}, hash {config_hash}. Re-querying.")
                 # Re-query to get the ID inserted by the other process
-                cursor.execute("SELECT config_id, config_json FROM indicator_configs WHERE indicator_id = ? AND config_hash = ?", (indicator_id, config_hash))
+                cursor.execute("SELECT id, config_json FROM indicator_configs WHERE indicator_id = ? AND config_hash = ?", (indicator_id, config_hash))
                 result = cursor.fetchone()
                 if result:
                     config_id_found, existing_json = result
@@ -403,12 +521,12 @@ def get_indicator_configs_by_ids(conn: sqlite3.Connection, config_ids: List[int]
             placeholders = ','.join('?' * len(batch_ids)) # Generate placeholders for IN clause
             query = f"""
                 SELECT
-                    ic.config_id,
+                    ic.id,
                     i.name AS indicator_name,
                     ic.config_json
                 FROM indicator_configs ic
                 JOIN indicators i ON ic.indicator_id = i.id
-                WHERE ic.config_id IN ({placeholders});
+                WHERE ic.id IN ({placeholders});
             """
             logger.debug(f"Executing fetch batch {i+1}/{num_batches} for config details ({len(batch_ids)} IDs)")
             cursor.execute(query, batch_ids) # Pass only the batch IDs as parameters
@@ -442,3 +560,1059 @@ def get_indicator_configs_by_ids(conn: sqlite3.Connection, config_ids: List[int]
     except Exception as e: # Catch other errors like JSON parsing
         logger.error(f"Error fetching indicator config details by IDs: {e}", exc_info=True)
         return []
+
+class SQLiteManager:
+    """Class for managing SQLite database operations."""
+    
+    def __init__(self, db_path: Union[str, Path], timeout: float = 30.0):
+        """Initialize SQLiteManager with database path.
+        
+        Args:
+            db_path: Path to SQLite database file
+            timeout: Connection timeout in seconds
+        """
+        self.db_path = Path(db_path)
+        self.timeout = timeout
+        self.connection = None
+        
+        # Try to initialize database and set connection
+        try:
+            if self.initialize_database():
+                self.connection = self.create_connection()
+        except Exception as e:
+            logger.error(f"Failed to initialize database {self.db_path}: {e}")
+            self.connection = None
+    
+    def create_connection(self) -> Optional[sqlite3.Connection]:
+        """Create a connection to the SQLite database."""
+        try:
+            conn = sqlite3.connect(str(self.db_path), timeout=self.timeout)
+            conn.row_factory = sqlite3.Row
+            return conn
+        except sqlite3.Error as e:
+            logger.error(f"Error connecting to database {self.db_path}: {e}")
+            return None
+    
+    def connect(self) -> bool:
+        """Connect to the database and store the connection."""
+        try:
+            self.connection = self.create_connection()
+            return self.connection is not None
+        except Exception as e:
+            logger.error(f"Error connecting to database: {e}")
+            return False
+    
+    def initialize_database(self) -> bool:
+        """Initialize database schema and create necessary tables."""
+        try:
+            # Check if the database path is valid
+            try:
+                # Try to create parent directories
+                self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            except (OSError, PermissionError) as e:
+                logger.error(f"Cannot create database directory {self.db_path.parent}: {e}")
+                return False
+            
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            
+            # Create tables
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS symbols (
+                    id INTEGER PRIMARY KEY,
+                    symbol TEXT UNIQUE NOT NULL
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS timeframes (
+                    id INTEGER PRIMARY KEY,
+                    timeframe TEXT UNIQUE NOT NULL
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS indicators (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT UNIQUE NOT NULL,
+                    type TEXT NOT NULL,
+                    description TEXT
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS indicator_configs (
+                    id INTEGER PRIMARY KEY,
+                    indicator_id INTEGER NOT NULL,
+                    config_hash TEXT NOT NULL,
+                    config_json TEXT NOT NULL,
+                    UNIQUE(indicator_id, config_hash),
+                    FOREIGN KEY (indicator_id) REFERENCES indicators(id)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS historical_data (
+                    id INTEGER PRIMARY KEY,
+                    symbol_id INTEGER NOT NULL,
+                    timeframe_id INTEGER NOT NULL,
+                    open_time TIMESTAMP NOT NULL,
+                    open REAL NOT NULL,
+                    high REAL NOT NULL,
+                    low REAL NOT NULL,
+                    close REAL NOT NULL,
+                    volume REAL NOT NULL,
+                    FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+                    FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS correlations (
+                    id INTEGER PRIMARY KEY,
+                    symbol_id INTEGER NOT NULL,
+                    timeframe_id INTEGER NOT NULL,
+                    indicator_config_id INTEGER NOT NULL,
+                    lag INTEGER NOT NULL,
+                    correlation_value REAL NOT NULL,
+                    calculation_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+                    FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
+                    FOREIGN KEY (indicator_config_id) REFERENCES indicator_configs(id)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS leaderboard (
+                    id INTEGER PRIMARY KEY,
+                    lag INTEGER NOT NULL,
+                    correlation_type TEXT NOT NULL CHECK(correlation_type IN ('positive', 'negative')),
+                    correlation_value REAL NOT NULL,
+                    indicator_name TEXT NOT NULL,
+                    config_json TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    timeframe TEXT NOT NULL,
+                    dataset_daterange TEXT NOT NULL,
+                    calculation_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    config_id_source_db INTEGER,
+                    source_db_name TEXT,
+                    UNIQUE(lag, correlation_type, indicator_name, config_json, symbol, timeframe)
+                )
+            """)
+            
+            # Create indices
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_historical_data_symbol_timeframe ON historical_data(symbol_id, timeframe_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_historical_data_open_time ON historical_data(open_time)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_symbols ON correlations(symbol_id, timeframe_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_correlation ON leaderboard(correlation_value)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_lag ON leaderboard(lag)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_lag_val ON leaderboard(lag, correlation_value)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_indicator_config ON leaderboard(indicator_name, config_id_source_db)")
+            
+            conn.commit()
+            conn.close()
+            logger.info(f"Database schema initialized/verified: {self.db_path}")
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error initializing database {self.db_path}: {e}")
+            if conn:
+                conn.close()
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error initializing database {self.db_path}: {e}")
+            if conn:
+                conn.close()
+            return False
+    
+    def create_table(self, table_name: str, columns: Dict[str, str]) -> bool:
+        """Create a new table with specified columns.
+        
+        Args:
+            table_name: Name of the table to create
+            columns: Dictionary mapping column names to SQLite types
+            
+        Returns:
+            bool: True if table was created successfully
+            
+        Raises:
+            ValueError: If table name is invalid or columns are invalid
+        """
+        # Validate table name
+        if not table_name or not isinstance(table_name, str):
+            raise ValueError("Table name must be a non-empty string")
+        
+        # Check for invalid characters in table name
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
+            raise ValueError(f"Invalid table name: {table_name}. Must start with letter or underscore and contain only alphanumeric characters and underscores.")
+        
+        # Validate columns
+        if not columns or not isinstance(columns, dict):
+            raise ValueError("Columns must be a non-empty dictionary")
+        
+        for col_name, col_type in columns.items():
+            if not col_name or not isinstance(col_name, str):
+                raise ValueError("Column names must be non-empty strings")
+            if not col_type or not isinstance(col_type, str):
+                raise ValueError("Column types must be non-empty strings")
+            
+            # Check for invalid characters in column names
+            if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', col_name):
+                raise ValueError(f"Invalid column name: {col_name}. Must start with letter or underscore and contain only alphanumeric characters and underscores.")
+        
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            
+            # Build CREATE TABLE statement
+            column_defs = [f"{col} {type_}" for col, type_ in columns.items()]
+            create_stmt = f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(column_defs)})"
+            
+            cursor.execute(create_stmt)
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error creating table {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+    
+    def insert_data(self, table_name: str, data: Dict[str, Any]) -> bool:
+        """Insert a single row of data into a table."""
+        # Convert non-primitive types to strings (e.g., pd.Timestamp)
+        clean_data = {k: (str(v) if hasattr(v, 'isoformat') or type(v).__name__ == 'Timestamp' else v) for k, v in data.items()}
+        try:
+            # Use transaction connection if available, otherwise create new connection
+            conn = getattr(self, '_transaction_conn', None) or self.create_connection()
+            if not conn:
+                return False
+            cursor = conn.cursor()
+            # Build INSERT statement
+            columns = list(clean_data.keys())
+            placeholders = ['?' for _ in columns]
+            insert_stmt = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(placeholders)})"
+            cursor.execute(insert_stmt, list(clean_data.values()))
+            
+            # Only commit if not in a transaction
+            if not hasattr(self, '_transaction_conn'):
+                conn.commit()
+                conn.close()
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"Error inserting data into {table_name}: {e}")
+            if conn and not hasattr(self, '_transaction_conn'):
+                conn.close()
+            return False
+    
+    def insert_many(self, table_name: str, data_list: List[Dict[str, Any]]) -> bool:
+        """Insert multiple rows of data into a table.
+        
+        Args:
+            table_name: Name of the table to insert into
+            data_list: List of dictionaries containing row data
+            
+        Returns:
+            bool: True if insertion was successful
+        """
+        if not data_list:
+            return True
+        
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            
+            # Get column names from first row
+            columns = list(data_list[0].keys())
+            
+            # Prepare data for insertion - convert timestamps to strings
+            processed_data = []
+            for row in data_list:
+                processed_row = {}
+                for key, value in row.items():
+                    if hasattr(value, 'strftime'):  # Handle pandas Timestamp and datetime objects
+                        processed_row[key] = value.strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        processed_row[key] = value
+                processed_data.append(processed_row)
+            
+            # Build INSERT statement
+            placeholders = ', '.join(['?' for _ in columns])
+            insert_stmt = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders})"
+            
+            # Execute batch insert
+            cursor.executemany(insert_stmt, [tuple(row[col] for col in columns) for row in processed_data])
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error inserting multiple rows into {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+    
+    def execute_query(self, query: str, params: Tuple = ()) -> List[Tuple]:
+        """Execute a SQL query and return results as list of tuples.
+        
+        Args:
+            query: SQL query string
+            params: Tuple of parameters for the query
+            
+        Returns:
+            List of tuples containing query results
+            
+        Raises:
+            sqlite3.Error: If there's an error executing the query
+        """
+        conn = None
+        try:
+            conn = self.create_connection()
+            if not conn:
+                raise sqlite3.Error("Failed to create database connection")
+            
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            results = cursor.fetchall()
+            return results
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error executing query: {e}")
+            raise  # Re-raise the exception
+        finally:
+            if conn:
+                conn.close()
+    
+    def get_or_create_id(self, table_name: str, name_column: str, value: str) -> Optional[int]:
+        """Get or create an ID for a value in a lookup table.
+        
+        Args:
+            table_name: Name of the lookup table
+            name_column: Name of the column containing the value
+            value: Value to look up or insert
+            
+        Returns:
+            Optional[int]: ID of the value, or None if operation failed
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return None
+            
+            cursor = conn.cursor()
+            
+            # Try to get existing ID
+            cursor.execute(f"SELECT id FROM {table_name} WHERE {name_column} = ?", (value,))
+            result = cursor.fetchone()
+            
+            if result:
+                id_ = result[0]  # Access as tuple
+            else:
+                # Insert new value
+                cursor.execute(f"INSERT INTO {table_name} ({name_column}) VALUES (?)", (value,))
+                id_ = cursor.lastrowid
+            
+            conn.close()
+            return id_
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error getting/creating ID for {value} in {table_name}: {e}")
+            if conn:
+                conn.close()
+            return None
+    
+    def close(self):
+        """Close the database connection if it exists."""
+        if self.connection:
+            self.connection.close()
+            self.connection = None
+
+    def insert(self, table_name: str, data: dict) -> bool:
+        """Insert a single row into a table."""
+        # Convert non-primitive types to strings (e.g., pd.Timestamp)
+        clean_data = {k: (str(v) if hasattr(v, 'isoformat') or type(v).__name__ == 'Timestamp' else v) for k, v in data.items()}
+        return self.insert_data(table_name, clean_data)
+
+    def select(self, table_name: str, columns: list) -> list:
+        """Select rows from a table."""
+        query = f"SELECT {', '.join(columns)} FROM {table_name}"
+        conn = self.create_connection()
+        if not conn:
+            return []
+        cursor = conn.cursor()
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        conn.close()
+        return rows
+
+    def update(self, table_name: str, data: dict, where: str = None) -> bool:
+        """Update rows in a table."""
+        set_clause = ', '.join([f"{k} = ?" for k in data.keys()])
+        query = f"UPDATE {table_name} SET {set_clause}"
+        if where:
+            query += f" WHERE {where}"
+        conn = self.create_connection()
+        if not conn:
+            return False
+        cursor = conn.cursor()
+        cursor.execute(query, list(data.values()))
+        conn.commit()
+        conn.close()
+        return True
+
+    def delete(self, table_name: str, where: str = None) -> bool:
+        """Delete rows from a table."""
+        query = f"DELETE FROM {table_name}"
+        if where:
+            query += f" WHERE {where}"
+        conn = self.create_connection()
+        if not conn:
+            return False
+        cursor = conn.cursor()
+        cursor.execute(query)
+        conn.commit()
+        conn.close()
+        return True
+
+    def table_exists(self, table_name: str) -> bool:
+        """Check if a table exists in the database.
+        
+        Args:
+            table_name: Name of the table to check
+            
+        Returns:
+            bool: True if table exists, False otherwise
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+            result = cursor.fetchone()
+            conn.close()
+            return result is not None
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error checking if table {table_name} exists: {e}")
+            return False
+
+    def query(self, query: str, params: Tuple = ()) -> List[Tuple]:
+        """Execute a SQL query and return results as list of tuples.
+        
+        Args:
+            query: SQL query string
+            params: Tuple of parameters for the query
+            
+        Returns:
+            List of tuples containing query results
+        """
+        return self.execute_query(query, params)
+
+    def update_data(self, table_name: str, data: Dict[str, Any], where_conditions: Dict[str, Any]) -> bool:
+        """Update rows in a table based on where conditions.
+        
+        Args:
+            table_name: Name of the table to update
+            data: Dictionary of column names and new values
+            where_conditions: Dictionary of column names and values for WHERE clause
+            
+        Returns:
+            bool: True if update was successful
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            
+            # Build SET clause
+            set_clause = ', '.join([f"{k} = ?" for k in data.keys()])
+            
+            # Build WHERE clause
+            where_clause = ' AND '.join([f"{k} = ?" for k in where_conditions.keys()])
+            
+            # Build complete query
+            query = f"UPDATE {table_name} SET {set_clause}"
+            if where_conditions:
+                query += f" WHERE {where_clause}"
+            
+            # Prepare parameters
+            params = list(data.values()) + list(where_conditions.values())
+            
+            cursor.execute(query, params)
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error updating data in {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+
+    def delete_data(self, table_name: str, where_conditions: Dict[str, Any]) -> bool:
+        """Delete rows from a table based on where conditions.
+        
+        Args:
+            table_name: Name of the table to delete from
+            where_conditions: Dictionary of column names and values for WHERE clause
+            
+        Returns:
+            bool: True if deletion was successful
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            
+            # Build WHERE clause
+            where_clause = ' AND '.join([f"{k} = ?" for k in where_conditions.keys()])
+            
+            # Build complete query
+            query = f"DELETE FROM {table_name}"
+            if where_conditions:
+                query += f" WHERE {where_clause}"
+            
+            # Execute query
+            cursor.execute(query, list(where_conditions.values()))
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error deleting data from {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+
+    def transaction(self):
+        """Context manager for database transactions.
+        
+        Returns:
+            Transaction context manager
+        """
+        return TransactionContext(self)
+
+    def query_to_dataframe(self, query: str, params: Tuple = ()) -> pd.DataFrame:
+        """Execute a SQL query and return results as a pandas DataFrame.
+        
+        Args:
+            query: SQL query string
+            params: Tuple of parameters for the query
+            
+        Returns:
+            pandas DataFrame containing query results
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return pd.DataFrame()
+            
+            df = pd.read_sql_query(query, conn, params=params)
+            conn.close()
+            return df
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error executing query to DataFrame: {e}")
+            if conn:
+                conn.close()
+            return pd.DataFrame()
+
+    def drop_table(self, table_name: str) -> bool:
+        """Drop a table from the database.
+        
+        Args:
+            table_name: Name of the table to drop
+            
+        Returns:
+            bool: True if table was dropped successfully
+        """
+        conn = self.connection if self.connection else self.create_connection()
+        try:
+            if not conn:
+                return False
+            cursor = conn.cursor()
+            cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+            conn.commit()
+            # Only close if we created a new connection
+            if not self.connection:
+                conn.close()
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"Error dropping table {table_name}: {e}")
+            if not self.connection and conn:
+                conn.close()
+            return False
+
+    def backup_database(self, backup_path: str) -> bool:
+        """Create a backup of the database.
+        
+        Args:
+            backup_path: Path where to save the backup
+            
+        Returns:
+            bool: True if backup was successful
+        """
+        try:
+            if not self.db_path.exists():
+                logger.error(f"Source database {self.db_path} does not exist")
+                return False
+            
+            # Create backup directory if it doesn't exist
+            backup_path = Path(backup_path)
+            backup_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Copy the database file
+            shutil.copy2(self.db_path, backup_path)
+            logger.info(f"Database backed up to {backup_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error backing up database: {e}")
+            return False
+
+    def restore_database(self, backup_path: str) -> bool:
+        """Restore database from a backup.
+        
+        Args:
+            backup_path: Path to the backup file
+            
+        Returns:
+            bool: True if restore was successful
+        """
+        try:
+            backup_path = Path(backup_path)
+            if not backup_path.exists():
+                logger.error(f"Backup file {backup_path} does not exist")
+                return False
+            
+            # Close existing connection
+            if self.connection:
+                self.connection.close()
+                self.connection = None
+            
+            # Copy backup to current database location
+            shutil.copy2(backup_path, self.db_path)
+            logger.info(f"Database restored from {backup_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error restoring database: {e}")
+            return False
+
+    def delete_all(self, table_name: str) -> bool:
+        """Delete all rows from a table.
+        
+        Args:
+            table_name: Name of the table to delete from
+            
+        Returns:
+            bool: True if deletion was successful
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            cursor.execute(f"DELETE FROM {table_name}")
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error deleting all data from {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+
+    def get_table_schema(self, table_name: str) -> List[Dict[str, Any]]:
+        """Get the schema of a table.
+        
+        Args:
+            table_name: Name of the table
+            
+        Returns:
+            List of dictionaries containing column information
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return []
+            
+            cursor = conn.cursor()
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            schema = cursor.fetchall()
+            conn.close()
+            
+            # Convert to list of dictionaries
+            result = []
+            for row in schema:
+                result.append({
+                    'cid': row[0],
+                    'name': row[1],
+                    'type': row[2],
+                    'notnull': row[3],
+                    'dflt_value': row[4],
+                    'pk': row[5]
+                })
+            
+            return result
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error getting schema for table {table_name}: {e}")
+            if conn:
+                conn.close()
+            return []
+
+    def is_connected(self) -> bool:
+        """Check if the database is connected."""
+        try:
+            if self.connection is None:
+                return False
+            # Test the connection with a simple query
+            cursor = self.connection.cursor()
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+            return True
+        except Exception:
+            return False
+
+    def get_tables(self) -> List[str]:
+        """Get list of all tables in the database."""
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return []
+            
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [row[0] for row in cursor.fetchall()]
+            conn.close()
+            return tables
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error getting tables: {e}")
+            return []
+
+    def insert_row(self, table_name: str, data: Dict[str, Any]) -> bool:
+        """Insert a single row into a table."""
+        try:
+            cursor = self.connection.cursor()
+            columns = list(data.keys())
+            placeholders = ','.join(['?' for _ in columns])
+            values = list(data.values())
+            
+            query = f"INSERT INTO {table_name} ({','.join(columns)}) VALUES ({placeholders})"
+            cursor.execute(query, values)
+            self.connection.commit()
+            return True
+        except sqlite3.IntegrityError as e:
+            logger.error(f"Integrity error inserting row into {table_name}: {e}")
+            raise
+        except Exception as e:
+            logger.error(f"Error inserting row into {table_name}: {e}")
+            return False
+
+    def update_row(self, table_name: str, data: Dict[str, Any], where_conditions: Dict[str, Any]) -> bool:
+        """Update a single row in a table."""
+        try:
+            cursor = self.connection.cursor()
+            set_clause = ','.join([f"{k}=?" for k in data.keys()])
+            where_clause = ' AND '.join([f"{k}=?" for k in where_conditions.keys()])
+            
+            query = f"UPDATE {table_name} SET {set_clause} WHERE {where_clause}"
+            values = list(data.values()) + list(where_conditions.values())
+            
+            cursor.execute(query, values)
+            self.connection.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating row in {table_name}: {e}")
+            return False
+
+    def update_many(self, table_name: str, data: Dict[str, Any], where_conditions: Dict[str, Any]) -> bool:
+        """Update multiple rows in a table."""
+        try:
+            cursor = self.connection.cursor()
+            set_clause = ','.join([f"{k}=?" for k in data.keys()])
+            where_clause = ' AND '.join([f"{k}=?" for k in where_conditions.keys()])
+            
+            query = f"UPDATE {table_name} SET {set_clause} WHERE {where_clause}"
+            values = list(data.values()) + list(where_conditions.values())
+            
+            cursor.execute(query, values)
+            self.connection.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating rows in {table_name}: {e}")
+            return False
+
+    def delete_row(self, table_name: str, where_conditions: Dict[str, Any]) -> bool:
+        """Delete a single row from a table."""
+        try:
+            cursor = self.connection.cursor()
+            where_clause = ' AND '.join([f"{k}=?" for k in where_conditions.keys()])
+            
+            query = f"DELETE FROM {table_name} WHERE {where_clause}"
+            values = list(where_conditions.values())
+            
+            cursor.execute(query, values)
+            self.connection.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting row from {table_name}: {e}")
+            return False
+
+    def delete_many(self, table_name: str, where_conditions: Dict[str, Any]) -> bool:
+        """Delete multiple rows from a table."""
+        try:
+            cursor = self.connection.cursor()
+            where_clause = ' AND '.join([f"{k}=?" for k in where_conditions.keys()])
+            
+            query = f"DELETE FROM {table_name} WHERE {where_clause}"
+            values = list(where_conditions.values())
+            
+            cursor.execute(query, values)
+            self.connection.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting rows from {table_name}: {e}")
+            return False
+
+    def add_column(self, table_name: str, column_name: str, column_type: str) -> bool:
+        """Add a column to an existing table.
+        
+        Args:
+            table_name: Name of the table
+            column_name: Name of the column to add
+            column_type: SQLite data type for the column
+            
+        Returns:
+            bool: True if column was added successfully
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error adding column {column_name} to {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+    
+    def drop_column(self, table_name: str, column_name: str) -> bool:
+        """Drop a column from a table.
+        
+        Note: SQLite doesn't support DROP COLUMN directly, so this is a workaround.
+        
+        Args:
+            table_name: Name of the table
+            column_name: Name of the column to drop
+            
+        Returns:
+            bool: True if column was dropped successfully
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            
+            # Get current schema
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            columns = cursor.fetchall()
+            
+            # Create new table without the column
+            new_columns = [col[1] for col in columns if col[1] != column_name]
+            new_schema = ", ".join([f"{col[1]} {col[2]}" for col in columns if col[1] != column_name])
+            
+            # Create new table
+            cursor.execute(f"CREATE TABLE {table_name}_new ({new_schema})")
+            
+            # Copy data
+            columns_str = ", ".join(new_columns)
+            cursor.execute(f"INSERT INTO {table_name}_new ({columns_str}) SELECT {columns_str} FROM {table_name}")
+            
+            # Drop old table and rename new one
+            cursor.execute(f"DROP TABLE {table_name}")
+            cursor.execute(f"ALTER TABLE {table_name}_new RENAME TO {table_name}")
+            
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error dropping column {column_name} from {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+    
+    def create_index(self, table_name: str, index_name: str, columns: List[str]) -> bool:
+        """Create an index on a table.
+        
+        Args:
+            table_name: Name of the table
+            index_name: Name of the index
+            columns: List of column names to index
+            
+        Returns:
+            bool: True if index was created successfully
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            columns_str = ", ".join(columns)
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns_str})")
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error creating index {index_name} on {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+
+    def get_indexes(self, table_name: str) -> List[str]:
+        """Get list of indexes for a table."""
+        conn = None
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return []
+            
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='index' AND tbl_name=?
+            """, (table_name,))
+            
+            indexes = [row[0] for row in cursor.fetchall()]
+            return indexes
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error getting indexes for table {table_name}: {e}")
+            return []
+        finally:
+            if conn:
+                conn.close()
+
+    def drop_index(self, index_name: str) -> bool:
+        """Drop an index by name."""
+        conn = None
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            # Use string formatting for index name since SQLite doesn't support parameterized index names
+            cursor.execute(f"DROP INDEX IF EXISTS {index_name}")
+            conn.commit()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error dropping index {index_name}: {e}")
+            return False
+        finally:
+            if conn:
+                conn.close()
+
+class TransactionContext:
+    """Context manager for database transactions."""
+    
+    def __init__(self, db_manager):
+        self.db_manager = db_manager
+        self.conn = None
+        
+    def __enter__(self):
+        self.conn = self.db_manager.create_connection()
+        if self.conn:
+            self.conn.execute("BEGIN TRANSACTION")
+            # Set the transaction connection on the manager
+            self.db_manager._transaction_conn = self.conn
+        return self.db_manager
+        
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.conn:
+            if exc_type is not None:
+                # Rollback on exception
+                self.conn.rollback()
+                logger.error(f"Transaction rolled back due to exception: {exc_val}")
+            else:
+                # Commit on success
+                self.conn.commit()
+            self.conn.close()
+            # Clear the transaction connection from the manager
+            if hasattr(self.db_manager, '_transaction_conn'):
+                delattr(self.db_manager, '_transaction_conn')
+            # Clear the connection from the manager to prevent reuse
+            self.db_manager.connection = None
+
+# Helper functions for tests
+def _connect(db_path: str) -> sqlite3.Connection:
+    """Create a connection to the database."""
+    return create_connection(db_path)
+
+def _close(conn: sqlite3.Connection) -> None:
+    """Close a database connection."""
+    if conn:
+        conn.close()
+
+def _execute(conn: sqlite3.Connection, query: str, params: tuple = ()) -> None:
+    """Execute a SQL query."""
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+
+def _commit(conn: sqlite3.Connection) -> None:
+    """Commit a transaction."""
+    conn.commit()
+
+def _fetchone(conn: sqlite3.Connection, query: str, params: tuple = ()) -> tuple:
+    """Fetch one row from a query."""
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    return cursor.fetchone()
+
+def _fetchall(conn: sqlite3.Connection, query: str, params: tuple = ()) -> list:
+    """Fetch all rows from a query."""
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    return cursor.fetchall()
+
+def _create_table(conn: sqlite3.Connection, table_name: str, schema: str) -> None:
+    """Create a table."""
+    cursor = conn.cursor()
+    cursor.execute(f"CREATE TABLE {table_name} ({schema})")
+
+def _drop_table(conn: sqlite3.Connection, table_name: str) -> None:
+    """Drop a table."""
+    cursor = conn.cursor()
+    cursor.execute(f"DROP TABLE {table_name}")

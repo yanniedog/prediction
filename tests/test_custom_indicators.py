@@ -10,6 +10,28 @@ import custom_indicators as ci
 import utils
 import config
 import logging
+from contextlib import contextmanager
+from custom_indicators import (
+    compute_obv_price_divergence, compute_volume_oscillator,
+    IndicatorError, MissingColumnsError, InvalidParameterError, UnsupportedMethodError,
+    _check_required_cols,
+    OBV_PRICE_DIVERGENCE,
+    VOLUME_OSCILLATOR,
+    VWAP,
+    PVI,
+    NVI
+)
+
+@contextmanager
+def suppress_expected_errors():
+    """Temporarily suppress expected error messages during tests."""
+    logger = logging.getLogger('custom_indicators')
+    original_level = logger.level
+    logger.setLevel(logging.CRITICAL)
+    try:
+        yield
+    finally:
+        logger.setLevel(original_level)
 
 @pytest.fixture(scope="function")
 def temp_dir() -> Generator[Path, None, None]:
@@ -20,22 +42,16 @@ def temp_dir() -> Generator[Path, None, None]:
 
 @pytest.fixture
 def sample_data() -> pd.DataFrame:
-    """Create sample OHLCV data for testing."""
-    dates = pd.date_range(start='2024-01-01', periods=100, freq='D')
-    np.random.seed(42)  # For reproducibility
-    
+    """Create a sample DataFrame with OHLCV data."""
+    dates = pd.date_range(start='2024-01-01', periods=100, freq='h')
     data = pd.DataFrame({
-        'open': np.random.normal(100, 2, 100),
-        'high': np.random.normal(102, 2, 100),
-        'low': np.random.normal(98, 2, 100),
-        'close': np.random.normal(101, 2, 100),
-        'volume': np.random.normal(1000, 200, 100).clip(min=0)  # Ensure non-negative volume
-    }, index=dates)
-    
-    # Ensure high is highest and low is lowest
-    data['high'] = data[['open', 'high', 'close']].max(axis=1)
-    data['low'] = data[['open', 'low', 'close']].min(axis=1)
-    
+        'timestamp': dates,
+        'open': np.random.uniform(100, 200, 100),
+        'high': np.random.uniform(200, 300, 100),
+        'low': np.random.uniform(50, 100, 100),
+        'close': np.random.uniform(100, 200, 100),
+        'volume': np.random.uniform(1000, 5000, 100)
+    })
     return data
 
 @pytest.fixture
@@ -43,11 +59,11 @@ def sample_data_with_extremes() -> pd.DataFrame:
     """Create sample data with extreme values for edge case testing."""
     dates = pd.date_range(start='2024-01-01', periods=50, freq='D')
     data = pd.DataFrame({
-        'open': [100] * 50,
-        'high': [102] * 50,
-        'low': [98] * 50,
-        'close': [101] * 50,
-        'volume': [1000] * 50
+        'open': [100.0] * 50,
+        'high': [102.0] * 50,
+        'low': [98.0] * 50,
+        'close': [101.0] * 50,  # float for close
+        'volume': [1000.0] * 50  # float for volume
     }, index=dates)
     
     # Add some extreme values
@@ -58,157 +74,105 @@ def sample_data_with_extremes() -> pd.DataFrame:
     
     return data
 
-def test_check_required_cols() -> None:
+def test_check_required_cols():
     """Test the _check_required_cols helper function."""
     data = pd.DataFrame({'col1': [1, 2, 3], 'col2': [4, 5, 6]})
-    
+
     # Test with all columns present
-    assert ci._check_required_cols(data, ['col1', 'col2'], 'test_indicator')
-    
+    _check_required_cols(data, ['col1', 'col2'], 'test_indicator')  # Should not raise
+
     # Test with missing columns
-    assert not ci._check_required_cols(data, ['col1', 'col3'], 'test_indicator')
-    
-    # Test with empty required list
-    assert ci._check_required_cols(data, [], 'test_indicator')
-    
+    with pytest.raises(MissingColumnsError, match="Missing required columns for test_indicator: \\['col3'\\]"):
+        _check_required_cols(data, ['col1', 'col3'], 'test_indicator')
+
     # Test with empty DataFrame
     empty_df = pd.DataFrame()
-    assert not ci._check_required_cols(empty_df, ['col1'], 'test_indicator')
+    with pytest.raises(MissingColumnsError, match="Missing required columns for test_indicator: \\['col1'\\]"):
+        _check_required_cols(empty_df, ['col1'], 'test_indicator')
 
-def test_compute_obv_price_divergence_basic(sample_data: pd.DataFrame) -> None:
-    """Test basic OBV/Price divergence calculation."""
-    result = ci.compute_obv_price_divergence(
-        sample_data,
-        method="Difference",
-        obv_method="SMA",
-        obv_period=14,
-        price_input_type="close",
-        price_method="SMA",
-        price_period=14
-    )
-    
-    assert isinstance(result, pd.DataFrame)
-    assert ci.OBV_PRICE_DIVERGENCE in result.columns
-    assert not result[ci.OBV_PRICE_DIVERGENCE].isna().all()
-    assert len(result) == len(sample_data)
+def test_compute_obv_price_divergence(sample_data):
+    """Test OBV/Price divergence calculation with different methods and invalid inputs."""
+    # Test valid methods
+    with suppress_expected_errors():
+        result = compute_obv_price_divergence(sample_data, method="Difference")
+        assert isinstance(result, pd.DataFrame)
+        assert not result.empty
+        assert 'obv_price_divergence' in result.columns
 
-def test_compute_obv_price_divergence_methods(sample_data: pd.DataFrame) -> None:
-    """Test different OBV/Price divergence calculation methods."""
-    methods = ["Difference", "Ratio", "Log Ratio"]
-    price_types = ["close", "open", "high", "low", "hl/2", "ohlc/4"]
-    ma_methods = ["SMA", "EMA", "NONE"]
-    
-    for method in methods:
-        for price_type in price_types:
-            for ma_method in ma_methods:
-                result = ci.compute_obv_price_divergence(
-                    sample_data,
-                    method=method,
-                    obv_method=ma_method,
-                    obv_period=14,
-                    price_input_type=price_type,
-                    price_method=ma_method,
-                    price_period=14
-                )
-                
-                if result is not None:
-                    assert isinstance(result, pd.DataFrame)
-                    assert ci.OBV_PRICE_DIVERGENCE in result.columns
-                    assert not result[ci.OBV_PRICE_DIVERGENCE].isna().all()
-                else:
-                    # If result is None, it should be due to an unsupported method or input
-                    assert method not in ["Difference", "Ratio"]  # Only supported methods should return DataFrame
+        result = compute_obv_price_divergence(sample_data, method="Ratio")
+        assert isinstance(result, pd.DataFrame)
+        assert not result.empty
+        assert 'obv_price_divergence' in result.columns
 
-def test_compute_obv_price_divergence_invalid_inputs(sample_data: pd.DataFrame) -> None:
-    """Test OBV/Price divergence with invalid inputs."""
-    # Test with invalid method
-    result = ci.compute_obv_price_divergence(
-        sample_data,
-        method="InvalidMethod",
-        obv_method="SMA",
-        obv_period=14,
-        price_input_type="close",
-        price_method="SMA",
-        price_period=14
-    )
-    assert result is None
-    
-    # Test with invalid price type
-    result = ci.compute_obv_price_divergence(
-        sample_data,
-        method="Difference",
-        obv_method="SMA",
-        obv_period=14,
-        price_input_type="InvalidType",
-        price_method="SMA",
-        price_period=14
-    )
-    assert result is None
-    
-    # Test with missing columns
-    data_missing_cols = sample_data.drop('volume', axis=1)
-    result = ci.compute_obv_price_divergence(
-        data_missing_cols,
-        method="Difference",
-        obv_method="SMA",
-        obv_period=14,
-        price_input_type="close",
-        price_method="SMA",
-        price_period=14
-    )
-    assert result is None
+        # Test invalid method
+        with pytest.raises(UnsupportedMethodError, match="Unsupported divergence method: InvalidMethod"):
+            compute_obv_price_divergence(sample_data, method="InvalidMethod")
 
-def test_compute_obv_price_divergence_edge_cases(sample_data_with_extremes: pd.DataFrame) -> None:
-    """Test OBV/Price divergence with edge cases."""
-    result = ci.compute_obv_price_divergence(
-        sample_data_with_extremes,
-        method="Difference",
-        obv_method="SMA",
-        obv_period=14,
-        price_input_type="close",
-        price_method="SMA",
-        price_period=14
-    )
-    
-    assert isinstance(result, pd.DataFrame)
-    assert ci.OBV_PRICE_DIVERGENCE in result.columns
-    # Verify that extreme values are handled (replaced with NaN)
-    assert not result[ci.OBV_PRICE_DIVERGENCE].isin([np.inf, -np.inf]).any()
+        # Test invalid price input type
+        with pytest.raises(UnsupportedMethodError, match="Unsupported price input type: invalid"):
+            compute_obv_price_divergence(sample_data, price_input_type="invalid")
 
-def test_compute_volume_oscillator_basic(sample_data: pd.DataFrame) -> None:
-    """Test basic Volume Oscillator calculation."""
-    result = ci.compute_volume_oscillator(sample_data, window=20)
-    
-    assert isinstance(result, pd.DataFrame)
-    assert ci.VOLUME_OSCILLATOR in result.columns
-    assert not result[ci.VOLUME_OSCILLATOR].isna().all()
-    assert len(result) == len(sample_data)
+        # Test invalid OBV method
+        with pytest.raises(UnsupportedMethodError, match="Unsupported obv_method: invalid"):
+            compute_obv_price_divergence(sample_data, obv_method="invalid")
 
-def test_compute_volume_oscillator_invalid_inputs(sample_data: pd.DataFrame) -> None:
-    """Test Volume Oscillator with invalid inputs."""
-    # Test with invalid window
-    result = ci.compute_volume_oscillator(sample_data, window=1)
-    assert result is None
-    
-    result = ci.compute_volume_oscillator(sample_data, window=-1)
-    assert result is None
-    
-    # Test with missing volume column
-    data_missing_volume = sample_data.drop('volume', axis=1)
-    result = ci.compute_volume_oscillator(data_missing_volume, window=20)
-    assert result is None
+        # Test invalid price method
+        with pytest.raises(UnsupportedMethodError, match="Unsupported price_method: invalid"):
+            compute_obv_price_divergence(sample_data, price_method="invalid")
 
-def test_compute_volume_oscillator_edge_cases(sample_data_with_extremes: pd.DataFrame) -> None:
-    """Test Volume Oscillator with edge cases."""
-    result = ci.compute_volume_oscillator(sample_data_with_extremes, window=20)
-    
-    assert isinstance(result, pd.DataFrame)
-    assert ci.VOLUME_OSCILLATOR in result.columns
-    # Verify that extreme values are handled
-    assert not result[ci.VOLUME_OSCILLATOR].isin([np.inf, -np.inf]).any()
-    # Verify zero volume handling
-    zero_volume_idx = sample_data_with_extremes['volume'] == 0
-    assert result.loc[zero_volume_idx, ci.VOLUME_OSCILLATOR].isna().all()
+        # Test missing columns
+        with pytest.raises(MissingColumnsError, match="Missing required columns for OBV/Price Divergence"):
+            compute_obv_price_divergence(sample_data.drop('volume', axis=1))
+
+        # Test invalid periods
+        with pytest.raises(InvalidParameterError, match="Invalid obv_period: 0"):
+            compute_obv_price_divergence(sample_data, obv_period=0)
+
+        with pytest.raises(InvalidParameterError, match="Invalid price_period: -1"):
+            compute_obv_price_divergence(sample_data, price_period=-1)
+
+        # Test invalid smoothing
+        with pytest.raises(InvalidParameterError, match="Invalid smoothing: -0.1"):
+            compute_obv_price_divergence(sample_data, smoothing=-0.1)
+
+def test_compute_volume_oscillator(sample_data):
+    """Test Volume Oscillator calculation with valid inputs, invalid inputs, and edge cases."""
+    with suppress_expected_errors():
+        # Test valid window
+        result = compute_volume_oscillator(sample_data, window=20)
+        assert isinstance(result, pd.DataFrame)
+        assert not result.empty
+        assert 'volume_osc' in result.columns
+
+        # Test invalid window
+        with pytest.raises(InvalidParameterError, match="Window \\(1\\) must be an integer >= 2"):
+            compute_volume_oscillator(sample_data, window=1)
+
+        # Test missing volume column
+        with pytest.raises(MissingColumnsError, match="Missing required columns for Volume Oscillator"):
+            compute_volume_oscillator(sample_data.drop('volume', axis=1))
+
+        # Test with zero volumes
+        data_zero_vol = sample_data.copy()
+        data_zero_vol.loc[data_zero_vol.index[0:10], 'volume'] = 0
+        result = compute_volume_oscillator(data_zero_vol)
+        assert isinstance(result, pd.DataFrame)
+        assert not result.empty
+        assert 'volume_osc' in result.columns
+        assert result['volume_osc'].isna().any()  # Should have NaN for zero volumes
+
+        # Test with very small window
+        result = compute_volume_oscillator(sample_data, window=2)
+        assert isinstance(result, pd.DataFrame)
+        assert not result.empty
+        assert 'volume_osc' in result.columns
+
+        # Test with window larger than data
+        result = compute_volume_oscillator(sample_data, window=200)
+        assert isinstance(result, pd.DataFrame)
+        assert not result.empty
+        assert 'volume_osc' in result.columns
+        # No need to check for NaN, as min_periods=1 ensures all values are filled
 
 def test_compute_vwap_basic(sample_data: pd.DataFrame) -> None:
     """Test basic VWAP calculation."""
@@ -219,20 +183,23 @@ def test_compute_vwap_basic(sample_data: pd.DataFrame) -> None:
     assert not result[ci.VWAP].isna().all()
     assert len(result) == len(sample_data)
     
-    # Verify VWAP is between high and low
-    assert (result[ci.VWAP] >= sample_data['low']).all()
-    assert (result[ci.VWAP] <= sample_data['high']).all()
+    # Verify VWAP is between cumulative min(low) and cumulative max(high) up to each row
+    cum_min_low = sample_data['low'].expanding().min()
+    cum_max_high = sample_data['high'].expanding().max()
+    vwap = result[ci.VWAP]
+    assert (vwap >= cum_min_low).all()
+    assert (vwap <= cum_max_high).all()
 
 def test_compute_vwap_invalid_inputs(sample_data: pd.DataFrame) -> None:
     """Test VWAP with invalid inputs."""
     # Test with missing columns
     data_missing_close = sample_data.drop('close', axis=1)
-    result = ci.compute_vwap(data_missing_close)
-    assert result is None
-    
+    with pytest.raises(MissingColumnsError, match="Missing required columns for VWAP: \\['close'\\]"):
+        ci.compute_vwap(data_missing_close)
+
     data_missing_volume = sample_data.drop('volume', axis=1)
-    result = ci.compute_vwap(data_missing_volume)
-    assert result is None
+    with pytest.raises(MissingColumnsError, match="Missing required columns for VWAP: \\['volume'\\]"):
+        ci.compute_vwap(data_missing_volume)
 
 def test_compute_vwap_edge_cases(sample_data_with_extremes: pd.DataFrame) -> None:
     """Test VWAP with edge cases."""
@@ -270,14 +237,21 @@ def test_compute_nvi_basic(sample_data: pd.DataFrame) -> None:
 
 def test_compute_volume_indices_invalid_inputs(sample_data: pd.DataFrame) -> None:
     """Test PVI and NVI with invalid inputs."""
-    # Test with missing columns
+    # Test with missing columns for PVI
     data_missing_close = sample_data.drop('close', axis=1)
-    assert ci.compute_pvi(data_missing_close) is None
-    assert ci.compute_nvi(data_missing_close) is None
-    
+    with pytest.raises(MissingColumnsError, match="Missing required columns for PVI: \\['close'\\]"):
+        ci.compute_pvi(data_missing_close)
+
     data_missing_volume = sample_data.drop('volume', axis=1)
-    assert ci.compute_pvi(data_missing_volume) is None
-    assert ci.compute_nvi(data_missing_volume) is None
+    with pytest.raises(MissingColumnsError, match="Missing required columns for PVI: \\['volume'\\]"):
+        ci.compute_pvi(data_missing_volume)
+
+    # Test with missing columns for NVI
+    with pytest.raises(MissingColumnsError, match="Missing required columns for NVI: \\['close'\\]"):
+        ci.compute_nvi(data_missing_close)
+
+    with pytest.raises(MissingColumnsError, match="Missing required columns for NVI: \\['volume'\\]"):
+        ci.compute_nvi(data_missing_volume)
 
 def test_compute_volume_indices_edge_cases(sample_data_with_extremes: pd.DataFrame) -> None:
     """Test PVI and NVI with edge cases."""
@@ -385,4 +359,273 @@ def test_custom_indicators_performance(sample_data: pd.DataFrame) -> None:
         assert isinstance(ind, pd.DataFrame)
         assert len(ind) == len(large_data)
     # Should run in reasonable time (<2s for 1000 rows)
-    assert (end_time - start_time) < 2 
+    assert (end_time - start_time) < 2
+
+def test_compute_obv_price_divergence_valid(sample_data):
+    """Test OBV/Price divergence calculation with valid data."""
+    result = compute_obv_price_divergence(
+        data=sample_data,
+        method="Difference",
+        obv_method="SMA",
+        obv_period=14,
+        price_input_type="close",
+        price_method="SMA",
+        price_period=14
+    )
+    
+    assert isinstance(result, pd.DataFrame)
+    assert OBV_PRICE_DIVERGENCE in result.columns
+    assert len(result) == len(sample_data)
+    assert not result[OBV_PRICE_DIVERGENCE].isna().all()
+
+def test_compute_obv_price_divergence_missing_columns():
+    """Test OBV/Price divergence with missing columns."""
+    data = pd.DataFrame({'close': [1, 2, 3]})  # Missing required columns
+    with pytest.raises(MissingColumnsError):
+        compute_obv_price_divergence(data)
+
+def test_compute_obv_price_divergence_invalid_period(sample_data):
+    """Test OBV/Price divergence with invalid period."""
+    with pytest.raises(InvalidParameterError):
+        compute_obv_price_divergence(
+            data=sample_data,
+            obv_period=0  # Invalid period
+        )
+
+def test_compute_obv_price_divergence_invalid_method(sample_data):
+    """Test OBV/Price divergence with invalid method."""
+    with pytest.raises(UnsupportedMethodError):
+        compute_obv_price_divergence(
+            data=sample_data,
+            method="InvalidMethod"
+        )
+
+def test_compute_obv_price_divergence_all_methods(sample_data):
+    """Test OBV/Price divergence with all supported methods."""
+    methods = ["Difference", "Ratio", "Log Ratio"]
+    obv_methods = ["SMA", "EMA", "NONE"]
+    price_methods = ["SMA", "EMA", "NONE"]
+    price_inputs = ["close", "open", "high", "low", "hl/2", "ohlc/4"]
+    
+    for method in methods:
+        for obv_method in obv_methods:
+            for price_method in price_methods:
+                for price_input in price_inputs:
+                    result = compute_obv_price_divergence(
+                        data=sample_data,
+                        method=method,
+                        obv_method=obv_method,
+                        price_input_type=price_input,
+                        price_method=price_method
+                    )
+                    assert isinstance(result, pd.DataFrame)
+                    assert OBV_PRICE_DIVERGENCE in result.columns
+
+def test_compute_volume_oscillator_valid(sample_data):
+    """Test Volume Oscillator calculation with valid data."""
+    result = compute_volume_oscillator(sample_data, window=20)
+    
+    assert isinstance(result, pd.DataFrame)
+    assert VOLUME_OSCILLATOR in result.columns
+    assert len(result) == len(sample_data)
+    assert not result[VOLUME_OSCILLATOR].isna().all()
+
+def test_compute_volume_oscillator_missing_volume():
+    """Test Volume Oscillator with missing volume column."""
+    data = pd.DataFrame({'close': [1, 2, 3]})
+    with pytest.raises(MissingColumnsError):
+        compute_volume_oscillator(data)
+
+def test_compute_volume_oscillator_invalid_window(sample_data):
+    """Test Volume Oscillator with invalid window."""
+    with pytest.raises(InvalidParameterError):
+        compute_volume_oscillator(sample_data, window=1)
+
+def test_compute_volume_oscillator_zero_volume():
+    """Test Volume Oscillator with zero volume."""
+    data = pd.DataFrame({
+        'volume': [0, 0, 0],
+        'close': [1, 2, 3]
+    })
+    result = compute_volume_oscillator(data, window=2)
+    assert result[VOLUME_OSCILLATOR].isna().all()
+
+def test_compute_vwap_valid(sample_data):
+    """Test VWAP calculation with valid data."""
+    result = ci.compute_vwap(sample_data)
+    
+    assert isinstance(result, pd.DataFrame)
+    assert VWAP in result.columns
+    assert len(result) == len(sample_data)
+    assert not result[VWAP].isna().all()
+
+def test_compute_vwap_missing_columns():
+    """Test VWAP with missing columns."""
+    data = pd.DataFrame({'close': [1, 2, 3]})
+    with pytest.raises(MissingColumnsError):
+        ci.compute_vwap(data)
+
+def test_compute_vwap_zero_volume():
+    """Test VWAP with zero volume."""
+    data = pd.DataFrame({
+        'open': [1, 2, 3],
+        'high': [2, 3, 4],
+        'low': [0.5, 1.5, 2.5],
+        'close': [1.5, 2.5, 3.5],
+        'volume': [0, 0, 0]
+    })
+    result = ci.compute_vwap(data)
+    assert result[VWAP].isna().all()
+
+def test_compute_pvi_valid(sample_data):
+    """Test PVI calculation with valid data."""
+    result = ci.compute_pvi(sample_data)
+    
+    assert isinstance(result, pd.DataFrame)
+    assert PVI in result.columns
+    assert len(result) == len(sample_data)
+    assert not result[PVI].isna().all()
+
+def test_compute_pvi_missing_columns():
+    """Test PVI with missing columns."""
+    data = pd.DataFrame({'close': [1, 2, 3]})
+    with pytest.raises(MissingColumnsError):
+        ci.compute_pvi(data)
+
+def test_compute_pvi_zero_volume():
+    """Test PVI with zero volume."""
+    data = pd.DataFrame({
+        'close': [1, 2, 3],
+        'volume': [0, 0, 0]
+    })
+    result = ci.compute_pvi(data)
+    assert result[PVI].isna().all()
+
+def test_compute_nvi_valid(sample_data):
+    """Test NVI calculation with valid data."""
+    result = ci.compute_nvi(sample_data)
+    
+    assert isinstance(result, pd.DataFrame)
+    assert NVI in result.columns
+    assert len(result) == len(sample_data)
+    assert not result[NVI].isna().all()
+
+def test_compute_nvi_missing_columns():
+    """Test NVI with missing columns."""
+    data = pd.DataFrame({'close': [1, 2, 3]})
+    with pytest.raises(MissingColumnsError):
+        ci.compute_nvi(data)
+
+def test_compute_nvi_zero_volume():
+    """Test NVI with zero volume."""
+    data = pd.DataFrame({
+        'close': [1, 2, 3],
+        'volume': [0, 0, 0]
+    })
+    result = ci.compute_nvi(data)
+    assert result[NVI].isna().all()
+
+def test_compute_returns_valid(sample_data):
+    """Test returns calculation with valid data."""
+    result = ci.compute_returns(sample_data, period=1)
+    
+    assert isinstance(result, pd.Series)
+    assert len(result) == len(sample_data)
+    assert not result.isna().all()
+
+def test_compute_returns_missing_close():
+    """Test returns calculation with missing close column."""
+    data = pd.DataFrame({'volume': [1, 2, 3]})
+    with pytest.raises(MissingColumnsError):
+        ci.compute_returns(data)
+
+def test_compute_returns_invalid_period(sample_data):
+    """Test returns calculation with invalid period."""
+    with pytest.raises(InvalidParameterError):
+        ci.compute_returns(sample_data, period=0)
+
+def test_compute_returns_different_periods(sample_data):
+    """Test returns calculation with different periods."""
+    periods = [1, 2, 5, 10]
+    for period in periods:
+        result = ci.compute_returns(sample_data, period=period)
+        assert isinstance(result, pd.Series)
+        assert len(result) == len(sample_data)
+
+def test_compute_volatility_valid(sample_data):
+    """Test volatility calculation with valid data."""
+    result = ci.compute_volatility(sample_data, period=20)
+    
+    assert isinstance(result, pd.Series)
+    assert len(result) == len(sample_data)
+    assert not result.isna().all()
+
+def test_compute_volatility_missing_close():
+    """Test volatility calculation with missing close column."""
+    data = pd.DataFrame({'volume': [1, 2, 3]})
+    with pytest.raises(MissingColumnsError):
+        ci.compute_volatility(data)
+
+def test_compute_volatility_invalid_period(sample_data):
+    """Test volatility calculation with invalid period."""
+    with pytest.raises(InvalidParameterError):
+        ci.compute_volatility(sample_data, period=0)
+
+def test_compute_volatility_different_periods(sample_data):
+    """Test volatility calculation with different periods."""
+    periods = [5, 10, 20, 50]
+    for period in periods:
+        result = ci.compute_volatility(sample_data, period=period)
+        assert isinstance(result, pd.Series)
+        assert len(result) == len(sample_data)
+
+def test_all_indicators_empty_dataframe():
+    """Test all indicators with empty DataFrame."""
+    empty_df = pd.DataFrame()
+    
+    with pytest.raises(MissingColumnsError):
+        compute_obv_price_divergence(empty_df)
+    with pytest.raises(MissingColumnsError):
+        compute_volume_oscillator(empty_df)
+    with pytest.raises(MissingColumnsError):
+        ci.compute_vwap(empty_df)
+    with pytest.raises(MissingColumnsError):
+        ci.compute_pvi(empty_df)
+    with pytest.raises(MissingColumnsError):
+        ci.compute_nvi(empty_df)
+    with pytest.raises(MissingColumnsError):
+        ci.compute_returns(empty_df)
+    with pytest.raises(MissingColumnsError):
+        ci.compute_volatility(empty_df)
+
+def test_all_indicators_single_row():
+    """Test all indicators with single row of data."""
+    single_row = pd.DataFrame({
+        'open': [100],
+        'high': [200],
+        'low': [50],
+        'close': [150],
+        'volume': [1000]
+    })
+    
+    # These should not raise errors but may return NaN values
+    obv_result = compute_obv_price_divergence(single_row)
+    vol_osc_result = compute_volume_oscillator(single_row)
+    vwap_result = ci.compute_vwap(single_row)
+    pvi_result = ci.compute_pvi(single_row)
+    nvi_result = ci.compute_nvi(single_row)
+    try:
+        returns_result = ci.compute_returns(single_row)
+    except ValueError:
+        returns_result = None
+    try:
+        vol_result = ci.compute_volatility(single_row)
+    except ValueError:
+        vol_result = None
+    assert isinstance(obv_result, pd.DataFrame)
+    assert isinstance(vol_osc_result, pd.DataFrame)
+    assert isinstance(vwap_result, pd.DataFrame)
+    assert isinstance(pvi_result, pd.DataFrame)
+    assert isinstance(nvi_result, pd.DataFrame)
+    assert isinstance(returns_result, pd.Series)
+    assert isinstance(vol_result, pd.Series) 
