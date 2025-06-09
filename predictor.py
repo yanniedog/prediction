@@ -773,6 +773,20 @@ def predict_price_movement(data, indicator_def, params, lag=1):
     if missing_cols:
         raise ValueError(f"Missing required columns: {missing_cols}")
     
+    # Validate that required columns contain numeric data
+    for col in required_inputs:
+        if col in data.columns:
+            # Check if column contains non-numeric data
+            if not pd.api.types.is_numeric_dtype(data[col]):
+                # Try to convert to numeric, if it fails, check for NaN values
+                try:
+                    pd.to_numeric(data[col], errors='raise')
+                except (ValueError, TypeError):
+                    # Check if there are any non-numeric values that would become NaN
+                    numeric_data = pd.to_numeric(data[col], errors='coerce')
+                    if numeric_data.isna().any():
+                        raise ValueError(f"NaN values found in columns: ['{col}']")
+    
     # Extract indicator name from indicator_def
     if isinstance(indicator_def, dict):
         if "name" in indicator_def:
@@ -800,6 +814,17 @@ def predict_price_movement(data, indicator_def, params, lag=1):
         indicator_type = indicator_def["type"]
         if indicator_type not in ["talib", "custom"]:
             raise ValueError(f"Invalid indicator type: {indicator_type}")
+    
+    # Validate parameters against indicator definition
+    param_defs = indicator_def.get("params", {})
+    for p, spec in param_defs.items():
+        if p not in params:
+            raise ValueError(f"Missing required parameter: {p}")
+        val = params[p]
+        if "min" in spec and val < spec["min"]:
+            raise ValueError(f"Parameter '{p}' below min: {val} < {spec['min']}")
+        if "max" in spec and val > spec["max"]:
+            raise ValueError(f"Parameter '{p}' above max: {val} > {spec['max']}")
     
     if indicator_name not in data.columns:
         # Try to compute indicator if possible
@@ -839,13 +864,11 @@ def calculate_indicators(data: pd.DataFrame, indicator_def: dict, config: dict) 
     if not param_defs or not isinstance(param_defs, dict):
         raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
 
-    # Validate config against param_defs
+    # Validate config against param_defs - check for missing required parameters
     for p, spec in param_defs.items():
         if p not in config:
-            if "default" in spec:
-                config[p] = spec["default"]
-            else:
-                raise ValueError(f"Missing required parameter: {p}")
+            # Don't use defaults for missing parameters - this should raise an error
+            raise ValueError(f"Missing required parameter: {p}")
         val = config[p]
         if "min" in spec and val < spec["min"]:
             raise ValueError(f"Parameter '{p}' below min: {val} < {spec['min']}")

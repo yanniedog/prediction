@@ -763,7 +763,8 @@ class SQLiteManager:
         # Convert non-primitive types to strings (e.g., pd.Timestamp)
         clean_data = {k: (str(v) if hasattr(v, 'isoformat') or type(v).__name__ == 'Timestamp' else v) for k, v in data.items()}
         try:
-            conn = self.create_connection()
+            # Use transaction connection if available, otherwise create new connection
+            conn = getattr(self, '_transaction_conn', None) or self.create_connection()
             if not conn:
                 return False
             cursor = conn.cursor()
@@ -772,12 +773,15 @@ class SQLiteManager:
             placeholders = ['?' for _ in columns]
             insert_stmt = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(placeholders)})"
             cursor.execute(insert_stmt, list(clean_data.values()))
-            conn.commit()
-            conn.close()
+            
+            # Only commit if not in a transaction
+            if not hasattr(self, '_transaction_conn'):
+                conn.commit()
+                conn.close()
             return True
         except sqlite3.Error as e:
             logger.error(f"Error inserting data into {table_name}: {e}")
-            if conn:
+            if conn and not hasattr(self, '_transaction_conn'):
                 conn.close()
             return False
     
@@ -1350,6 +1354,8 @@ class TransactionContext:
         self.conn = self.db_manager.create_connection()
         if self.conn:
             self.conn.execute("BEGIN TRANSACTION")
+            # Set the transaction connection on the manager
+            self.db_manager._transaction_conn = self.conn
         return self.db_manager
         
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -1362,6 +1368,11 @@ class TransactionContext:
                 # Commit on success
                 self.conn.commit()
             self.conn.close()
+            # Clear the transaction connection from the manager
+            if hasattr(self.db_manager, '_transaction_conn'):
+                delattr(self.db_manager, '_transaction_conn')
+            # Clear the connection from the manager to prevent reuse
+            self.db_manager.connection = None
 
 # Helper functions for tests
 def _connect(db_path: str) -> sqlite3.Connection:

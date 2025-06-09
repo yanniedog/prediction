@@ -650,6 +650,11 @@ class IndicatorFactory:
         result_df = data.copy()  # Initialize result_df at the start
         failed_config_ids: Set[int] = set()
         
+        # Handle empty indicator_configs
+        if not indicator_configs:
+            logger.warning("No indicator configurations provided")
+            return result_df, failed_config_ids
+        
         for config in indicator_configs:
             try:
                 # Use dict.get() with default values to avoid None
