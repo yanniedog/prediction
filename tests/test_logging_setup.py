@@ -50,9 +50,28 @@ def reset_logging() -> Generator[None, None, None]:
     
     yield
     
-    # Restore original state
-    logging.getLogger().handlers = original_handlers
-    logging.getLogger().level = original_level
+    # Clean up any existing handlers before restoring
+    logger = logging.getLogger()
+    for handler in logger.handlers[:]:
+        try:
+            handler.close()
+        except Exception:
+            pass
+        logger.removeHandler(handler)
+    
+    # Restore original state, but only for handlers that are still valid
+    valid_handlers = []
+    for handler in original_handlers:
+        try:
+            # Check if handler is still valid (not closed)
+            if hasattr(handler, 'stream') and handler.stream is not None:
+                valid_handlers.append(handler)
+        except Exception:
+            # Skip invalid handlers
+            pass
+    
+    logger.handlers = valid_handlers
+    logger.level = original_level
 
 @pytest.fixture(scope="function")
 def temp_log_dir():
@@ -224,6 +243,8 @@ def test_set_console_log_level() -> None:
         logging_setup.set_console_log_level(logging.ERROR)
         assert console_handlers[0].level == logging.ERROR
         assert logger.level == min(file_handlers[0].level, console_handlers[0].level)
+        # Clean up handlers to prevent ResourceWarnings
+        logging_setup.cleanup_logging()
 
 def test_reset_console_log_level() -> None:
     with warnings.catch_warnings():
@@ -239,6 +260,8 @@ def test_reset_console_log_level() -> None:
         file_handlers = [h for h in logger.handlers if isinstance(h, logging.FileHandler)]
         expected_level = min(file_handlers[0].level, console_handlers[0].level)
         assert logger.level == expected_level
+        # Clean up handlers to prevent ResourceWarnings
+        logging_setup.cleanup_logging()
 
 def test_library_quieting() -> None:
     with warnings.catch_warnings():

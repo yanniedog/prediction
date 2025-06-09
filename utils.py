@@ -701,11 +701,17 @@ def format_timedelta(seconds: int) -> str:
     elif seconds < 3600:
         minutes = seconds // 60
         remaining_seconds = seconds % 60
+        if remaining_seconds == 0:
+            return f"{minutes}m"
         return f"{minutes}m {remaining_seconds}s"
     else:
         hours = seconds // 3600
         remaining_minutes = (seconds % 3600) // 60
         remaining_seconds = seconds % 60
+        if remaining_minutes == 0 and remaining_seconds == 0:
+            return f"{hours}h"
+        elif remaining_seconds == 0:
+            return f"{hours}h {remaining_minutes}m"
         return f"{hours}h {remaining_minutes}m {remaining_seconds}s"
 
 class Timer:
@@ -722,8 +728,9 @@ class Timer:
     def stop(self):
         """Stop the timer."""
         self.end_time = datetime.now()
-        return self
+        return self.elapsed
     
+    @property
     def elapsed(self) -> timedelta:
         """Get elapsed time."""
         if self.start_time is None:
@@ -733,7 +740,16 @@ class Timer:
     
     def elapsed_seconds(self) -> float:
         """Get elapsed time in seconds."""
-        return self.elapsed().total_seconds()
+        return self.elapsed.total_seconds()
+    
+    def __enter__(self):
+        """Context manager entry."""
+        self.start()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        self.stop()
 
 def human_readable_size(size_bytes: int) -> str:
     """Convert bytes to human readable format."""
@@ -753,12 +769,15 @@ def rolling_apply(arr: np.ndarray, window: int, func: Callable) -> np.ndarray:
     if len(arr) < window:
         return np.array([])
     
-    result = []
+    # Initialize result array with NaN
+    result = np.full(len(arr), np.nan)
+    
+    # Apply function to rolling windows starting from index window-1
     for i in range(window - 1, len(arr)):
         window_data = arr[i - window + 1:i + 1]
-        result.append(func(window_data))
+        result[i] = func(window_data)
     
-    return np.array(result)
+    return result
 
 def chunks(lst: list, n: int):
     """Yield successive n-sized chunks from lst."""
@@ -782,8 +801,8 @@ def retry(tries: int = 3, delay: float = 1.0):
         return wrapper
     return decorator
 
-def parse_timeframe(timeframe: str) -> Tuple[str, int]:
-    """Parse timeframe string into unit and value."""
+def parse_timeframe(timeframe: str) -> int:
+    """Parse timeframe string into seconds."""
     if not timeframe:
         raise ValueError("Timeframe cannot be empty")
     
@@ -791,18 +810,24 @@ def parse_timeframe(timeframe: str) -> Tuple[str, int]:
     timeframe = timeframe.upper()
     
     if timeframe.endswith('M'):
-        return 'M', int(timeframe[:-1])
+        minutes = int(timeframe[:-1])
+        return minutes * 60
     elif timeframe.endswith('H'):
-        return 'H', int(timeframe[:-1])
+        hours = int(timeframe[:-1])
+        return hours * 3600
     elif timeframe.endswith('D'):
-        return 'D', int(timeframe[:-1])
+        days = int(timeframe[:-1])
+        return days * 86400
     elif timeframe.endswith('W'):
-        return 'W', int(timeframe[:-1])
+        weeks = int(timeframe[:-1])
+        return weeks * 604800
     elif timeframe.endswith('Y'):
-        return 'Y', int(timeframe[:-1])
+        years = int(timeframe[:-1])
+        return years * 31536000
     else:
         # Assume minutes if no unit specified
-        return 'M', int(timeframe)
+        minutes = int(timeframe)
+        return minutes * 60
 
 def is_number(value: Any) -> bool:
     """Check if a value is a number."""

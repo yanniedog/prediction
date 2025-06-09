@@ -782,30 +782,19 @@ def reset_logging():
     # Store original level
     original_level = logging.getLogger().level
     
-    # Close all existing handlers to prevent ResourceWarnings
-    for handler in logging.getLogger().handlers[:]:
-        try:
-            handler.flush()
-            handler.close()
-        except Exception:
-            pass
+    # Import and use the cleanup function from logging_setup
+    import logging_setup
+    logging_setup.cleanup_logging()
     
     # Reset logging
-    logging.getLogger().handlers = []
     logging.getLogger().level = logging.NOTSET
     
     yield
     
-    # Close any handlers that might have been created during the test
-    for handler in logging.getLogger().handlers[:]:
-        try:
-            handler.flush()
-            handler.close()
-        except Exception:
-            pass
+    # Clean up any handlers that might have been created during the test
+    logging_setup.cleanup_logging()
     
-    # Clear all handlers and restore level only
-    logging.getLogger().handlers = []
+    # Restore level only
     logging.getLogger().level = original_level
 
 # Hook to capture test names

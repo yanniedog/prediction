@@ -274,19 +274,19 @@ def sample_indicator_data() -> pd.DataFrame:
     return data
 
 @pytest.fixture(scope="function")
-def sample_correlation_data() -> pd.DataFrame:
-    """Create sample correlation data for testing."""
-    np.random.seed(42)
-    data = pd.DataFrame({
-        "RSI": np.random.uniform(0, 100, 100),
-        "BB_upper": np.random.normal(102, 1, 100),
-        "BB_middle": np.random.normal(100, 1, 100),
-        "BB_lower": np.random.normal(98, 1, 100),
-        "MACD": np.random.normal(0, 1, 100),
-        "MACD_signal": np.random.normal(0, 1, 100),
-        "MACD_hist": np.random.normal(0, 0.5, 100)
-    })
-    return data.corr()
+def sample_correlation_matrix() -> pd.DataFrame:
+    """Create sample correlation matrix for testing."""
+    # Create a correlation matrix
+    data = {
+        'RSI': [1.0, -0.15, -0.12, -0.08, 0.02, 0.17, 0.16],
+        'BB_upper': [-0.15, 1.0, 0.95, 0.85, 0.75, 0.65, 0.55],
+        'BB_middle': [-0.12, 0.95, 1.0, 0.90, 0.80, 0.70, 0.60],
+        'BB_lower': [-0.08, 0.85, 0.90, 1.0, 0.85, 0.75, 0.65],
+        'MACD': [0.02, 0.75, 0.80, 0.85, 1.0, 0.90, 0.80],
+        'MACD_signal': [0.17, 0.65, 0.70, 0.75, 0.90, 1.0, 0.85],
+        'MACD_hist': [0.16, 0.55, 0.60, 0.65, 0.80, 0.85, 1.0]
+    }
+    return pd.DataFrame(data, index=data.keys())
 
 @pytest.fixture(scope="function")
 def sample_optimization_data() -> Dict[str, Any]:
@@ -372,16 +372,16 @@ def test_plot_indicator_performance(temp_dir: Path, sample_data: pd.DataFrame, s
     with pytest.raises(ValueError):
         plot_indicator_performance(invalid_data, sample_indicator_data, chart_path)
 
-def test_plot_correlation_matrix(temp_dir: Path, sample_correlation_data: pd.DataFrame):
+def test_plot_correlation_matrix(temp_dir: Path, sample_correlation_matrix: pd.DataFrame):
     """Test correlation matrix plotting."""
     # Test basic plotting
     chart_path = temp_dir / "correlation_matrix.png"
-    plot_correlation_matrix(sample_correlation_data, chart_path)
+    plot_correlation_matrix(sample_correlation_matrix, chart_path)
     assert chart_path.exists()
     
     # Test with custom title
     chart_path = temp_dir / "correlation_matrix_custom.png"
-    plot_correlation_matrix(sample_correlation_data, chart_path, title="Custom Title")
+    plot_correlation_matrix(sample_correlation_matrix, chart_path, title="Custom Title")
     assert chart_path.exists()
     
     # Test with invalid data
@@ -389,7 +389,7 @@ def test_plot_correlation_matrix(temp_dir: Path, sample_correlation_data: pd.Dat
         plot_correlation_matrix(pd.DataFrame(), chart_path)
     
     # Test with non-square correlation matrix
-    invalid_data = sample_correlation_data.iloc[:, :-1]  # Remove one column
+    invalid_data = sample_correlation_matrix.iloc[:, :-1]  # Remove one column
     with pytest.raises(ValueError):
         plot_correlation_matrix(invalid_data, chart_path)
 
@@ -438,7 +438,7 @@ def test_plot_prediction_accuracy(temp_dir: Path, sample_prediction_data: Tuple[
         plot_prediction_accuracy(actual, predicted.iloc[:-1], chart_path)
 
 def test_generate_charts(temp_dir: Path, sample_data: pd.DataFrame, sample_indicator_data: pd.DataFrame,
-                        sample_correlation_data: pd.DataFrame, sample_optimization_data: Dict[str, Any],
+                        sample_correlation_matrix: pd.DataFrame, sample_optimization_data: Dict[str, Any],
                         sample_prediction_data: Tuple[pd.Series, pd.Series]):
     """Test main chart generation function."""
     actual, predicted = sample_prediction_data
@@ -448,7 +448,7 @@ def test_generate_charts(temp_dir: Path, sample_data: pd.DataFrame, sample_indic
         temp_dir,
         price_data=sample_data,
         indicator_data=sample_indicator_data,
-        correlation_data=sample_correlation_data,
+        correlation_data=sample_correlation_matrix,
         optimization_data=sample_optimization_data,
         actual_predictions=actual,
         predicted_predictions=predicted

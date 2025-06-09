@@ -800,7 +800,57 @@ def predict_price_movement(data, indicator_def, params, lag=1):
         if col in data.columns and pd.api.types.is_numeric_dtype(data[col]):
             # Check for negative values in volume column
             if col == 'volume' and (data[col] < 0).any():
-                raise ValueError(f"Negative values found in volume column")
+                raise ValueError(f"Negative values found in columns: ['{col}']")
+    
+    # Validate price relationships
+    if 'high' in data.columns and 'low' in data.columns:
+        if (data['high'] < data['low']).any():
+            raise ValueError("Invalid price relationships: high < low")
+    
+    if 'high' in data.columns and 'open' in data.columns:
+        if (data['high'] < data['open']).any():
+            raise ValueError("Invalid price relationships: high < open")
+    
+    if 'high' in data.columns and 'close' in data.columns:
+        if (data['high'] < data['close']).any():
+            raise ValueError("Invalid price relationships: high < close")
+    
+    if 'low' in data.columns and 'open' in data.columns:
+        if (data['low'] > data['open']).any():
+            raise ValueError("Invalid price relationships: low > open")
+    
+    if 'low' in data.columns and 'close' in data.columns:
+        if (data['low'] > data['close']).any():
+            raise ValueError("Invalid price relationships: low > close")
+    
+    # Validate minimum data points
+    if len(data) < 100:
+        raise ValueError("Insufficient data points (minimum 100 required)")
+    
+    # Validate for duplicate timestamps
+    if data.index.duplicated().any():
+        raise ValueError("Duplicate timestamps found in data")
+    
+    # Validate timestamp order
+    if not data.index.is_monotonic_increasing:
+        raise ValueError("Timestamps must be in ascending order")
+    
+    # Validate for large gaps (more than 7 days for daily data, 1 hour for hourly data)
+    if len(data) > 1:
+        time_diffs = data.index.to_series().diff().dropna()
+        if len(time_diffs) > 0:
+            # Check if the index is datetime-like before using .dt accessor
+            if pd.api.types.is_datetime64_any_dtype(data.index):
+                # Check if this looks like daily data (gaps > 7 days)
+                if time_diffs.dt.days.max() > 7:
+                    raise ValueError("Large gap detected in data")
+                # Check if this looks like hourly data (gaps > 1 hour)
+                elif time_diffs.dt.total_seconds().max() > 3600:
+                    raise ValueError("Large gap detected in data")
+            else:
+                # For non-datetime indices, check if differences are too large
+                if time_diffs.max() > 7:  # Assuming daily data
+                    raise ValueError("Large gap detected in data")
     
     # Extract indicator name from indicator_def
     if isinstance(indicator_def, dict):

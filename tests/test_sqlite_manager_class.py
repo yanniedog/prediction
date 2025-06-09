@@ -117,7 +117,7 @@ def test_data_retrieval(db_manager: SQLiteManager, sample_data: pd.DataFrame):
     # Convert timestamps to strings before insertion
     data_records = sample_data.to_dict("records")
     for record in data_records:
-        record['timestamp'] = str(record['timestamp'])
+        record['timestamp'] = record['timestamp'].strftime("%Y-%m-%d %H:%M:%S")
     
     db_manager.insert_many("price_data", data_records)
 
@@ -133,7 +133,8 @@ def test_data_retrieval(db_manager: SQLiteManager, sample_data: pd.DataFrame):
     assert len(result) > 0
     assert all(row["close"] > sample_data["close"].mean() for row in result)
     
-    # Test query with joins
+    # Drop indicators table if it exists
+    db_manager.drop_table("indicators")
     db_manager.create_table("indicators", {
         "timestamp": "TEXT",
         "rsi": "REAL"
@@ -149,7 +150,7 @@ def test_data_retrieval(db_manager: SQLiteManager, sample_data: pd.DataFrame):
         JOIN indicators i ON p.timestamp = i.timestamp
     """)
     assert len(result) == len(sample_data)
-    assert all("rsi" in row for row in result)
+    assert all("rsi" in row.keys() for row in result)
 
 def test_transaction_management(db_manager: SQLiteManager):
     """Test transaction management."""

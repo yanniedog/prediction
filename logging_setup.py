@@ -209,22 +209,40 @@ def setup_multiple_loggers(names: List[str]) -> Dict[str, logging.Logger]:
     return loggers
 
 def force_flush_logs():
-    """Force flush all log handlers to ensure messages are written to files."""
+    """Force flush all log handlers to ensure messages are written."""
     logger = logging.getLogger()
     for handler in logger.handlers:
-        if hasattr(handler, 'flush'):
-            handler.flush()
-        # Also force close and reopen file handlers to ensure writes
+        try:
+            if hasattr(handler, 'flush'):
+                handler.flush()
+        except Exception:
+            pass
+
+def cleanup_logging():
+    """Clean up logging handlers to prevent ResourceWarnings."""
+    logger = logging.getLogger()
+    for handler in logger.handlers[:]:
+        try:
+            if hasattr(handler, 'flush'):
+                handler.flush()
+            if hasattr(handler, 'close'):
+                handler.close()
+        except Exception:
+            pass
+        try:
+            logger.removeHandler(handler)
+        except Exception:
+            pass
+    logger.handlers = []
+
+def close_file_handlers():
+    """Specifically close file handlers to prevent ResourceWarnings."""
+    logger = logging.getLogger()
+    for handler in logger.handlers[:]:
         if isinstance(handler, logging.FileHandler):
             try:
+                handler.flush()
                 handler.close()
-                # Reopen the file handler
-                log_filename = handler.baseFilename
-                new_handler = logging.FileHandler(log_filename, mode='a', encoding='utf-8')
-                new_handler.setLevel(handler.level)
-                new_handler.setFormatter(handler.formatter)
-                logger.removeHandler(handler)
-                logger.addHandler(new_handler)
             except Exception:
                 pass
 

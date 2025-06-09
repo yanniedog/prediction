@@ -420,8 +420,8 @@ def test_timer():
     t.start()
     time.sleep(0.01)
     elapsed = t.stop()
-    assert elapsed > 0
+    assert elapsed.total_seconds() > 0
     # Timer context manager
     with utils.Timer() as timer:
         time.sleep(0.01)
-    assert timer.elapsed > 0 
+    assert timer.elapsed.total_seconds() > 0 

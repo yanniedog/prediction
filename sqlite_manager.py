@@ -588,6 +588,15 @@ class SQLiteManager:
             logger.error(f"Error connecting to database {self.db_path}: {e}")
             return None
     
+    def connect(self) -> bool:
+        """Connect to the database and store the connection."""
+        try:
+            self.connection = self.create_connection()
+            return self.connection is not None
+        except Exception as e:
+            logger.error(f"Error connecting to database: {e}")
+            return False
+    
     def initialize_database(self) -> bool:
         """Initialize database schema and create necessary tables."""
         try:
@@ -790,14 +799,14 @@ class SQLiteManager:
         
         Args:
             table_name: Name of the table to insert into
-            data_list: List of dictionaries mapping column names to values
+            data_list: List of dictionaries containing row data
             
         Returns:
-            bool: True if all inserts were successful
+            bool: True if insertion was successful
         """
         if not data_list:
             return True
-            
+        
         try:
             conn = self.create_connection()
             if not conn:
@@ -805,15 +814,26 @@ class SQLiteManager:
             
             cursor = conn.cursor()
             
-            # Build INSERT statement using first row's keys
+            # Get column names from first row
             columns = list(data_list[0].keys())
-            placeholders = ['?' for _ in columns]
-            insert_stmt = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(placeholders)})"
             
-            # Prepare values for each row
-            values = [[row[col] for col in columns] for row in data_list]
+            # Prepare data for insertion - convert timestamps to strings
+            processed_data = []
+            for row in data_list:
+                processed_row = {}
+                for key, value in row.items():
+                    if hasattr(value, 'strftime'):  # Handle pandas Timestamp and datetime objects
+                        processed_row[key] = value.strftime('%Y-%m-%d %H:%M:%S')
+                    else:
+                        processed_row[key] = value
+                processed_data.append(processed_row)
             
-            cursor.executemany(insert_stmt, values)
+            # Build INSERT statement
+            placeholders = ', '.join(['?' for _ in columns])
+            insert_stmt = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders})"
+            
+            # Execute batch insert
+            cursor.executemany(insert_stmt, [tuple(row[col] for col in columns) for row in processed_data])
             conn.commit()
             conn.close()
             return True
@@ -833,23 +853,27 @@ class SQLiteManager:
             
         Returns:
             List of tuples containing query results
+            
+        Raises:
+            sqlite3.Error: If there's an error executing the query
         """
+        conn = None
         try:
             conn = self.create_connection()
             if not conn:
-                return []
+                raise sqlite3.Error("Failed to create database connection")
             
             cursor = conn.cursor()
             cursor.execute(query, params)
             results = cursor.fetchall()
-            conn.close()
             return results
             
         except sqlite3.Error as e:
             logger.error(f"Error executing query: {e}")
+            raise  # Re-raise the exception
+        finally:
             if conn:
                 conn.close()
-            return []
     
     def get_or_create_id(self, table_name: str, name_column: str, value: str) -> Optional[int]:
         """Get or create an ID for a value in a lookup table.
@@ -1100,20 +1124,20 @@ class SQLiteManager:
         Returns:
             bool: True if table was dropped successfully
         """
+        conn = self.connection if self.connection else self.create_connection()
         try:
-            conn = self.create_connection()
             if not conn:
                 return False
-            
             cursor = conn.cursor()
             cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
             conn.commit()
-            conn.close()
+            # Only close if we created a new connection
+            if not self.connection:
+                conn.close()
             return True
-            
         except sqlite3.Error as e:
             logger.error(f"Error dropping table {table_name}: {e}")
-            if conn:
+            if not self.connection and conn:
                 conn.close()
             return False
 
@@ -1254,10 +1278,17 @@ class SQLiteManager:
     def get_tables(self) -> List[str]:
         """Get list of all tables in the database."""
         try:
-            cursor = self.connection.cursor()
+            conn = self.create_connection()
+            if not conn:
+                return []
+            
+            cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            return [row[0] for row in cursor.fetchall()]
-        except Exception as e:
+            tables = [row[0] for row in cursor.fetchall()]
+            conn.close()
+            return tables
+            
+        except sqlite3.Error as e:
             logger.error(f"Error getting tables: {e}")
             return []
 
@@ -1342,6 +1373,156 @@ class SQLiteManager:
         except Exception as e:
             logger.error(f"Error deleting rows from {table_name}: {e}")
             return False
+
+    def add_column(self, table_name: str, column_name: str, column_type: str) -> bool:
+        """Add a column to an existing table.
+        
+        Args:
+            table_name: Name of the table
+            column_name: Name of the column to add
+            column_type: SQLite data type for the column
+            
+        Returns:
+            bool: True if column was added successfully
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error adding column {column_name} to {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+    
+    def drop_column(self, table_name: str, column_name: str) -> bool:
+        """Drop a column from a table.
+        
+        Note: SQLite doesn't support DROP COLUMN directly, so this is a workaround.
+        
+        Args:
+            table_name: Name of the table
+            column_name: Name of the column to drop
+            
+        Returns:
+            bool: True if column was dropped successfully
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            
+            # Get current schema
+            cursor.execute(f"PRAGMA table_info({table_name})")
+            columns = cursor.fetchall()
+            
+            # Create new table without the column
+            new_columns = [col[1] for col in columns if col[1] != column_name]
+            new_schema = ", ".join([f"{col[1]} {col[2]}" for col in columns if col[1] != column_name])
+            
+            # Create new table
+            cursor.execute(f"CREATE TABLE {table_name}_new ({new_schema})")
+            
+            # Copy data
+            columns_str = ", ".join(new_columns)
+            cursor.execute(f"INSERT INTO {table_name}_new ({columns_str}) SELECT {columns_str} FROM {table_name}")
+            
+            # Drop old table and rename new one
+            cursor.execute(f"DROP TABLE {table_name}")
+            cursor.execute(f"ALTER TABLE {table_name}_new RENAME TO {table_name}")
+            
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error dropping column {column_name} from {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+    
+    def create_index(self, table_name: str, index_name: str, columns: List[str]) -> bool:
+        """Create an index on a table.
+        
+        Args:
+            table_name: Name of the table
+            index_name: Name of the index
+            columns: List of column names to index
+            
+        Returns:
+            bool: True if index was created successfully
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            columns_str = ", ".join(columns)
+            cursor.execute(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns_str})")
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error creating index {index_name} on {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+
+    def get_indexes(self, table_name: str) -> List[str]:
+        """Get list of indexes for a table."""
+        conn = None
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return []
+            
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT name FROM sqlite_master 
+                WHERE type='index' AND tbl_name=?
+            """, (table_name,))
+            
+            indexes = [row[0] for row in cursor.fetchall()]
+            return indexes
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error getting indexes for table {table_name}: {e}")
+            return []
+        finally:
+            if conn:
+                conn.close()
+
+    def drop_index(self, index_name: str) -> bool:
+        """Drop an index by name."""
+        conn = None
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            # Use string formatting for index name since SQLite doesn't support parameterized index names
+            cursor.execute(f"DROP INDEX IF EXISTS {index_name}")
+            conn.commit()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error dropping index {index_name}: {e}")
+            return False
+        finally:
+            if conn:
+                conn.close()
 
 class TransactionContext:
     """Context manager for database transactions."""

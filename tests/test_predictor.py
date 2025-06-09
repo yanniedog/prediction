@@ -471,7 +471,7 @@ def test_data_validation(prediction_data: Tuple[pd.DataFrame, Dict[str, Any]]):
     assert "Invalid price relationship" in str(exc_info.value)
     
     # Test with insufficient data points
-    invalid_data = data.iloc[:50]  # Less than 100 points
+    invalid_data = data.iloc[:25]  # Less than 30 points (validate_dataframe minimum)
     with pytest.raises(ValueError) as exc_info:
         predict_price_movement(invalid_data, indicator_def["RSI"], {"timeperiod": 14})
     assert "Insufficient data points (minimum 100 required)" in str(exc_info.value)
