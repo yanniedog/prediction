@@ -317,6 +317,9 @@ def test_log_formatting(setup_logging):
     except Exception as e:
         logger.exception("Exception occurred")
 
+    # Force flush to ensure messages are written
+    logging_setup.force_flush_logs()
+
     # Verify formatting (use logfile.txt, not .log)
     log_file = Path(logging_setup.LOG_DIR) / "logfile.txt"
     if log_file.exists():
@@ -348,6 +351,9 @@ def test_logger_initialization(setup_logging, temp_log_dir):
     test_message = "Test log message"
     logger.info(test_message)
     
+    # Force flush to ensure message is written
+    logging_setup.force_flush_logs()
+    
     # Verify message was written
     with open(log_file, 'r') as f:
         content = f.read()
@@ -370,6 +376,9 @@ def test_log_rotation(setup_logging, temp_log_dir):
     test_message = "Test log message"
     for _ in range(10):
         logger.info(test_message)
+    
+    # Force flush to ensure messages are written
+    logging_setup.force_flush_logs()
     
     # Verify log file exists and has content
     log_files = list(temp_log_dir.glob('*.txt'))
@@ -394,6 +403,9 @@ def test_log_levels(setup_logging):
 
     for level, message in test_messages.items():
         logger.log(level, message)
+
+    # Force flush to ensure messages are written
+    logging_setup.force_flush_logs()
 
     # Verify messages were written (use logfile.txt, not .log)
     log_file = Path(logging_setup.LOG_DIR) / "logfile.txt"

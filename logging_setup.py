@@ -101,6 +101,9 @@ def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_m
         # Write a test message to ensure the file is working
         logger.info(f"Logging initialized (Console: {logging.getLevelName(_default_console_level)}, File: {logging.getLevelName(_file_log_level)}, Mode: '{file_mode}', Path: {log_filename})")
         
+        # Force another flush after the test message
+        file_handler.flush()
+        
     except Exception as e:
         print(f"CRITICAL ERROR setting up file logging: {e}", file=sys.stderr)
         # Consider exiting if file logging is essential and fails
@@ -124,6 +127,11 @@ def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_m
 
     # Log initialization info (will go to handlers based on their levels)
     logger.info(f"Logging initialized (Console: {logging.getLevelName(_default_console_level)}, File: {logging.getLevelName(_file_log_level)}, Mode: '{file_mode}', Path: {log_filename})")
+    
+    # Force flush all handlers to ensure messages are written
+    for handler in logger.handlers:
+        if hasattr(handler, 'flush'):
+            handler.flush()
 
 def set_console_log_level(level: int):
     """Sets the logging level for the console handler dynamically."""
@@ -201,6 +209,13 @@ def setup_multiple_loggers(names: List[str]) -> Dict[str, logging.Logger]:
     for name in names:
         loggers[name] = setup_logger(name)
     return loggers
+
+def force_flush_logs():
+    """Force flush all log handlers to ensure messages are written to files."""
+    logger = logging.getLogger()
+    for handler in logger.handlers:
+        if hasattr(handler, 'flush'):
+            handler.flush()
 
 # Example usage within main.py (adjust levels as needed):
 # import logging_setup

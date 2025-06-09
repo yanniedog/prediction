@@ -283,7 +283,7 @@ def test_indicator_factory_parameter_generation(factory, sample_data):
         
     # Test with custom indicator
     factory.register_custom_indicator('custom_ma', 
-                                    lambda x, p: x['close'].rolling(p).mean(),
+                                    lambda data, period: data['close'].rolling(period).mean(),
                                     {'period': {'type': 'int', 'min': 2, 'max': 20, 'default': 10}})
     
     # Generate configurations for custom indicator
