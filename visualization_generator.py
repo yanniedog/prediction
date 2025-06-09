@@ -387,7 +387,7 @@ def generate_peak_correlation_report(
         logger.error(f"Failed save peak report CSV {csv_filepath}: {e}", exc_info=True)
     return csv_filepath
 
-def plot_indicator_performance(data, indicator_name, output_path, figsize=(10, 6), colors=None, style=None, title=None):
+def plot_indicator_performance(data, indicator_name, output_path, figsize=(10, 6), colors=None, style=None, title=None, xlabel=None, ylabel=None):
     """Plot indicator performance.
     
     Args:
@@ -398,6 +398,8 @@ def plot_indicator_performance(data, indicator_name, output_path, figsize=(10, 6
         colors: List of colors for the plot
         style: Matplotlib style to use
         title: Custom title for the plot
+        xlabel: Custom x-axis label
+        ylabel: Custom y-axis label
     """
     # Raise error if data is empty
     if data is None or data.empty:
@@ -472,8 +474,8 @@ def plot_indicator_performance(data, indicator_name, output_path, figsize=(10, 6
                     merged_data[indicator], label=indicator)
     
     ax2.set_title("Indicator Performance")
-    ax2.set_xlabel("Time")
-    ax2.set_ylabel("Indicator Value")
+    ax2.set_xlabel(xlabel if xlabel else "Time")
+    ax2.set_ylabel(ylabel if ylabel else "Indicator Value")
     ax2.legend()
     ax2.grid(True, alpha=0.3)
     

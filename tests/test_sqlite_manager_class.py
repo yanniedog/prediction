@@ -14,7 +14,16 @@ def temp_db_dir() -> Path:
     """Create a temporary directory for the test database."""
     temp_dir = Path(tempfile.mkdtemp())
     yield temp_dir
-    shutil.rmtree(temp_dir)
+    # Ensure all database connections are closed before cleanup
+    import gc
+    gc.collect()
+    try:
+        shutil.rmtree(temp_dir)
+    except PermissionError:
+        # If files are still locked, try again after a short delay
+        import time
+        time.sleep(0.1)
+        shutil.rmtree(temp_dir, ignore_errors=True)
 
 @pytest.fixture(scope="function")
 def db_manager(temp_db_dir: Path) -> SQLiteManager:
@@ -22,6 +31,9 @@ def db_manager(temp_db_dir: Path) -> SQLiteManager:
     db_path = temp_db_dir / "test.db"
     manager = SQLiteManager(db_path)
     yield manager
+    # Ensure proper cleanup
+    if manager.connection:
+        manager.connection.close()
     manager.close()
 
 @pytest.fixture(scope="function")
@@ -260,7 +272,7 @@ def test_connection_management(db_manager: SQLiteManager):
     assert db_manager.is_connected()
     
     # Test connection with invalid database
-    invalid_manager = SQLiteManager("/invalid/path/test.db")
+    invalid_manager = SQLiteManager("C:/Windows/System32/invalid.db")
     assert not invalid_manager.is_connected()
 
 def test_table_schema_management(db_manager: SQLiteManager):

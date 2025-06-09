@@ -574,9 +574,14 @@ class SQLiteManager:
         self.db_path = Path(db_path)
         self.timeout = timeout
         self.connection = None
-        # Initialize database and set connection
-        if self.initialize_database():
-            self.connection = self.create_connection()
+        
+        # Try to initialize database and set connection
+        try:
+            if self.initialize_database():
+                self.connection = self.create_connection()
+        except Exception as e:
+            logger.error(f"Failed to initialize database {self.db_path}: {e}")
+            self.connection = None
     
     def create_connection(self) -> Optional[sqlite3.Connection]:
         """Create a connection to the SQLite database."""
@@ -600,6 +605,14 @@ class SQLiteManager:
     def initialize_database(self) -> bool:
         """Initialize database schema and create necessary tables."""
         try:
+            # Check if the database path is valid
+            try:
+                # Try to create parent directories
+                self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            except (OSError, PermissionError) as e:
+                logger.error(f"Cannot create database directory {self.db_path.parent}: {e}")
+                return False
+            
             conn = self.create_connection()
             if not conn:
                 return False
@@ -706,6 +719,11 @@ class SQLiteManager:
             
         except sqlite3.Error as e:
             logger.error(f"Error initializing database {self.db_path}: {e}")
+            if conn:
+                conn.close()
+            return False
+        except Exception as e:
+            logger.error(f"Unexpected error initializing database {self.db_path}: {e}")
             if conn:
                 conn.close()
             return False
@@ -1304,6 +1322,9 @@ class SQLiteManager:
             cursor.execute(query, values)
             self.connection.commit()
             return True
+        except sqlite3.IntegrityError as e:
+            logger.error(f"Integrity error inserting row into {table_name}: {e}")
+            raise
         except Exception as e:
             logger.error(f"Error inserting row into {table_name}: {e}")
             return False
