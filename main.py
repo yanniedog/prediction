@@ -362,7 +362,6 @@ def _initialize_database(db_path: Path, symbol: str, timeframe: str) -> bool:
         bool: True if initialization successful
     """
     logger = logging.getLogger(__name__)
-    
     # Validate symbol and timeframe format
     if not utils.is_valid_symbol(symbol):
         logger.error(f"Invalid symbol format: {symbol}")
@@ -370,24 +369,13 @@ def _initialize_database(db_path: Path, symbol: str, timeframe: str) -> bool:
     if not utils.is_valid_timeframe(timeframe):
         logger.error(f"Invalid timeframe format: {timeframe}")
         return False
-        
     # Create proper database name
     proper_db_name = f"{symbol}_{timeframe}.db"
     if db_path.name != proper_db_name:
         logger.error(f"Database name '{db_path.name}' does not match required format SYMBOL_TIMEFRAME.db")
         return False
-        
-    # Initialize database schema
-    if not sqlite_manager.initialize_database(str(db_path)):
-        logger.error(f"Failed to initialize database schema for {db_path}")
-        return False
-        
-    # Initialize leaderboard
-    if not leaderboard_manager.initialize_leaderboard_db():
-        logger.error("Failed to initialize leaderboard database")
-        return False
-        
-    return True
+    # Initialize database schema using sqlite_manager
+    return sqlite_manager.initialize_database(str(db_path), symbol, timeframe)
 
 def _select_data_source_and_lag() -> Tuple[Path, str, str, pd.DataFrame, int, int, int, str]:
     """Select data source and lag period.
@@ -415,7 +403,10 @@ def _select_data_source_and_lag() -> Tuple[Path, str, str, pd.DataFrame, int, in
         raise ValueError(f"Failed to initialize database {db_path}")
         
     # Load data
-    data = data_manager.load_data(db_path)
+    try:
+        data = data_manager.load_data(db_path)
+    except ValueError as e:
+        raise ValueError(str(e))
     if data is None or data.empty:
         raise ValueError(f"Failed to load data from {db_path}")
         

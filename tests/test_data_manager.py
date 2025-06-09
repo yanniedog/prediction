@@ -18,7 +18,6 @@ from data_manager import (
     _filter_data,
     _resample_data,
     _fill_missing_data,
-    _normalize_data,
     _split_data
 )
 
@@ -45,8 +44,10 @@ def sample_data() -> pd.DataFrame:
     return data
 
 @pytest.fixture(scope="function")
-def data_manager(temp_dir: Path) -> DataManager:
-    return DataManager(data_dir=temp_dir)
+def data_manager(temp_dir: Path):
+    # DataManager does not accept data_dir, so use config or default
+    import config as app_config
+    return DataManager(app_config)
 
 def test_data_manager_initialization(temp_dir: Path):
     manager = DataManager(data_dir=temp_dir)
@@ -104,12 +105,12 @@ def test_fill_missing_data(sample_data: pd.DataFrame):
     with pytest.raises(ValueError):
         _fill_missing_data(pd.DataFrame())
 
-def test_normalize_data(sample_data: pd.DataFrame):
-    normalized = _normalize_data(sample_data, columns=["open", "close"])
+def test_normalize_data(data_manager: DataManager, sample_data: pd.DataFrame):
+    normalized = data_manager.normalize_data(sample_data, columns=["open", "close"])
     assert np.allclose(normalized[["open", "close"]].mean(), 0, atol=1e-1)
     assert np.allclose(normalized[["open", "close"]].std(), 1, atol=1e-1)
     with pytest.raises(ValueError):
-        _normalize_data(sample_data, columns=["nonexistent"])
+        data_manager.normalize_data(sample_data, columns=["nonexistent"])
 
 def test_split_data(sample_data: pd.DataFrame):
     train, test = _split_data(sample_data, test_size=0.2)
@@ -196,7 +197,29 @@ def test_data_validation(data_manager, test_data):
     # Test invalid data
     invalid_data = test_data.copy()
     invalid_data.loc[invalid_data.index[0], 'close'] = np.nan
-    assert not data_manager.validate_data(invalid_data)
+    with pytest.raises(ValueError) as exc_info:
+        data_manager.validate_data(invalid_data)
+    assert "NaN values found in column: close" in str(exc_info.value)
+
+    # Test missing columns
+    invalid_data = test_data.drop('volume', axis=1)
+    with pytest.raises(ValueError) as exc_info:
+        data_manager.validate_data(invalid_data)
+    assert "Missing required columns: ['volume']" in str(exc_info.value)
+
+    # Test invalid high/low relationship
+    invalid_data = test_data.copy()
+    invalid_data.loc[invalid_data.index[0], 'high'] = invalid_data.loc[invalid_data.index[0], 'low'] - 1
+    with pytest.raises(ValueError) as exc_info:
+        data_manager.validate_data(invalid_data)
+    assert "High price cannot be less than low price" in str(exc_info.value)
+
+    # Test negative volume
+    invalid_data = test_data.copy()
+    invalid_data.loc[invalid_data.index[0], 'volume'] = -1
+    with pytest.raises(ValueError) as exc_info:
+        data_manager.validate_data(invalid_data)
+    assert "Volume cannot be negative" in str(exc_info.value)
 
 def test_data_preprocessing(data_manager, test_data):
     """Test data preprocessing methods."""
@@ -226,8 +249,20 @@ def test_data_normalization(data_manager, test_data):
     normalized_data = data_manager.normalize_data(test_data)
     assert isinstance(normalized_data, pd.DataFrame)
     assert not normalized_data.empty
-    assert normalized_data.select_dtypes(include=[np.number]).max().max() <= 1
-    assert normalized_data.select_dtypes(include=[np.number]).min().min() >= -1
+    
+    # Check that numeric columns have mean=0 and std=1
+    numeric_cols = normalized_data.select_dtypes(include=[np.number]).columns
+    for col in numeric_cols:
+        mean = normalized_data[col].mean()
+        std = normalized_data[col].std()
+        assert abs(mean) < 1e-10, f"Column {col} mean should be 0, got {mean}"
+        assert abs(std - 1) < 1e-10, f"Column {col} std should be 1, got {std}"
+    
+    # Check that non-numeric columns are preserved
+    non_numeric_cols = normalized_data.select_dtypes(exclude=[np.number]).columns
+    for col in non_numeric_cols:
+        assert col in test_data.columns, f"Non-numeric column {col} should be preserved"
+        pd.testing.assert_series_equal(normalized_data[col], test_data[col])
 
 def test_data_aggregation(data_manager, test_data):
     """Test data aggregation methods."""

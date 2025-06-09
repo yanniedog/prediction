@@ -9,6 +9,8 @@ import time
 import requests
 import math
 import re
+import os
+import numpy as np  # Add numpy import
 
 import config
 import sqlite_manager
@@ -366,7 +368,7 @@ def download_binance_data(symbol: str, timeframe: str, db_path: Path) -> bool:
     logger.info(f"Starting data download/update for {symbol} ({timeframe}) into {db_path}")
 
     # Initialize DB schema first
-    if not sqlite_manager.initialize_database(str(db_path)):
+    if not sqlite_manager.initialize_database(str(db_path), symbol, timeframe):
         logger.error("Failed to initialize database. Aborting download.")
         return False
 
@@ -599,63 +601,54 @@ def load_data(db_path: Path) -> Optional[pd.DataFrame]:
         df = pd.read_sql_query(query, conn)
         logger.info(f"Loaded {len(df)} records from DB.")
 
-        if df.empty: logger.warning("Loaded DataFrame is empty."); return None
+        if df.empty: 
+            logger.warning("Loaded DataFrame is empty.")
+            raise ValueError("Insufficient data points")
 
         # Basic data cleaning and type conversion
         df['open_time'] = pd.to_numeric(df['open_time'], errors='coerce')
         df.dropna(subset=['open_time'], inplace=True)
-        if df.empty: logger.warning("DF empty after dropping invalid open_time."); return None
+        if df.empty: 
+            logger.warning("DF empty after dropping invalid open_time.")
+            raise ValueError("Insufficient data points")
 
-        # ---> ADDED: Filter out unreasonably old timestamps AFTER loading <---
+        # Filter out unreasonably old timestamps
         min_valid_timestamp_ms = EARLIEST_VALID_DATE.timestamp() * 1000
         initial_len = len(df)
         df = df[df['open_time'] >= min_valid_timestamp_ms]
         if len(df) < initial_len:
              logger.warning(f"Filtered out {initial_len - len(df)} rows with open_time before {EARLIEST_VALID_DATE.date()} during load.")
-        if df.empty: logger.error("DataFrame empty after filtering old timestamps during load."); return None
-        # ---> END ADDED FILTER <---
+        if df.empty: 
+            logger.error("DataFrame empty after filtering old timestamps during load.")
+            raise ValueError("Insufficient data points")
 
         df['date'] = pd.to_datetime(df['open_time'], unit='ms', utc=True)
-        df.dropna(subset=['date'], inplace=True) # Also drop if date conversion failed
-        if df.empty: logger.warning("DF empty after dropping invalid date conversion."); return None
+        df.dropna(subset=['date'], inplace=True)
+        if df.empty: 
+            logger.warning("DF empty after dropping invalid date conversion.")
+            raise ValueError("Insufficient data points")
 
-
-        required_cols = ['open_time', 'date', 'open', 'high', 'low', 'close', 'volume']
-        core_numeric_cols = ['open', 'high', 'low', 'close', 'volume']
-        if not all(col in df.columns for col in required_cols):
-             missing_cols = [c for c in required_cols if c not in df.columns]
-             logger.error(f"Loaded data missing required columns: {missing_cols}")
-             return None
-
-        for col in core_numeric_cols: df[col] = pd.to_numeric(df[col], errors='coerce')
-
-        initial_len = len(df)
-        # Ensure 'date' is included in the dropna subset
-        df.dropna(subset=core_numeric_cols + ['date'], inplace=True)
-        if len(df) < initial_len: logger.info(f"Dropped {initial_len - len(df)} rows with NaNs in core columns or date.")
-        if df.empty: logger.warning("DataFrame became empty after NaN drop."); return None
-
-        # Sort by the reliable 'date' column now
-        if not df['date'].is_monotonic_increasing:
-             logger.warning("Loaded 'date' column not monotonic. Sorting by date...")
-             df.sort_values('date', inplace=True)
-             # Reset index after sorting
-             df.reset_index(drop=True, inplace=True)
-             # Verify monotonicity again (optional)
-             if not df['date'].is_monotonic_increasing:
-                 logger.error("Sorting by date failed to achieve monotonicity. Data quality issue suspected.")
-                 # Consider returning None or raising error if strict order is critical
-                 # return None
+        # Set date as index for validation
+        df.set_index('date', inplace=True)
+        
+        # Validate data
+        try:
+            _validate_data(df)
+        except ValueError as e:
+            logger.error(f"Data validation failed: {str(e)}")
+            raise
 
         logger.info(f"Data loaded and validated. Final shape: {df.shape}")
         return df
 
     except (pd.errors.DatabaseError, sqlite3.Error) as e:
         logger.error(f"Database error loading data from {db_path}: {e}", exc_info=True)
-        return None
+        raise ValueError(f"Database error: {str(e)}")
+    except ValueError as e:
+        raise  # Re-raise validation errors
     except Exception as e:
         logger.error(f"Unexpected error loading data: {e}", exc_info=True)
-        return None
+        raise ValueError(f"Error loading data: {str(e)}")
     finally:
         if conn: conn.close()
 
@@ -663,103 +656,289 @@ class DataManager:
     def __init__(self, config):
         self.config = config
 
-    def load_data(self, data_source):
-        import pandas as pd
-        if isinstance(data_source, pd.DataFrame):
-            return data_source.copy()
-        elif isinstance(data_source, str) and data_source.endswith('.csv'):
-            return pd.read_csv(data_source, index_col=0, parse_dates=True)
-        else:
-            raise ValueError('Unsupported data source')
+    def save_data(self, df, path):
+        if df.empty:
+            raise ValueError("Cannot save empty DataFrame")
+        _save_csv(df, path)
+
+    def load_data(self, path):
+        if isinstance(path, pd.DataFrame):
+            return path
+        if not os.path.exists(path):
+            raise ValueError(f"File not found: {path}")
+        return _load_csv(path)
 
     def validate_data(self, data):
-        import pandas as pd
-        if not isinstance(data, pd.DataFrame):
-            return False
-        required_cols = ['open', 'high', 'low', 'close', 'volume']
-        for col in required_cols:
-            if col not in data.columns or data[col].isnull().any():
-                return False
-        return True
+        if data.empty:
+            raise ValueError("Empty DataFrame provided")
+        return _validate_data(data)
 
     def preprocess_data(self, data):
-        import pandas as pd
-        df = data.copy()
-        df = df.fillna(method='ffill').fillna(method='bfill')
-        return df
+        if data.empty:
+            raise ValueError("Empty DataFrame provided")
+        return self.clean_data(data)
 
     def split_data(self, data, test_size=0.2):
-        import pandas as pd
-        n = int(len(data) * (1 - test_size))
-        return data.iloc[:n], data.iloc[n:]
+        if data.empty:
+            raise ValueError("Empty DataFrame provided")
+        if not 0 < test_size < 1:
+            raise ValueError("test_size must be between 0 and 1")
+        return _split_data(data, test_size)
 
     def engineer_features(self, data):
-        import pandas as pd
+        if data.empty:
+            raise ValueError("Empty DataFrame provided")
+        return data  # Placeholder for feature engineering
+
+    def normalize_data(self, data, columns=None):
+        """Normalize data using z-score normalization.
+        
+        Args:
+            data (pd.DataFrame): Input data
+            columns (list, optional): List of columns to normalize. If None, normalizes all numeric columns.
+            
+        Returns:
+            pd.DataFrame: Normalized data with mean=0 and std=1
+        """
+        if data.empty:
+            raise ValueError("Empty DataFrame provided")
+            
         df = data.copy()
-        df['returns'] = df['close'].pct_change().fillna(0)
+        
+        # Store index if it's datetime
+        is_datetime_index = isinstance(df.index, pd.DatetimeIndex)
+        if is_datetime_index:
+            index = df.index
+            df = df.reset_index(drop=True)
+        
+        # Select columns to normalize
+        if columns is None:
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+        else:
+            # Validate columns exist
+            missing_cols = [col for col in columns if col not in df.columns]
+            if missing_cols:
+                raise ValueError(f"Columns not found in DataFrame: {missing_cols}")
+            # Validate columns are numeric
+            non_numeric = [col for col in columns if not pd.api.types.is_numeric_dtype(df[col])]
+            if non_numeric:
+                raise ValueError(f"Non-numeric columns: {non_numeric}")
+            numeric_cols = columns
+        
+        # Z-score normalization
+        for col in numeric_cols:
+            mean = df[col].mean()
+            std = df[col].std()
+            if std != 0:
+                df[col] = (df[col] - mean) / std
+        
+        # Restore index if it was datetime
+        if is_datetime_index:
+            df.index = index
+        
         return df
 
-    def normalize_data(self, data):
-        import pandas as pd
-        import numpy as np
+    def aggregate_data(self, data, freq, on=None):
+        """Aggregate data to a different frequency.
+        
+        Args:
+            data (pd.DataFrame): Input data
+            freq (str): Target frequency (e.g. 'W' for weekly, 'M' for monthly)
+            on (str, optional): Column to use for resampling. If None, uses index.
+            
+        Returns:
+            pd.DataFrame: Aggregated data
+        """
+        if data.empty:
+            raise ValueError("Empty DataFrame provided")
+            
         df = data.copy()
-        numeric = df.select_dtypes(include=[np.number])
-        df[numeric.columns] = (numeric - numeric.mean()) / (numeric.std() + 1e-9)
-        df[numeric.columns] = df[numeric.columns].clip(-1, 1)
-        return df
-
-    def aggregate_data(self, data, freq):
-        import pandas as pd
-        df = data.copy()
-        return df.resample(freq).agg({
-            'open': 'first',
-            'high': 'max',
-            'low': 'min',
-            'close': 'last',
-            'volume': 'sum'
-        }).dropna()
+        if freq == 'M':
+            freq = 'ME'  # Use month end frequency
+            
+        # If no 'on' column specified and index is datetime, use index
+        if on is None and isinstance(df.index, pd.DatetimeIndex):
+            return df.resample(freq).agg({
+                'open': 'first',
+                'high': 'max',
+                'low': 'min',
+                'close': 'last',
+                'volume': 'sum'
+            }).dropna()
+            
+        # If 'on' column specified, use that for resampling
+        if on is not None:
+            if on not in df.columns:
+                raise ValueError(f"Column '{on}' not found in DataFrame")
+            if not pd.api.types.is_datetime64_any_dtype(df[on]):
+                df[on] = pd.to_datetime(df[on])
+            return df.resample(freq, on=on).agg({
+                'open': 'first',
+                'high': 'max',
+                'low': 'min',
+                'close': 'last',
+                'volume': 'sum'
+            }).dropna()
+            
+        raise ValueError("No datetime index or 'on' column specified for resampling")
 
     def clean_data(self, data):
-        import pandas as pd
+        """Clean data by handling outliers and missing values.
+        
+        Args:
+            data (pd.DataFrame): Input data
+            
+        Returns:
+            pd.DataFrame: Cleaned data
+        """
+        if data.empty:
+            raise ValueError("Empty DataFrame provided")
+            
         df = data.copy()
+        
         # Remove outliers in 'close'
         q_low = df['close'].quantile(0.01)
         q_high = df['close'].quantile(0.99)
         df['close'] = df['close'].clip(q_low, q_high)
-        df = df.fillna(method='ffill').fillna(method='bfill')
+        
+        # Fill missing values using forward fill then backward fill
+        df = df.ffill().bfill()
+        
         return df
 
-    def sample_data(self, data, n_samples=None, method='random', step=None):
-        import pandas as pd
+    def fill_missing_data(self, data):
+        """Fill missing values in the data.
+        
+        Args:
+            data (pd.DataFrame): Input data
+            
+        Returns:
+            pd.DataFrame: Data with missing values filled
+        """
+        if data.empty:
+            raise ValueError("Empty DataFrame provided")
+            
         df = data.copy()
-        if method == 'random' and n_samples is not None:
-            return df.sample(n=n_samples)
-        elif method == 'systematic' and step is not None:
-            return df.iloc[::step]
+        return df.ffill().bfill()
+
+    def sample_data(self, data, n_samples=None, method='random', step=None):
+        if data.empty:
+            raise ValueError("Empty DataFrame provided")
+        if method not in ['random', 'systematic']:
+            raise ValueError("method must be 'random' or 'systematic'")
+        if method == 'systematic' and step is None:
+            raise ValueError("step must be provided for systematic sampling")
+        if method == 'random' and n_samples is None:
+            raise ValueError("n_samples must be provided for random sampling")
+            
+        if method == 'random':
+            return data.sample(n=min(n_samples, len(data)))
         else:
-            raise ValueError('Unsupported sampling method')
+            return data.iloc[::step]
 
-def _load_csv(path):
-    import pandas as pd
-    try:
-        return pd.read_csv(path, index_col=0, parse_dates=True)
-    except Exception as e:
-        raise ValueError(f"Failed to load CSV: {e}")
+    def merge_data(self, dataframes):
+        if not dataframes:
+            raise ValueError("No dataframes provided")
+        return _merge_data(dataframes)
 
-def _save_csv(df, path):
+    def filter_data(self, data, start=None, end=None):
+        if data.empty:
+            raise ValueError("Empty DataFrame provided")
+        return _filter_data(data, start, end)
+
+    def resample_data(self, data, rule, on=None):
+        """Resample data to a different frequency.
+        
+        Args:
+            data (pd.DataFrame): Input data
+            rule (str): Target frequency (e.g. 'D' for daily, 'W' for weekly)
+            on (str, optional): Column to use for resampling. If None, uses index.
+            
+        Returns:
+            pd.DataFrame: Resampled data
+        """
+        if data.empty:
+            raise ValueError("Empty DataFrame provided")
+        
+        df = data.copy()
+        
+        # If timestamp is a column, set it as index
+        if 'timestamp' in df.columns and not isinstance(df.index, pd.DatetimeIndex):
+            df = df.set_index('timestamp')
+        
+        # If no datetime index and no 'on' column specified, raise error
+        if not isinstance(df.index, pd.DatetimeIndex) and on is None:
+            raise ValueError("No datetime index or 'on' column specified for resampling")
+        
+        return self.aggregate_data(df, rule, on)
+
+def _save_csv(df: pd.DataFrame, path: Path) -> None:
+    """Save DataFrame to CSV file."""
+    df.to_csv(path, index=False)  # Explicitly set index=False to prevent index column
+
+def _load_csv(path: Path) -> pd.DataFrame:
+    """Load DataFrame from CSV file."""
     try:
-        df.to_csv(path)
-    except Exception as e:
-        raise ValueError(f"Failed to save CSV: {e}")
+        df = pd.read_csv(path, index_col=None)
+        if 'timestamp' in df.columns:
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+        return df
+    except FileNotFoundError:
+        raise ValueError(f"File not found: {path}")
 
 def _validate_data(data):
-    import pandas as pd
+    """Validate data format and content.
+    
+    Args:
+        data (pd.DataFrame): Input data
+        
+    Returns:
+        bool: True if data is valid
+        
+    Raises:
+        ValueError: If data is invalid with specific error messages
+    """
     if not isinstance(data, pd.DataFrame):
         raise ValueError("Input is not a DataFrame")
+        
+    if data.empty:
+        raise ValueError("Empty DataFrame provided")
+        
     required_cols = ['open', 'high', 'low', 'close', 'volume']
+    
+    # Check for required columns
+    missing_cols = [col for col in required_cols if col not in data.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
+    
+    # Check for NaN values
     for col in required_cols:
-        if col not in data.columns or data[col].isnull().any():
-            raise ValueError(f"Missing or NaN in required column: {col}")
+        if data[col].isnull().any():
+            raise ValueError(f"NaN values found in column: {col}")
+    
+    # Check for invalid values
+    if (data['high'] < data['low']).any():
+        raise ValueError("High price cannot be less than low price")
+    if (data['volume'] < 0).any():
+        raise ValueError("Volume cannot be negative")
+        
+    # Check for duplicate dates if index is datetime
+    if isinstance(data.index, pd.DatetimeIndex):
+        if not data.index.is_monotonic_increasing:
+            raise ValueError("Dates must be monotonically increasing")
+        if data.index.duplicated().any():
+            raise ValueError("Duplicate dates found")
+        # Check for large gaps in the datetime index
+        diffs = data.index.to_series().diff().dropna()
+        if len(diffs) > 0:
+            median_diff = diffs.median()
+            if (diffs > median_diff * 3).any():
+                raise ValueError("Large gaps detected in data")
+        
+    # Check for sufficient data points
+    if len(data) < 30:  # Minimum required data points
+        raise ValueError("Insufficient data points")
+        
     return True
 
 def _merge_data(dfs):
@@ -800,21 +979,8 @@ def _resample_data(df, rule):
 def _fill_missing_data(df):
     if df.empty:
         raise ValueError("Empty DataFrame")
-    filled = df.fillna(method='ffill').fillna(method='bfill')
-    if filled.isnull().any().any():
-        raise ValueError("Could not fill all missing data")
+    filled = df.ffill().bfill()
     return filled
-
-def _normalize_data(df, columns=None):
-    import numpy as np
-    if columns is None:
-        columns = ['open', 'high', 'low', 'close', 'volume']
-    for col in columns:
-        if col not in df.columns:
-            raise ValueError(f"Column not found: {col}")
-    normed = df.copy()
-    normed[columns] = (normed[columns] - normed[columns].mean()) / (normed[columns].std() + 1e-9)
-    return normed
 
 def _split_data(df, test_size=0.2):
     if not 0 < test_size < 1:

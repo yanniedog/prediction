@@ -118,8 +118,8 @@ def compute_obv_price_divergence(data: pd.DataFrame, method: str ="Difference", 
             raise UnsupportedMethodError(f"Unsupported price_method: {price_method}")
 
         # Calculate Percentage Changes robustly
-        obv_change_percent = obv_ma.pct_change().multiply(100).replace([np.inf, -np.inf], np.nan)
-        price_change_percent = price_ma.pct_change().multiply(100).replace([np.inf, -np.inf], np.nan)
+        obv_change_percent = obv_ma.pct_change(fill_method=None).multiply(100).replace([np.inf, -np.inf], np.nan)
+        price_change_percent = price_ma.pct_change(fill_method=None).multiply(100).replace([np.inf, -np.inf], np.nan)
 
         # Calculate Divergence Metric
         metric = pd.Series(np.nan, index=data.index)

@@ -11,6 +11,7 @@ from pathlib import Path
 import hashlib
 import math # Added for ceiling division in batching
 import utils
+import shutil
 
 logger = logging.getLogger(__name__)
 
@@ -19,113 +20,129 @@ logger = logging.getLogger(__name__)
 SQLITE_MAX_VARIABLE_NUMBER = config.DEFAULTS.get("sqlite_max_variable_number", 900)
 
 def create_connection(db_path: str) -> Optional[sqlite3.Connection]:
-    """Creates a database connection to the SQLite database."""
-    conn = None
+    """Create a database connection to the SQLite database."""
     try:
-        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        # Increased timeout, set isolation_level=None for autocommit behavior unless BEGIN used
-        conn = sqlite3.connect(db_path, timeout=15.0, isolation_level=None)
-        # Enable WAL mode for better concurrency (allows readers and one writer)
-        conn.execute("PRAGMA journal_mode=WAL;")
-        # Enable foreign key support (important for data integrity if using FKs)
-        conn.execute("PRAGMA foreign_keys = ON;")
-        # Set busy timeout to wait if the database is locked (in milliseconds)
-        conn.execute("PRAGMA busy_timeout = 10000;") # Wait 10 seconds
-        logger.debug(f"Connected to database: {db_path}")
+        # Use URI mode to enable WAL and other features
+        conn = sqlite3.connect(f"file:{db_path}?mode=rwc", uri=True, timeout=30.0)
+        conn.execute("PRAGMA journal_mode=WAL;")  # Enable Write-Ahead Logging
+        conn.execute("PRAGMA busy_timeout=30000;")  # 30 second timeout
+        conn.execute("PRAGMA foreign_keys=ON;")  # Enable foreign key constraints
         return conn
     except sqlite3.Error as e:
         logger.error(f"Error connecting to database '{db_path}': {e}", exc_info=True)
         return None
-    except Exception as e: # Catch other potential errors like permission issues
-        logger.error(f"Unexpected error connecting to database '{db_path}': {e}", exc_info=True)
-        return None
 
-
-def initialize_database(db_path: str) -> bool:
-    """Initializes or verifies the database schema."""
+def initialize_database(db_path: str, symbol: str, timeframe: str) -> bool:
+    """Initialize database schema and tables."""
     conn = create_connection(db_path)
-    if conn is None: return False
+    if not conn:
+        return False
+
     try:
         cursor = conn.cursor()
-        # Use DEFERRED transaction for initialization (less locking needed for schema checks/creation)
-        conn.execute("BEGIN DEFERRED;")
-
-        # --- Metadata Tables ---
-        cursor.execute("CREATE TABLE IF NOT EXISTS symbols (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT UNIQUE NOT NULL);")
-        cursor.execute("CREATE TABLE IF NOT EXISTS timeframes (id INTEGER PRIMARY KEY AUTOINCREMENT, timeframe TEXT UNIQUE NOT NULL);")
-        cursor.execute("CREATE TABLE IF NOT EXISTS indicators (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL);")
-
-        # --- Indicator Configuration Table ---
-        # Check if table exists and potentially recreate if schema is old (optional, safer to just create if not exists)
-        # For simplicity, we'll just ensure it exists with the correct schema.
-        # Add indices here for faster lookups.
+        
+        # Create symbols table with proper constraints
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS indicator_configs (
-            config_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            indicator_id INTEGER NOT NULL,
-            config_hash TEXT NOT NULL, -- SHA256 hash of the sorted JSON parameters
-            config_json TEXT NOT NULL, -- Store exact parameters as JSON string
-            FOREIGN KEY (indicator_id) REFERENCES indicators(id) ON DELETE CASCADE,
-            UNIQUE (indicator_id, config_hash) -- Ensure uniqueness based on indicator and params hash
-        );""")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_indicator_configs_indicator_id ON indicator_configs(indicator_id);")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_indicator_configs_hash ON indicator_configs(config_hash);") # Index hash for lookups
-
-        # --- Historical Data Table ---
-        # Use REAL for prices/volumes, INTEGER for timestamps/counts
+        CREATE TABLE IF NOT EXISTS symbols (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL UNIQUE CHECK (symbol = UPPER(symbol))
+        )
+        """)
+        
+        # Create timeframes table with proper constraints
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS timeframes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timeframe TEXT NOT NULL UNIQUE CHECK (timeframe IN ('1m', '3m', '5m', '15m', '30m', '1h', '2h', '4h', '6h', '8h', '12h', '1d', '3d', '1w', '1M'))
+        )
+        """)
+        
+        # Create historical_data table with proper constraints
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS historical_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             symbol_id INTEGER NOT NULL,
             timeframe_id INTEGER NOT NULL,
-            open_time INTEGER NOT NULL, -- Unix timestamp milliseconds (UTC)
-            open REAL NOT NULL,
-            high REAL NOT NULL,
-            low REAL NOT NULL,
-            close REAL NOT NULL,
-            volume REAL NOT NULL,
-            close_time INTEGER NOT NULL, -- Unix timestamp milliseconds (UTC)
-            quote_asset_volume REAL,
-            number_of_trades INTEGER,
-            taker_buy_base_asset_volume REAL,
-            taker_buy_quote_asset_volume REAL,
+            open_time INTEGER NOT NULL,
+            open REAL NOT NULL CHECK (open > 0),
+            high REAL NOT NULL CHECK (high >= open AND high >= low),
+            low REAL NOT NULL CHECK (low <= open AND low <= close),
+            close REAL NOT NULL CHECK (close > 0),
+            volume REAL NOT NULL CHECK (volume >= 0),
+            quote_asset_volume REAL NOT NULL CHECK (quote_asset_volume >= 0),
+            number_of_trades INTEGER NOT NULL CHECK (number_of_trades >= 0),
+            taker_buy_base_asset_volume REAL NOT NULL CHECK (taker_buy_base_asset_volume >= 0),
+            taker_buy_quote_asset_volume REAL NOT NULL CHECK (taker_buy_quote_asset_volume >= 0),
+            close_time INTEGER NOT NULL CHECK (close_time > open_time),
+            UNIQUE(symbol_id, timeframe_id, open_time),
             FOREIGN KEY (symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
-            FOREIGN KEY (timeframe_id) REFERENCES timeframes(id) ON DELETE CASCADE,
-            UNIQUE(symbol_id, timeframe_id, open_time) -- Prevent duplicate klines
-        );""")
-        # Index for efficient querying by symbol, timeframe, and time
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_historical_data_symbol_timeframe_opentime ON historical_data(symbol_id, timeframe_id, open_time);")
-
-        # --- Correlation Results Table ---
+            FOREIGN KEY (timeframe_id) REFERENCES timeframes(id) ON DELETE CASCADE
+        )
+        """)
+        
+        # Create leaderboard table with proper constraints
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS correlations (
+        CREATE TABLE IF NOT EXISTS leaderboard (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             symbol_id INTEGER NOT NULL,
             timeframe_id INTEGER NOT NULL,
-            indicator_config_id INTEGER NOT NULL,
-            lag INTEGER NOT NULL,
-            correlation_value REAL, -- Allow NULL if calculation fails or insufficient data
+            predictor_name TEXT NOT NULL,
+            parameters TEXT NOT NULL,
+            performance_metrics TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            UNIQUE(symbol_id, timeframe_id, predictor_name),
             FOREIGN KEY (symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
-            FOREIGN KEY (timeframe_id) REFERENCES timeframes(id) ON DELETE CASCADE,
-            FOREIGN KEY (indicator_config_id) REFERENCES indicator_configs(config_id) ON DELETE CASCADE,
-            UNIQUE(symbol_id, timeframe_id, indicator_config_id, lag) -- Prevent duplicate correlation entries
-        );""")
-        # Indices for common correlation lookups
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_main ON correlations (symbol_id, timeframe_id, indicator_config_id, lag);")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_config_lag ON correlations (indicator_config_id, lag);") # Useful for fetching all lags for a config
-
-        # Ensure Foreign Keys are ON before committing (should be set by create_connection now)
-        # cursor.execute("PRAGMA foreign_keys=ON;")
+            FOREIGN KEY (timeframe_id) REFERENCES timeframes(id) ON DELETE CASCADE
+        )
+        """)
+        
+        # Insert symbol and timeframe if they don't exist
+        cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol.upper(),))
+        cursor.execute("INSERT OR IGNORE INTO timeframes (timeframe) VALUES (?)", (timeframe,))
+        
         conn.commit()
-        logger.info(f"Database schema initialized/verified: {db_path}")
         return True
+        
     except sqlite3.Error as e:
-        logger.error(f"Error operating on DB schema '{db_path}': {e}", exc_info=True)
-        try: conn.rollback() # Attempt rollback on error
-        except Exception as rb_err: logger.error(f"Rollback failed during schema init: {rb_err}")
+        logger.error(f"Error initializing database schema: {e}", exc_info=True)
+        conn.rollback()
         return False
     finally:
-        if conn: conn.close()
+        conn.close()
+
+def recover_database(db_path: str, symbol: str, timeframe: str) -> bool:
+    """Attempt to recover a corrupted database."""
+    try:
+        # First try to backup the corrupted file
+        backup_path = f"{db_path}.bak"
+        if os.path.exists(db_path):
+            shutil.copy2(db_path, backup_path)
+        # Try to repair using SQLite's built-in recovery
+        try:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA integrity_check;")
+            result = cursor.fetchone()
+            if result[0] != "ok":
+                raise sqlite3.DatabaseError("Database integrity check failed")
+            conn.close()
+            return True
+        except sqlite3.DatabaseError:
+            # If corrupted, try to recover
+            if os.path.exists(db_path):
+                os.remove(db_path)  # Remove corrupted file
+            # Recreate schema
+            if not initialize_database(db_path, symbol, timeframe):
+                raise sqlite3.DatabaseError("Failed to recreate database schema")
+            return True
+    except Exception as e:
+        logger.error(f"Error recovering database: {e}", exc_info=True)
+        # Restore from backup if available
+        backup_path = f"{db_path}.bak"
+        if os.path.exists(backup_path):
+            shutil.copy2(backup_path, db_path)
+        return False
 
 def _get_or_create_id(conn: sqlite3.Connection, table: str, column: str, value: Any) -> int:
     """Gets ID for value in lookup table, creating if necessary (case-insensitive lookup). Assumes caller handles transactions."""

@@ -6,11 +6,12 @@ from pathlib import Path
 from main import _select_data_source_and_lag
 from utils import get_max_lag, get_data_date_range
 import sqlite3
+from unittest.mock import patch, MagicMock
 
 @pytest.fixture
 def sample_data():
     """Create sample OHLCV data"""
-    dates = pd.date_range(start='2023-01-01', end='2023-01-31', freq='1H')
+    dates = pd.date_range(start='2023-01-01', end='2023-01-31', freq='1h')
     data = pd.DataFrame({
         'open': np.random.randn(len(dates)).cumsum() + 100,
         'high': np.random.randn(len(dates)).cumsum() + 101,
@@ -23,7 +24,7 @@ def sample_data():
 @pytest.fixture
 def sample_data_with_nulls():
     """Create sample data with null values"""
-    dates = pd.date_range(start='2023-01-01', end='2023-01-31', freq='1H')
+    dates = pd.date_range(start='2023-01-01', end='2023-01-31', freq='1h')
     data = pd.DataFrame({
         'open': np.random.randn(len(dates)).cumsum() + 100,
         'high': np.random.randn(len(dates)).cumsum() + 101,
@@ -40,7 +41,7 @@ def sample_data_with_nulls():
 @pytest.fixture
 def sample_data_with_invalid_dates():
     """Create sample data with invalid dates"""
-    dates = pd.date_range(start='2023-01-01', end='2023-01-31', freq='1H')
+    dates = pd.date_range(start='2023-01-01', end='2023-01-31', freq='1h')
     data = pd.DataFrame({
         'open': np.random.randn(len(dates)).cumsum() + 100,
         'high': np.random.randn(len(dates)).cumsum() + 101,
@@ -131,9 +132,13 @@ def test_data_processing_with_missing_columns(sample_data):
     """Test data processing with missing columns"""
     # Remove required column
     data = sample_data.drop('volume', axis=1)
-    with pytest.raises(ValueError) as exc_info:
-        _select_data_source_and_lag()
-    assert "Missing required column" in str(exc_info.value)
+    
+    # Mock data manager functions to return invalid data
+    with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
+        with patch('main.data_manager.load_data', return_value=data):
+            with pytest.raises(ValueError) as exc_info:
+                _select_data_source_and_lag()
+            assert "Missing required columns" in str(exc_info.value)
 
 def test_data_processing_with_invalid_values(sample_data):
     """Test data processing with invalid values"""
@@ -142,9 +147,12 @@ def test_data_processing_with_invalid_values(sample_data):
     data.loc[data.index[0], 'high'] = -1  # Invalid high price
     data.loc[data.index[1], 'volume'] = -100  # Invalid volume
     
-    with pytest.raises(ValueError) as exc_info:
-        _select_data_source_and_lag(data)
-    assert "Invalid values detected" in str(exc_info.value)
+    # Mock data manager functions to return invalid data
+    with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
+        with patch('main.data_manager.load_data', return_value=data):
+            with pytest.raises(ValueError) as exc_info:
+                _select_data_source_and_lag()
+            assert "Invalid values detected" in str(exc_info.value)
 
 def test_data_processing_with_duplicate_dates(sample_data):
     """Test data processing with duplicate dates"""
@@ -152,9 +160,12 @@ def test_data_processing_with_duplicate_dates(sample_data):
     data = sample_data.copy()
     data.index = data.index.tolist()[:-1] + [data.index[-1]]
     
-    with pytest.raises(ValueError) as exc_info:
-        _select_data_source_and_lag(data)
-    assert "Duplicate dates found" in str(exc_info.value)
+    # Mock data manager functions to return invalid data
+    with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
+        with patch('main.data_manager.load_data', return_value=data):
+            with pytest.raises(ValueError) as exc_info:
+                _select_data_source_and_lag()
+            assert "Duplicate dates found" in str(exc_info.value)
 
 def test_data_processing_with_non_monotonic_dates(sample_data):
     """Test data processing with non-monotonic dates"""
@@ -162,25 +173,37 @@ def test_data_processing_with_non_monotonic_dates(sample_data):
     data = sample_data.copy()
     data.index = data.index.tolist()[::-1]
     
-    with pytest.raises(ValueError) as exc_info:
-        _select_data_source_and_lag(data)
-    assert "Dates must be monotonically increasing" in str(exc_info.value)
+    # Mock data manager functions to return invalid data
+    with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
+        with patch('main.data_manager.load_data', return_value=data):
+            with pytest.raises(ValueError) as exc_info:
+                _select_data_source_and_lag()
+            assert "Dates must be monotonically increasing" in str(exc_info.value)
 
 def test_data_processing_with_insufficient_data(sample_data):
     """Test data processing with insufficient data"""
     # Create small dataset
     data = sample_data.iloc[:5]
     
-    with pytest.raises(ValueError) as exc_info:
-        _select_data_source_and_lag(data)
-    assert "Insufficient data points" in str(exc_info.value)
+    # Mock data manager functions to return insufficient data
+    with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
+        with patch('main.data_manager.load_data', return_value=data):
+            with pytest.raises(ValueError) as exc_info:
+                _select_data_source_and_lag()
+            assert "Insufficient data points" in str(exc_info.value)
 
 def test_data_processing_with_large_gaps(sample_data):
     """Test data processing with large gaps"""
     # Create data with large gaps
     data = sample_data.copy()
-    data.index = pd.date_range(start='2023-01-01', end='2023-01-31', freq='4H')
-    
-    with pytest.raises(ValueError) as exc_info:
-        _select_data_source_and_lag(data)
-    assert "Large gaps detected in data" in str(exc_info.value) 
+    # Downsample to every 4th row to create gaps
+    data = data.iloc[::4].copy()
+    # Reindex to a new range with gaps
+    new_index = pd.date_range(start=data.index.min(), end=data.index.max(), freq='4h')
+    data = data.reindex(new_index)
+    # Mock data manager functions to return data with gaps
+    with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
+        with patch('main.data_manager.load_data', return_value=data):
+            with pytest.raises(ValueError) as exc_info:
+                _select_data_source_and_lag()
+            assert "Large gaps detected in data" in str(exc_info.value) 

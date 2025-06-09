@@ -533,11 +533,20 @@ def is_valid_symbol(symbol: str) -> bool:
         
     Returns:
         bool: True if valid symbol format
+        
+    Valid symbols must:
+    - Be uppercase alphanumeric
+    - Start with a letter
+    - Be at least 2 characters long
+    - End with USDT, BTC, ETH, or BUSD
     """
     if not isinstance(symbol, str):
         return False
-    # Basic validation - should be uppercase alphanumeric
-    return bool(re.match(r'^[A-Z0-9]+$', symbol))
+    # Must be uppercase alphanumeric, start with letter, at least 2 chars
+    if not re.match(r'^[A-Z][A-Z0-9]{1,}$', symbol):
+        return False
+    # Must end with valid quote currency
+    return bool(re.match(r'^[A-Z0-9]+(USDT|BTC|ETH|BUSD)$', symbol))
 
 def is_valid_timeframe(timeframe: str) -> bool:
     """Validate timeframe format.
@@ -547,11 +556,25 @@ def is_valid_timeframe(timeframe: str) -> bool:
         
     Returns:
         bool: True if valid timeframe format
+        
+    Valid timeframes are:
+    - Minutes: 1m, 3m, 5m, 15m, 30m
+    - Hours: 1h, 2h, 4h, 6h, 8h, 12h
+    - Days: 1d, 3d
+    - Weeks: 1w
+    - Month: 1M (capital M)
     """
     if not isinstance(timeframe, str):
         return False
-    # Valid formats: 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
-    return bool(re.match(r'^(1|3|5|15|30)m|(1|2|4|6|8|12)h|(1|3)d|1w|1M$', timeframe))
+    # Must match exactly one of the valid timeframes
+    valid_timeframes = {
+        '1m', '3m', '5m', '15m', '30m',  # Minutes
+        '1h', '2h', '4h', '6h', '8h', '12h',  # Hours
+        '1d', '3d',  # Days
+        '1w',  # Weeks
+        '1M'  # Month (capital M)
+    }
+    return timeframe in valid_timeframes
 
 def get_max_lag(data: pd.DataFrame) -> int:
     """Calculate maximum valid lag based on data length.
