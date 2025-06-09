@@ -84,24 +84,105 @@ def test_data_date_range_with_invalid_dates(sample_data_with_invalid_dates):
 
 def test_data_source_selection(tmp_path, sample_data):
     """Test data source selection and validation"""
-    # Save sample data to database
+    # Create a temporary database with proper schema
     db_path = tmp_path / "BTCUSDT_1h.db"
-    sample_data.to_sql('ohlcv', sqlite3.connect(db_path), if_exists='replace')
     
-    # Test data source selection
-    result = _select_data_source_and_lag()
-    assert isinstance(result, tuple)
-    assert len(result) == 8
+    # Initialize database with proper schema
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
     
-    db_path, symbol, timeframe, data, symbol_id, timeframe_id, max_lag, date_range = result
-    assert isinstance(db_path, Path)
-    assert isinstance(symbol, str)
-    assert isinstance(timeframe, str)
-    assert isinstance(data, pd.DataFrame)
-    assert isinstance(symbol_id, int)
-    assert isinstance(timeframe_id, int)
-    assert isinstance(max_lag, int)
-    assert isinstance(date_range, str)
+    # Create required tables with proper schema
+    cursor.executescript("""
+        -- Symbols table
+        CREATE TABLE IF NOT EXISTS symbols (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        -- Timeframes table
+        CREATE TABLE IF NOT EXISTS timeframes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timeframe TEXT NOT NULL UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        -- Historical data table
+        CREATE TABLE IF NOT EXISTS historical_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol_id INTEGER NOT NULL,
+            timeframe_id INTEGER NOT NULL,
+            open_time INTEGER NOT NULL,
+            open REAL NOT NULL,
+            high REAL NOT NULL,
+            low REAL NOT NULL,
+            close REAL NOT NULL,
+            volume REAL NOT NULL,
+            close_time INTEGER NOT NULL,
+            quote_asset_volume REAL,
+            number_of_trades INTEGER,
+            taker_buy_base_asset_volume REAL,
+            taker_buy_quote_asset_volume REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (symbol_id) REFERENCES symbols(id)
+                ON DELETE CASCADE,
+            FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
+                ON DELETE CASCADE,
+            UNIQUE(symbol_id, timeframe_id, open_time)
+        );
+    """)
+    
+    # Insert required symbol and timeframe
+    cursor.execute("INSERT INTO symbols (symbol) VALUES (?)", ("BTCUSDT",))
+    symbol_id = cursor.lastrowid
+    cursor.execute("INSERT INTO timeframes (timeframe) VALUES (?)", ("1h",))
+    timeframe_id = cursor.lastrowid
+    
+    # Convert sample data to match historical_data schema
+    sample_data['open_time'] = sample_data.index.astype(np.int64) // 10**6
+    sample_data['close_time'] = sample_data['open_time'] + 3600000  # 1 hour in milliseconds
+    sample_data['symbol_id'] = symbol_id
+    sample_data['timeframe_id'] = timeframe_id
+    
+    # Insert sample data into historical_data table
+    for _, row in sample_data.iterrows():
+        cursor.execute("""
+            INSERT INTO historical_data (
+                symbol_id, timeframe_id, open_time, open, high, low, close, volume,
+                close_time, quote_asset_volume, number_of_trades,
+                taker_buy_base_asset_volume, taker_buy_quote_asset_volume
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            row['symbol_id'], row['timeframe_id'], row['open_time'],
+            row['open'], row['high'], row['low'], row['close'], row['volume'],
+            row['close_time'], row['volume'], 100, row['volume']/2, row['volume']/2
+        ))
+    
+    conn.commit()
+    conn.close()
+    
+    # Mock the data manager to use our test database
+    with patch('main.data_manager.manage_data_source', return_value=(db_path, "BTCUSDT", "1h")):
+        # Test data source selection
+        result = _select_data_source_and_lag()
+        assert isinstance(result, tuple)
+        assert len(result) == 8
+        
+        db_path, symbol, timeframe, data, symbol_id, timeframe_id, max_lag, date_range = result
+        assert isinstance(db_path, Path)
+        assert isinstance(symbol, str)
+        assert isinstance(timeframe, str)
+        assert isinstance(data, pd.DataFrame)
+        assert isinstance(symbol_id, int)
+        assert isinstance(timeframe_id, int)
+        assert isinstance(max_lag, int)
+        assert isinstance(date_range, str)
+        
+        # Verify data integrity
+        assert not data.empty
+        assert all(col in data.columns for col in ['open', 'high', 'low', 'close', 'volume'])
+        assert data.index.is_monotonic_increasing
+        assert not data.index.duplicated().any()
 
 def test_data_validation(sample_data):
     """Test data validation"""

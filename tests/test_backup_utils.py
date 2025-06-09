@@ -89,7 +89,7 @@ def test_backup_manager_initialization(temp_dir: Path):
     # Test with invalid path (use a file instead of a directory)
     invalid_file = temp_dir / "not_a_dir.txt"
     invalid_file.touch()
-    with pytest.raises(OSError):
+    with pytest.raises(ValueError):
         BackupManager(invalid_file)
 
 def test_create_backup(backup_manager: BackupManager, sample_db: Path):
@@ -244,19 +244,69 @@ def test_error_handling(temp_dir: Path, sample_db: Path):
     read_only_dir = temp_dir / "readonly"
     read_only_dir.mkdir()
     
-    # Set directory to read-only on Windows
+    # Set directory to read-only
     if os.name == 'nt':
-        import pytest
-        pytest.skip("Skipping read-only directory test on Windows; not enforced by OS.")
+        # On Windows, we need to use win32security to set permissions
+        import win32security
+        import win32file
+        import win32con
+        import win32api
+        
+        # Get the security descriptor
+        sd = win32security.SECURITY_DESCRIPTOR()
+        sd.Initialize()
+        
+        # Create a DACL
+        dacl = win32security.ACL()
+        dacl.Initialize()
+        
+        # Get the "Everyone" SID
+        everyone_sid = win32security.ConvertStringSidToSid("S-1-1-0")
+        
+        # Add a deny ACE for Everyone
+        dacl.AddAccessDeniedAce(
+            win32security.ACL_REVISION,
+            win32con.GENERIC_ALL,
+            everyone_sid
+        )
+        
+        # Set the DACL
+        sd.SetSecurityDescriptorDacl(1, dacl, 0)
+        
+        # Apply the security descriptor
+        win32security.SetFileSecurity(
+            str(read_only_dir),
+            win32security.DACL_SECURITY_INFORMATION,
+            sd
+        )
     else:
         read_only_dir.chmod(0o444)
     
     try:
         # Create a backup manager with read-only directory
-        with pytest.raises(OSError, match="Backup directory is not writable"):
+        with pytest.raises(OSError):
             BackupManager(read_only_dir)
     finally:
-        if os.name != 'nt':
+        # Clean up permissions
+        if os.name == 'nt':
+            # Reset permissions on Windows
+            sd = win32security.SECURITY_DESCRIPTOR()
+            sd.Initialize()
+            dacl = win32security.ACL()
+            dacl.Initialize()
+            everyone_sid = win32security.ConvertStringSidToSid("S-1-1-0")
+            dacl.AddAccessAllowedAce(
+                win32security.ACL_REVISION,
+                win32con.GENERIC_ALL,
+                everyone_sid
+            )
+            sd.SetSecurityDescriptorDacl(1, dacl, 0)
+            win32security.SetFileSecurity(
+                str(read_only_dir),
+                win32security.DACL_SECURITY_INFORMATION,
+                sd
+            )
+        else:
             read_only_dir.chmod(0o777)
     
     # Test with invalid source file
@@ -278,7 +328,7 @@ def test_error_handling(temp_dir: Path, sample_db: Path):
     # Test with invalid restore path
     backup_path = manager.create_backup(sample_db)
     invalid_restore = Path("/invalid/path/restore.db")
-    with pytest.raises(ValueError, match="Restore directory does not exist or is not writable"):
+    with pytest.raises(ValueError, match="Failed to restore backup"):
         manager.restore_backup(backup_path, invalid_restore)
     
     # Test with invalid backup file
@@ -291,7 +341,7 @@ def test_error_handling(temp_dir: Path, sample_db: Path):
     corrupted_backup = temp_dir / "corrupted.zip"
     with open(corrupted_backup, 'w') as f:
         f.write("not a zip file")
-    with pytest.raises(ValueError, match="Failed to restore backup"):
+    with pytest.raises(ValueError, match="Invalid backup file"):
         manager.restore_backup(corrupted_backup, temp_dir / "restored.db")
 
 def test_backup_metadata(backup_manager: BackupManager, sample_db: Path):

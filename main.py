@@ -15,6 +15,7 @@ import math
 import sqlite3
 import time
 from typing import Dict, List, Optional, Tuple, Any, Set, Callable, TypeVar, Union
+import gc
 
 # Import project modules
 import utils
@@ -351,117 +352,102 @@ def _run_backtest_check_mode(timestamp_str: str) -> None:
 
 
 def _initialize_database(db_path: Path, symbol: str, timeframe: str) -> bool:
-    """Initialize database with proper schema and format.
-    
-    Args:
-        db_path: Path to database file
-        symbol: Trading symbol (e.g. BTCUSDT)
-        timeframe: Timeframe (e.g. 1h)
+    """Initialize database with proper tables and validation."""
+    try:
+        if not utils.is_valid_symbol(symbol) or not utils.is_valid_timeframe(timeframe):
+            return False
+            
+        conn = sqlite_manager.create_connection(str(db_path))
+        if not conn:
+            return False
+            
+        # Create required tables if they don't exist
+        tables = [
+            """CREATE TABLE IF NOT EXISTS prices (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME NOT NULL,
+                open REAL NOT NULL,
+                high REAL NOT NULL,
+                low REAL NOT NULL,
+                close REAL NOT NULL,
+                volume REAL NOT NULL,
+                UNIQUE(timestamp)
+            )""",
+            """CREATE TABLE IF NOT EXISTS indicators (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                type TEXT NOT NULL
+            )""",
+            """CREATE TABLE IF NOT EXISTS indicator_configs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                indicator_id INTEGER NOT NULL,
+                config_hash TEXT NOT NULL,
+                config_json TEXT NOT NULL,
+                FOREIGN KEY (indicator_id) REFERENCES indicators(id),
+                UNIQUE(indicator_id, config_hash)
+            )""",
+            """CREATE TABLE IF NOT EXISTS correlations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                config_id INTEGER NOT NULL,
+                lag INTEGER NOT NULL,
+                correlation REAL NOT NULL,
+                FOREIGN KEY (config_id) REFERENCES indicator_configs(id),
+                UNIQUE(config_id, lag)
+            )"""
+        ]
         
-    Returns:
-        bool: True if initialization successful
-    """
-    logger = logging.getLogger(__name__)
-    # Validate symbol and timeframe format
-    if not utils.is_valid_symbol(symbol):
-        logger.error(f"Invalid symbol format: {symbol}")
+        for table_sql in tables:
+            sqlite_manager._execute(conn, table_sql)
+            
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logging.error(f"Database initialization failed: {e}")
         return False
-    if not utils.is_valid_timeframe(timeframe):
-        logger.error(f"Invalid timeframe format: {timeframe}")
-        return False
-    # Create proper database name
-    proper_db_name = f"{symbol}_{timeframe}.db"
-    if db_path.name != proper_db_name:
-        logger.error(f"Database name '{db_path.name}' does not match required format SYMBOL_TIMEFRAME.db")
-        return False
-    # Initialize database schema using sqlite_manager
-    return sqlite_manager.initialize_database(str(db_path), symbol, timeframe)
 
 def _select_data_source_and_lag() -> Tuple[Path, str, str, pd.DataFrame, int, int, int, str]:
-    """Select data source and lag period.
-    
-    Returns:
-        Tuple containing:
-        - Path to database
-        - Symbol
-        - Timeframe
-        - DataFrame with data
-        - Max lag
-        - Symbol ID
-        - Timeframe ID
-        - Data date range string
-    """
-    logger = logging.getLogger(__name__)
-    
-    # Get database path and validate format
-    db_path, symbol, timeframe = data_manager.manage_data_source()
-    if not db_path or not symbol or not timeframe:
-        raise ValueError("Invalid data source selection")
-
-    # Load data first to validate before database initialization
-    try:
-        data = data_manager.load_data(db_path)
-    except ValueError as e:
-        raise ValueError(str(e))
-    if data is None or data.empty:
-        raise ValueError(f"Failed to load data from {db_path}")
-
-    # Validate data before database initialization (reordered checks)
-    if not all(col in data.columns for col in ['open', 'high', 'low', 'close', 'volume']):
-        raise ValueError("Missing required columns in data")
-
-    if data.index.duplicated().any():
-        raise ValueError("Duplicate dates found in data")
-
-    if not data.index.is_monotonic_increasing:
-        raise ValueError("Dates must be monotonically increasing")
-
-    if len(data) < 100:  # Minimum required data points
-        raise ValueError("Insufficient data points")
-
-    # Check for large gaps in data (dynamic threshold based on timeframe)
-    time_diff = data.index.to_series().diff()
-    # For example, if timeframe is "1d", allow a 1-day gap; otherwise, use 4 hours.
-    if (timeframe == "1d"):
-         max_allowed_gap = pd.Timedelta(days=1)
-    else:
-         max_allowed_gap = (pd.Timedelta(hours=4))
-    if (time_diff > max_allowed_gap).any():
-         raise ValueError("Large gaps detected in data")
-
-    if (data['high'] < data['low']).any() or (data['high'] < data['open']).any() or (data['high'] < data['close']).any():
-         raise ValueError("Invalid values detected in data")
-    
-    # Initialize database with proper schema
-    if not _initialize_database(db_path, symbol, timeframe):
-        raise ValueError(f"Failed to initialize database {db_path}")
+    """Select data source and get lag input with improved error handling."""
+    result = data_manager.manage_data_source()
+    if not result:
+        raise SystemExit("No data source selected")
         
-    # Get symbol and timeframe IDs
+    db_path, symbol, timeframe = result
+    if not db_path or not symbol or not timeframe:
+        raise ValueError("Invalid data source parameters")
+        
+    if not _initialize_database(db_path, symbol, timeframe):
+        raise ValueError("Database initialization failed")
+        
     conn = sqlite_manager.create_connection(str(db_path))
     if not conn:
-        raise ValueError(f"Failed to connect to {db_path}")
+        raise ValueError("Failed to connect to database")
         
     try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
-        symbol_id = cursor.fetchone()[0]
-        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
-        timeframe_id = cursor.fetchone()[0]
-    except (sqlite3.Error, TypeError) as e:
-        logger.error(f"Error getting symbol/timeframe IDs: {e}")
-        raise ValueError(f"Failed to get symbol/timeframe IDs from {db_path}")
+        data = data_manager.load_data(conn, symbol, timeframe)
+        if data is None or data.empty:
+            raise ValueError("No data available")
+            
+        # Get symbol and timeframe IDs
+        symbol_id = sqlite_manager._get_or_create_id(conn, "symbols", "name", symbol)
+        timeframe_id = sqlite_manager._get_or_create_id(conn, "timeframes", "name", timeframe)
+        
+        # Get max lag from user
+        while True:
+            try:
+                max_lag = int(input("Enter maximum lag (1-100): ").strip())
+                if 1 <= max_lag <= 100:
+                    break
+                print("Please enter a number between 1 and 100")
+            except ValueError:
+                print("Please enter a valid number")
+                
+        # Get date range string
+        data_daterange = f"{data.index[0].strftime('%Y%m%d')}-{data.index[-1].strftime('%Y%m%d')}"
+        
+        return db_path, symbol, timeframe, data, max_lag, symbol_id, timeframe_id, data_daterange
     finally:
         conn.close()
-        
-    # Get max lag
-    max_lag = utils.get_max_lag(data)
-    if max_lag <= 0:
-        raise ValueError("Invalid max lag calculated")
-        
-    # Get date range
-    data_daterange = utils.get_data_date_range(data)
-    
-    return db_path, symbol, timeframe, data, max_lag, symbol_id, timeframe_id, data_daterange
 
 def _prepare_configurations(
     _display_progress_func: ProgressDisplayFunc,
@@ -1139,118 +1125,101 @@ def _generate_final_reports_and_predict(
 
 # --- Main Analysis Orchestration ---
 def run_analysis():
-    """Main orchestrating function, calling phase functions."""
-    global _confirmed_analysis_start_time # Use global
-    logger = logging.getLogger(__name__)
-    initial_script_start_time = time.time() # Log start even before confirmation
-    timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    logger.info(f"--- Starting Analysis Run Attempt: {timestamp_str} ---")
-    last_eta_update_time = time.time()
-    current_analysis_step = 0
-    _confirmed_analysis_start_time = None # Reset global timer state
-
-    def _display_progress(stage_name: str, current_step: float, total_steps: int):
-        """Displays progress and GLOBAL estimated time remaining."""
-        nonlocal last_eta_update_time
-        global _confirmed_analysis_start_time # Access global start time
-
-        # Use the confirmed start time if available, otherwise estimate from script start
-        start_time_for_calc = _confirmed_analysis_start_time if _confirmed_analysis_start_time is not None else initial_script_start_time
-        # Only show ETA after confirmation
-        show_eta = _confirmed_analysis_start_time is not None
-
-        now = time.time(); update_interval = ETA_UPDATE_INTERVAL_SECONDS
-        force_update = ("Complete" in stage_name) or ("Finished" in stage_name) or (current_step >= total_steps)
-        time_elapsed_since_last = now - last_eta_update_time
-        should_update = (time_elapsed_since_last > update_interval) or (current_step == 1) or force_update
-
-        if should_update:
-            elapsed_td = timedelta(seconds=now - start_time_for_calc); elapsed_str = utils.format_duration(elapsed_td);
-            percent = min(100.0, (current_step / total_steps * 100) if total_steps > 0 else 0);
-            eta_str = "Pending User Confirm"
-            if show_eta:
-                if percent > 0.1 and current_step < total_steps : # Start estimating after tiny progress
-                    elapsed_seconds = elapsed_td.total_seconds()
-                    # Base ETA on progress since confirmation
-                    rate = current_step / elapsed_seconds if elapsed_seconds > 1 else 0
-                    if rate > 0:
-                        remaining_steps = total_steps - current_step
-                        eta_seconds = remaining_steps / rate
-                        eta_td = timedelta(seconds=eta_seconds)
-                        eta_str = utils.format_duration(eta_td)
-                    else: eta_str = "Calculating..."
-                elif current_step >= total_steps: eta_str = "Done"
-                else: eta_str = "Calculating..." # Initial state after confirm
-
-            current_step_display = min(current_step, total_steps)
-            print(f"\rStage: {stage_name:<35} | Overall: {current_step_display:.1f}/{total_steps} ({percent: >5.1f}%) | Elapsed: {elapsed_str: <15} | ETA: {eta_str: <15}", end="")
-            last_eta_update_time = now
-            if force_update: print()
-            # Ensure log file gets frequent updates if needed (optional flush)
-            # logging.getLogger().handlers[0].flush() # Example: Flush first handler (likely file) - Use with caution
-
-    # --- Analysis Flow ---
-    _display_progress("Initializing...", 0, TOTAL_ANALYSIS_STEPS)
-    mode_choice = _setup_and_select_mode(timestamp_str);
-    if mode_choice is None: return
-
-    if mode_choice == 'c': _run_custom_mode(timestamp_str); return
-    if mode_choice == 'b': _run_backtest_check_mode(timestamp_str); return
-
-    # --- Full Analysis Path ('a') ---
-    current_analysis_step = 1; _display_progress("Setup Complete", current_analysis_step, TOTAL_ANALYSIS_STEPS)
-
-    db_path, symbol, timeframe, data, max_lag, symbol_id, timeframe_id, data_daterange_str = _select_data_source_and_lag();
-    current_analysis_step = 2; _display_progress("Data Source & Lag Confirmed", current_analysis_step, TOTAL_ANALYSIS_STEPS)
-
-    # Initialize indicator factory and get definitions
-    indicator_factory_instance = indicator_factory.IndicatorFactory()
-    indicator_definitions = indicator_factory_instance.indicator_params
-    # Pass global timing args here
-    indicator_configs_to_process, is_bayesian_path, current_analysis_step = _prepare_configurations(
-        _display_progress, current_analysis_step, db_path, symbol, timeframe, max_lag, data,
-        indicator_definitions, symbol_id, timeframe_id, data_daterange_str, timestamp_str,
-        analysis_start_time_global=_confirmed_analysis_start_time, # Will be None until confirmed inside
-        total_analysis_steps_global=TOTAL_ANALYSIS_STEPS
-    )
-    # current_analysis_step is updated inside
-    _display_progress("Configuration Prep Complete", current_analysis_step, TOTAL_ANALYSIS_STEPS)
-
-    # Ensure start time is set before proceeding if not already
-    if _confirmed_analysis_start_time is None:
-        logger.critical("Analysis start timer was not set after config preparation! Exiting.")
-        sys.exit(1)
-
-    # Pass global timing args here
-    final_configs_for_corr, correlations_by_config_id, max_lag, current_analysis_step = _calculate_indicators_and_correlations(
-        _display_progress, current_analysis_step, db_path, symbol_id, timeframe_id, max_lag, data, indicator_configs_to_process,
-        analysis_start_time_global=_confirmed_analysis_start_time,
-        total_analysis_steps_global=TOTAL_ANALYSIS_STEPS
-    )
-    # current_analysis_step is updated inside
-    _display_progress("Indicator/Correlation Complete", current_analysis_step, TOTAL_ANALYSIS_STEPS)
-
-    # Pass global timing args here (though less critical for ETA in final phase)
-    # --- Pass the updated current_analysis_step ---
-    _generate_final_reports_and_predict(
-        _display_progress, current_analysis_step, db_path, symbol, timeframe, max_lag, symbol_id, timeframe_id,
-        data_daterange_str, timestamp_str, is_bayesian_path,
-        final_configs_for_corr, correlations_by_config_id,
-        analysis_start_time_global=_confirmed_analysis_start_time,
-        total_analysis_steps_global=TOTAL_ANALYSIS_STEPS
-    )
-    # --- Progress display handled within the function ---
-
-    # Ensure final progress shows 100%
-    _display_progress("Run Finished", TOTAL_ANALYSIS_STEPS, TOTAL_ANALYSIS_STEPS)
-
-    end_time = time.time();
-    # Calculate duration based on confirmed start if available
-    actual_start_time = _confirmed_analysis_start_time if _confirmed_analysis_start_time is not None else initial_script_start_time
-    duration_td = timedelta(seconds=end_time - actual_start_time)
-    duration_str = utils.format_duration(duration_td)
-    logger.info(f"--- Analysis Run Completed: {timestamp_str} ---"); logger.info(f"Total execution time (post-confirmation): {duration_str}")
-    print(f"\nAnalysis complete (lag={max_lag}). Reports saved in '{config.REPORTS_DIR}'. Total time: {duration_str}")
+    """Run the main analysis with improved error handling."""
+    try:
+        # Setup and mode selection
+        timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        mode = _setup_and_select_mode(timestamp_str)
+        if not mode:
+            return
+            
+        # Get data source and lag
+        try:
+            db_path, symbol, timeframe, data, max_lag, symbol_id, timeframe_id, data_daterange = _select_data_source_and_lag()
+        except (ValueError, SystemExit) as e:
+            logging.error(f"Data source selection failed: {e}")
+            return
+            
+        # Initialize indicator factory
+        factory = indicator_factory.IndicatorFactory()
+        if not factory.indicator_params:
+            logging.error("No indicator parameters available")
+            return
+            
+        # Prepare configurations
+        try:
+            configs, is_bayesian, step = _prepare_configurations(
+                display_progress,
+                current_step=1,
+                db_path=db_path,
+                symbol=symbol,
+                timeframe=timeframe,
+                max_lag=max_lag,
+                data=data,
+                indicator_definitions=factory.indicator_params,
+                symbol_id=symbol_id,
+                timeframe_id=timeframe_id,
+                data_daterange_str=data_daterange,
+                timestamp_str=timestamp_str,
+                analysis_start_time_global=time.time(),
+                total_analysis_steps_global=10
+            )
+        except Exception as e:
+            logging.error(f"Configuration preparation failed: {e}")
+            return
+            
+        # Calculate indicators and correlations
+        try:
+            final_configs, correlations, max_lag, step = _calculate_indicators_and_correlations(
+                display_progress,
+                current_step=step,
+                db_path=db_path,
+                symbol_id=symbol_id,
+                timeframe_id=timeframe_id,
+                max_lag=max_lag,
+                data=data,
+                indicator_configs_to_process=configs,
+                analysis_start_time_global=time.time(),
+                total_analysis_steps_global=10
+            )
+        except Exception as e:
+            logging.error(f"Indicator calculation failed: {e}")
+            return
+            
+        # Generate reports and predictions
+        try:
+            _generate_final_reports_and_predict(
+                display_progress,
+                current_step=step,
+                db_path=db_path,
+                symbol=symbol,
+                timeframe=timeframe,
+                max_lag=max_lag,
+                symbol_id=symbol_id,
+                timeframe_id=timeframe_id,
+                data_daterange_str=data_daterange,
+                timestamp_str=timestamp_str,
+                is_bayesian_path=is_bayesian,
+                final_configs_for_corr=final_configs,
+                correlations_by_config_id=correlations,
+                analysis_start_time_global=time.time(),
+                total_analysis_steps_global=10
+            )
+        except Exception as e:
+            logging.error(f"Report generation failed: {e}")
+            return
+            
+    except Exception as e:
+        logging.error(f"Analysis failed: {e}")
+        return
+    finally:
+        # Cleanup
+        gc.collect()
+        try:
+            import matplotlib.pyplot as plt
+            plt.close('all')
+        except (ImportError, NameError):
+            pass
 
 
 # --- Main Execution Block ---

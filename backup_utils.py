@@ -34,16 +34,19 @@ class BackupManager:
         self.backup_dir = Path(backup_dir)
         self.max_count = max_count
         
-        # Create backup directory if it doesn't exist
-        try:
-            self.backup_dir.mkdir(parents=True, exist_ok=True)
-        except OSError as e:
-            raise OSError(f"Could not create backup directory: {e}")
+        # Check if directory exists and is writable
+        if self.backup_dir.exists():
+            if not self.backup_dir.is_dir():
+                raise ValueError(f"Backup path is not a directory: {backup_dir}")
+            if not os.access(self.backup_dir, os.W_OK):
+                raise OSError(f"Backup directory is not writable: {backup_dir}")
+        else:
+            try:
+                self.backup_dir.mkdir(parents=True, exist_ok=True)
+            except OSError as e:
+                raise OSError(f"Could not create backup directory: {e}")
             
-        if not self.backup_dir.is_dir():
-            raise ValueError(f"Backup path is not a directory: {backup_dir}")
-            
-        # Test if directory is writable
+        # Test if directory is writable by attempting to create and delete a test file
         test_file = self.backup_dir / ".test_write"
         try:
             test_file.touch()
@@ -144,7 +147,7 @@ class BackupManager:
         # Check if restore_path's parent exists and is writable
         parent_dir = restore_path.parent
         if not parent_dir.exists() or not os.access(parent_dir, os.W_OK):
-            raise ValueError(f"Restore directory does not exist or is not writable: {parent_dir}")
+            raise ValueError("Restore directory does not exist or is not writable")
         try:
             with zipfile.ZipFile(backup_path, 'r') as zf:
                 # Extract the database file
@@ -153,6 +156,8 @@ class BackupManager:
                 if restore_path.name != zf.namelist()[0]:
                     (restore_path.parent / zf.namelist()[0]).rename(restore_path)
         except Exception as e:
+            if not parent_dir.exists() or not os.access(parent_dir, os.W_OK):
+                raise ValueError("Restore directory does not exist or is not writable")
             raise ValueError(f"Failed to restore backup: {e}")
     
     def _cleanup_old_backups(self) -> None:

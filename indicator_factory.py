@@ -155,21 +155,26 @@ class IndicatorFactory:
             for param_name, col_name in config.get('input_mapping', {}).items():
                 if col_name in data.columns:
                     inputs[param_name] = data[col_name].values
+            if not inputs and 'close' in data.columns:  # Default to close price if no mapping
+                inputs['real'] = data['close'].values
             
             # Add any additional parameters from config
-            inputs.update(config.get('params', {}))
-            
-            # Compute indicator
-            try:
-                results = ta_func(**inputs)
-            except TypeError as e:
-                # Handle positional arguments for TA-Lib functions
-                if "takes at least 1 positional argument" in str(e):
-                    # Convert inputs dict to positional args in correct order
-                    ordered_inputs = [inputs[param] for param in config.get('input_order', list(inputs.keys()))]
-                    results = ta_func(*ordered_inputs)
-                else:
-                    raise
+            params = config.get('params', {})
+            if indicator_name == 'RSI' and 'timeperiod' in params:
+                timeperiod = params.pop('timeperiod')
+                results = ta_func(inputs['real'], timeperiod=timeperiod)
+            else:
+                # Compute indicator with all parameters
+                try:
+                    results = ta_func(**inputs, **params)
+                except TypeError as e:
+                    # Handle positional arguments for TA-Lib functions
+                    if "takes at least 1 positional argument" in str(e):
+                        # Convert inputs dict to positional args in correct order
+                        ordered_inputs = [inputs[param] for param in config.get('input_order', ['real'])]
+                        results = ta_func(*ordered_inputs, **params)
+                    else:
+                        raise
             
             # Convert results to DataFrame
             if isinstance(results, tuple):

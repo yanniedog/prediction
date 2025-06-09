@@ -386,29 +386,15 @@ def list_existing_databases() -> List[Path]:
         return []
 
 def select_existing_database() -> Optional[Path]:
-    """Prompts user to select an existing database."""
-    db_files = list_existing_databases()
-    if not db_files:
-        print("No existing symbol databases found in:", config.DB_DIR)
-        return None
-
-    print("\nExisting Symbol Databases:")
-    for idx, db_path in enumerate(db_files): print(f"{idx + 1}. {db_path.name}")
-
-    while True:
-        try:
-            choice = input(f"Select database by number (1-{len(db_files)}) or 'n' for new/update: ").strip().lower()
-            if choice == 'n': return None
-            selected_idx = int(choice) - 1
-            if 0 <= selected_idx < len(db_files):
-                selected_db = db_files[selected_idx]
-                logger.info(f"User selected existing database: {selected_db.name}")
-                return selected_db
-            else: print("Invalid selection.")
-        except ValueError: print("Invalid input. Please enter a number or 'n'.")
-        except Exception as e:
-            logger.error(f"Error during database selection: {e}", exc_info=True)
+    """Select an existing database with improved error handling."""
+    try:
+        result = manage_data_source()
+        if not result:
             return None
+        return result[0]
+    except Exception as e:
+        logging.error(f"Database selection failed: {e}")
+        return None
 
 def validate_data(db_path: Path) -> bool:
     """Validates if the database file exists, is valid SQLite, and has historical data."""
@@ -439,177 +425,141 @@ def validate_data(db_path: Path) -> bool:
         if conn: conn.close()
 
 def manage_data_source() -> Optional[Tuple[Path, str, str]]:
-    """Handles user interaction for selecting, updating, or downloading data."""
-    while True:
-        print("\n--- Data Source ---")
-        action = input("Select action: [S]elect existing, [U]pdate existing, [D]ownload new/update (default), [Q]uit: ").strip().lower() or 'd'
-        logger.info(f"User selected data source action: '{action}'")
-
-        selected_db = None
-        symbol, timeframe = None, None
-
-        if action == 's':
-            selected_db = select_existing_database()
-            if selected_db:
-                logger.info(f"Validating selected DB: {selected_db.name}")
-                if validate_data(selected_db):
-                     try:
-                        base_name = selected_db.stem
-                        # Be more robust splitting symbol/timeframe
-                        parts = base_name.split('_', 1)
-                        if len(parts) == 2:
-                             symbol, timeframe = parts
-                             return selected_db, symbol.upper(), timeframe
-                        else:
-                            logger.error(f"Invalid filename format: {selected_db.name}")
-                            print("Error: Invalid DB filename format (expected 'SYMBOL_timeframe.db').")
-                     except Exception as parse_err:
-                         logger.error(f"Error parsing filename {selected_db.name}: {parse_err}")
-                         print("Error: Could not parse filename.")
-                else:
-                    print(f"Selected database '{selected_db.name}' is empty or invalid. Try Update or Download.")
-            # If selected_db is None (user chose 'n'), loop continues
-
-        elif action == 'u':
-            selected_db = select_existing_database()
-            if selected_db:
-                try:
-                    base_name = selected_db.stem
-                    parts = base_name.split('_', 1)
-                    if len(parts) == 2:
-                        symbol, timeframe = parts
-                        print(f"Updating data for {symbol.upper()} ({timeframe})...")
-                        success = download_binance_data(symbol.upper(), timeframe, selected_db)
-                        if success and validate_data(selected_db):
-                            print("Update successful or data already up-to-date.")
-                            return selected_db, symbol.upper(), timeframe
-                        else:
-                            print("Update failed or DB validation failed after update. Check logs.")
-                    else:
-                         logger.error(f"Invalid filename format: {selected_db.name}")
-                         print("Error: Invalid DB filename format (expected 'SYMBOL_timeframe.db').")
-                except Exception as update_err:
-                     logger.error(f"Error during update selection for {selected_db.name}: {update_err}")
-                     print("Error processing update selection.")
-            # If selected_db is None, loop continues
-
-        elif action == 'd':
-            default_sym = config.DEFAULTS.get("symbol", "BTCUSDT")
-            symbol_input = input(f"Enter symbol [default: {default_sym}]: ").strip().upper() or default_sym
-            symbol = symbol_input
-
-            print("\nCommon Binance Timeframes:")
-            tf_groups = {"Minutes": [], "Hours": [], "Days": [], "Weeks": [], "Month": []}
-            for tf in VALID_TIMEFRAMES:
-                if 'm' in tf: tf_groups["Minutes"].append(tf)
-                elif 'h' in tf: tf_groups["Hours"].append(tf)
-                elif 'd' in tf: tf_groups["Days"].append(tf)
-                elif 'w' in tf: tf_groups["Weeks"].append(tf)
-                elif 'M' in tf: tf_groups["Month"].append(tf)
-            for group, tfs in tf_groups.items():
-                if tfs: print(f"  {group}: {', '.join(tfs)}")
-
-            default_tf = config.DEFAULTS.get("timeframe", "1d")
-            timeframe_input = input(f"Enter timeframe [default: {default_tf}]: ").strip() or default_tf
-            timeframe = timeframe_input # Keep original case for API call
-
-            if timeframe not in VALID_TIMEFRAMES:
-                logger.warning(f"User timeframe '{timeframe}' not in common list. Ensure valid for API.")
-                print(f"Warning: '{timeframe}' not common. Ensure valid Binance string.")
-
-            if not symbol: print("Symbol cannot be empty."); continue
-
-            safe_timeframe_fn = re.sub(r'[\\/*?:"<>|\s]+', '_', timeframe)
-            db_filename = config.DB_NAME_TEMPLATE.format(symbol=symbol, timeframe=safe_timeframe_fn)
-            db_path = config.DB_DIR / db_filename
-            print(f"\nDownloading/Updating data for {symbol} ({timeframe}) into {db_path.name}...")
-
-            success = download_binance_data(symbol, timeframe, db_path)
-            if success and validate_data(db_path):
-                 print("Download/Update successful.")
-                 return db_path, symbol, timeframe
-            else:
-                 print("Download/Update failed or DB validation failed. Check logs.")
-
-        elif action == 'q':
-            logger.info("User quit data source selection.")
+    """Manage data source selection with improved error handling."""
+    try:
+        # Get list of available databases
+        db_files = list(config.DB_DIR.glob("*.db"))
+        if not db_files:
+            print("No database files found in", config.DB_DIR)
             return None
-        else:
-            print("Invalid action. Please choose S, U, D, or Q.")
-            logger.warning(f"Invalid user action input: '{action}'")
-
-# --- Load Data ---
-def load_data(db_path: Path) -> Optional[pd.DataFrame]:
-    """Loads historical data from the specified SQLite database file."""
-    if not db_path.exists():
-        logger.error(f"Database file does not exist: {db_path}")
+            
+        # Display available databases
+        print("\nAvailable databases:")
+        for i, db_file in enumerate(db_files, 1):
+            print(f"{i}. {db_file.name}")
+            
+        # Get user selection
+        while True:
+            try:
+                choice = int(input("\nSelect database (number) or 0 to quit: ").strip())
+                if choice == 0:
+                    return None
+                if 1 <= choice <= len(db_files):
+                    break
+                print(f"Please enter a number between 1 and {len(db_files)}")
+            except ValueError:
+                print("Please enter a valid number")
+                
+        # Parse symbol and timeframe from filename
+        db_file = db_files[choice - 1]
+        try:
+            symbol, timeframe = db_file.stem.split('_')
+        except ValueError:
+            raise ValueError(f"Invalid database filename format: {db_file.name}")
+            
+        if not is_valid_symbol(symbol):
+            raise ValueError(f"Invalid symbol in filename: {symbol}")
+            
+        if not is_valid_timeframe(timeframe):
+            raise ValueError(f"Invalid timeframe in filename: {timeframe}")
+            
+        return db_file, symbol, timeframe
+    except Exception as e:
+        logging.error(f"Data source management failed: {e}")
         return None
 
-    logger.info(f"Loading data from {db_path}...")
-    conn = sqlite_manager.create_connection(str(db_path))
-    if not conn: return None
-
+# --- Load Data ---
+def load_data(conn: sqlite3.Connection, symbol: str, timeframe: str) -> Optional[pd.DataFrame]:
+    """Load data from database with improved error handling."""
     try:
+        if not conn:
+            raise ValueError("Invalid database connection")
+            
+        if not is_valid_symbol(symbol):
+            raise ValueError(f"Invalid symbol format: {symbol}")
+            
+        if not is_valid_timeframe(timeframe):
+            raise ValueError(f"Invalid timeframe format: {timeframe}")
+            
+        # Get symbol and timeframe IDs
         cursor = conn.cursor()
-        cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='historical_data';")
-        if cursor.fetchone() is None:
-             logger.error(f"Table 'historical_data' not found in {db_path}. Cannot load data.")
-             return None
-
-        query = "SELECT * FROM historical_data ORDER BY open_time ASC"
-        df = pd.read_sql_query(query, conn)
-        logger.info(f"Loaded {len(df)} records from DB.")
-
-        if df.empty: 
-            logger.warning("Loaded DataFrame is empty.")
-            raise ValueError("Insufficient data points")
-
-        # Basic data cleaning and type conversion
-        df['open_time'] = pd.to_numeric(df['open_time'], errors='coerce')
-        df.dropna(subset=['open_time'], inplace=True)
-        if df.empty: 
-            logger.warning("DF empty after dropping invalid open_time.")
-            raise ValueError("Insufficient data points")
-
-        # Filter out unreasonably old timestamps
-        min_valid_timestamp_ms = EARLIEST_VALID_DATE.timestamp() * 1000
-        initial_len = len(df)
-        df = df[df['open_time'] >= min_valid_timestamp_ms]
-        if len(df) < initial_len:
-             logger.warning(f"Filtered out {initial_len - len(df)} rows with open_time before {EARLIEST_VALID_DATE.date()} during load.")
-        if df.empty: 
-            logger.error("DataFrame empty after filtering old timestamps during load.")
-            raise ValueError("Insufficient data points")
-
-        df['date'] = pd.to_datetime(df['open_time'], unit='ms', utc=True)
-        df.dropna(subset=['date'], inplace=True)
-        if df.empty: 
-            logger.warning("DF empty after dropping invalid date conversion.")
-            raise ValueError("Insufficient data points")
-
-        # Set date as index for validation
-        df.set_index('date', inplace=True)
+        cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
+        symbol_id = cursor.fetchone()
+        if not symbol_id:
+            raise ValueError(f"Symbol not found: {symbol}")
+            
+        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
+        timeframe_id = cursor.fetchone()
+        if not timeframe_id:
+            raise ValueError(f"Timeframe not found: {timeframe}")
+            
+        # Load data
+        query = """
+            SELECT open_time, open, high, low, close, volume
+            FROM historical_data
+            WHERE symbol_id = ? AND timeframe_id = ?
+            ORDER BY open_time
+        """
+        df = pd.read_sql_query(query, conn, params=(symbol_id[0], timeframe_id[0]))
+        
+        if df.empty:
+            raise ValueError(f"No data found for {symbol} {timeframe}")
+            
+        # Convert timestamp
+        df['timestamp'] = pd.to_datetime(df['open_time'], unit='ms')
+        df.set_index('timestamp', inplace=True)
+        df.drop('open_time', axis=1, inplace=True)
         
         # Validate data
-        try:
-            _validate_data(df)
-        except ValueError as e:
-            logger.error(f"Data validation failed: {str(e)}")
-            raise
-
-        logger.info(f"Data loaded and validated. Final shape: {df.shape}")
+        validate_data(df)
+        
         return df
-
-    except (pd.errors.DatabaseError, sqlite3.Error) as e:
-        logger.error(f"Database error loading data from {db_path}: {e}", exc_info=True)
-        raise ValueError(f"Database error: {str(e)}")
-    except ValueError as e:
-        raise  # Re-raise validation errors
     except Exception as e:
-        logger.error(f"Unexpected error loading data: {e}", exc_info=True)
-        raise ValueError(f"Error loading data: {str(e)}")
-    finally:
-        if conn: conn.close()
+        logging.error(f"Failed to load data: {e}")
+        return None
+
+def validate_data(data: pd.DataFrame) -> None:
+    """Validate data with improved error handling."""
+    if not isinstance(data, pd.DataFrame):
+        raise ValueError("Data must be a pandas DataFrame")
+        
+    # Check required columns
+    required_cols = ['open', 'high', 'low', 'close', 'volume']
+    missing_cols = [col for col in required_cols if col not in data.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
+        
+    # Check for missing values
+    if data[required_cols].isnull().any().any():
+        raise ValueError("Data contains missing values")
+        
+    # Check for duplicate timestamps
+    if data.index.duplicated().any():
+        raise ValueError("Data contains duplicate timestamps")
+        
+    # Check for non-monotonic timestamps
+    if not data.index.is_monotonic_increasing:
+        raise ValueError("Timestamps must be monotonically increasing")
+        
+    # Check for invalid price relationships
+    if (data['high'] < data['low']).any():
+        raise ValueError("High price cannot be less than low price")
+    if (data['high'] < data['open']).any():
+        raise ValueError("High price cannot be less than open price")
+    if (data['high'] < data['close']).any():
+        raise ValueError("High price cannot be less than close price")
+    if (data['low'] > data['open']).any():
+        raise ValueError("Low price cannot be greater than open price")
+    if (data['low'] > data['close']).any():
+        raise ValueError("Low price cannot be greater than close price")
+        
+    # Check for negative values
+    if (data[['open', 'high', 'low', 'close', 'volume']] < 0).any().any():
+        raise ValueError("Data contains negative values")
+        
+    # Check for minimum data points
+    if len(data) < 100:
+        raise ValueError("Insufficient data points (minimum 100 required)")
 
 class DataManager:
     def __init__(self, config):
@@ -845,59 +795,52 @@ def _load_csv(path: Path) -> pd.DataFrame:
     except FileNotFoundError:
         raise ValueError(f"File not found: {path}")
 
-def _validate_data(data):
+def _validate_data(data: pd.DataFrame) -> bool:
     """Validate data format and content.
-    
+
     Args:
         data (pd.DataFrame): Input data
-        
+
     Returns:
         bool: True if data is valid
-        
+
     Raises:
         ValueError: If data is invalid with specific error messages
     """
     if not isinstance(data, pd.DataFrame):
         raise ValueError("Input is not a DataFrame")
-        
+
     if data.empty:
         raise ValueError("Empty DataFrame provided")
-        
+
     required_cols = ['open', 'high', 'low', 'close', 'volume']
-    
+
     # Check for required columns
     missing_cols = [col for col in required_cols if col not in data.columns]
     if missing_cols:
         raise ValueError(f"Missing required columns: {missing_cols}")
-    
+
     # Check for NaN values
     for col in required_cols:
         if data[col].isnull().any():
             raise ValueError(f"NaN values found in column: {col}")
-    
+
     # Check for invalid values
     if (data['high'] < data['low']).any():
         raise ValueError("High price cannot be less than low price")
-    if (data['volume'] < 0).any():
-        raise ValueError("Volume cannot be negative")
-        
-    # Check for duplicate dates if index is datetime
+
+    # Check for duplicate dates
+    if data.index.duplicated().any():
+        raise ValueError("Duplicate dates found")
+
+    # Check for large gaps in data
     if isinstance(data.index, pd.DatetimeIndex):
-        if not data.index.is_monotonic_increasing:
-            raise ValueError("Dates must be monotonically increasing")
-        if data.index.duplicated().any():
-            raise ValueError("Duplicate dates found")
-        # Check for large gaps in the datetime index
-        diffs = data.index.to_series().diff().dropna()
-        if len(diffs) > 0:
-            median_diff = diffs.median()
-            if (diffs > median_diff * 3).any():
-                raise ValueError("Large gaps detected in data")
-        
-    # Check for sufficient data points
-    if len(data) < 30:  # Minimum required data points
-        raise ValueError("Insufficient data points")
-        
+        time_diff = data.index.to_series().diff()
+        max_allowed_gap = pd.Timedelta(hours=4)  # Adjust based on your timeframe
+        large_gaps = time_diff[time_diff > max_allowed_gap]
+        if not large_gaps.empty:
+            raise ValueError("Large gaps detected in data")
+
     return True
 
 def _merge_data(dfs):

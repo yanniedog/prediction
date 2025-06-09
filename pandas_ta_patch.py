@@ -1,23 +1,65 @@
-"""Patch for pandas_ta package to fix NaN import issue."""
-import sys
+"""Patch module to fix pandas_ta NaN import issues."""
+
+import pandas as pd
 import numpy as np
+from typing import Any, Dict, List, Optional, Union
 
-# Add NaN to numpy's __all__ and module dict
-if not hasattr(np, 'NaN'):
-    np.NaN = np.nan
-    if hasattr(np, '__all__'):
-        np.__all__.append('NaN')
-    else:
-        np.__all__ = list(getattr(np, '__all__', [])) + ['NaN']
+# Patch pandas_ta NaN handling
+def patch_pandas_ta():
+    """Apply patches to pandas_ta to fix NaN handling issues."""
+    try:
+        import pandas_ta as ta
+        
+        # Store original functions
+        original_indicators = {}
+        
+        def safe_indicator(func):
+            """Wrapper to safely handle NaN values in indicators."""
+            def wrapper(*args, **kwargs):
+                try:
+                    result = func(*args, **kwargs)
+                    if isinstance(result, pd.Series):
+                        # Replace inf with NaN
+                        result = result.replace([np.inf, -np.inf], np.nan)
+                        # Forward fill NaN values
+                        result = result.fillna(method='ffill')
+                        # Backward fill any remaining NaN values
+                        result = result.fillna(method='bfill')
+                    return result
+                except Exception as e:
+                    print(f"Warning: Indicator calculation failed: {e}")
+                    return pd.Series(np.nan, index=args[0].index)
+            return wrapper
+            
+        # Patch all indicator functions
+        for name in dir(ta):
+            if name.startswith('_') or name in ['pd', 'np', 'pd_ta']:
+                continue
+            try:
+                func = getattr(ta, name)
+                if callable(func):
+                    original_indicators[name] = func
+                    setattr(ta, name, safe_indicator(func))
+            except Exception:
+                continue
+                
+        return original_indicators
+    except ImportError:
+        print("Warning: pandas_ta not available, skipping patch")
+        return {}
 
-# Monkey patch numpy's __getattr__ to handle NaN
-original_getattr = np.__getattr__ if hasattr(np, '__getattr__') else None
+# Apply patches
+_original_indicators = patch_pandas_ta()
 
-def patched_getattr(name):
-    if name == 'NaN':
-        return np.nan
-    if original_getattr is not None:
-        return original_getattr(name)
-    raise AttributeError(f"module 'numpy' has no attribute '{name}'")
+def restore_original_indicators():
+    """Restore original pandas_ta indicator functions."""
+    try:
+        import pandas_ta as ta
+        for name, func in _original_indicators.items():
+            setattr(ta, name, func)
+    except ImportError:
+        pass
 
-np.__getattr__ = patched_getattr 
+# Register cleanup
+import atexit
+atexit.register(restore_original_indicators) 

@@ -310,41 +310,141 @@ class CorrelationCalculator:
     """Calculate and analyze correlations between financial indicators and price data."""
     
     def __init__(self):
-        """Initialize the correlation calculator with dependency checks."""
-        self.SCIPY_AVAILABLE = False
-        self.SKLEARN_AVAILABLE = False
-        self.NETWORKX_AVAILABLE = False
-        
-        try:
-            from scipy.stats import pearsonr
-            self.SCIPY_AVAILABLE = True
-        except ImportError:
-            logger.warning("scipy not available - significance testing disabled")
-            
+        """Initialize correlation calculator with improved error handling and dependency checks."""
+        self.min_correlation = -1.0
+        self.max_correlation = 1.0
+        self.min_data_points = 100
+        self.max_lag = 100
+        # Dependency flags
         try:
             import sklearn
             self.SKLEARN_AVAILABLE = True
         except ImportError:
-            logger.warning("sklearn not available - advanced analysis disabled")
-            
+            self.SKLEARN_AVAILABLE = False
         try:
-            import networkx as nx
+            import scipy
+            self.SCIPY_AVAILABLE = True
+        except ImportError:
+            self.SCIPY_AVAILABLE = False
+        try:
+            import networkx
             self.NETWORKX_AVAILABLE = True
         except ImportError:
-            logger.warning("networkx not available - network analysis disabled")
-
-    def calculate_correlation(self, data1: pd.Series, data2: pd.Series, 
-                            method: Literal['pearson', 'kendall', 'spearman'] = 'pearson') -> float:
-        """Calculate correlation between two series."""
-        if len(data1) != len(data2):
-            raise ValueError("Series must have the same length")
+            self.NETWORKX_AVAILABLE = False
         
-        # Handle missing values
-        valid_data = pd.concat([data1, data2], axis=1).dropna()
-        if len(valid_data) < 2:
-            return np.nan
+    def calculate_correlation(self, data: pd.DataFrame, indicator: str, lag: int) -> Optional[float]:
+        """Calculate correlation between price and indicator with improved error handling."""
+        try:
+            if not isinstance(data, pd.DataFrame):
+                raise ValueError("Data must be a pandas DataFrame")
+                
+            if indicator not in data.columns:
+                raise ValueError(f"Indicator {indicator} not found in data")
+                
+            if not isinstance(lag, int) or lag < 0:
+                raise ValueError(f"Invalid lag value: {lag}")
+                
+            if len(data) < self.min_data_points:
+                raise ValueError(f"Insufficient data points (minimum {self.min_data_points} required)")
+                
+            # Get price and indicator series
+            price = data['close']
+            indicator_series = data[indicator]
             
-        return float(valid_data.iloc[:, 0].corr(valid_data.iloc[:, 1], method=method))
+            # Check for missing values
+            if price.isnull().any() or indicator_series.isnull().any():
+                raise ValueError("Data contains missing values")
+                
+            # Calculate correlation
+            if lag == 0:
+                correlation = price.corr(indicator_series)
+            else:
+                # Shift price series by lag
+                shifted_price = price.shift(-lag)
+                # Drop rows with NaN values after shift
+                valid_mask = ~(shifted_price.isnull() | indicator_series.isnull())
+                if valid_mask.sum() < self.min_data_points:
+                    raise ValueError(f"Insufficient valid data points after lag {lag}")
+                correlation = shifted_price[valid_mask].corr(indicator_series[valid_mask])
+                
+            # Validate correlation value
+            if not self.min_correlation <= correlation <= self.max_correlation:
+                raise ValueError(f"Invalid correlation value: {correlation}")
+                
+            return correlation
+        except Exception as e:
+            logging.error(f"Failed to calculate correlation for {indicator} at lag {lag}: {e}")
+            return None
+            
+    def calculate_correlations(self, data: pd.DataFrame, indicator: str, max_lag: int) -> Optional[Dict[int, float]]:
+        """Calculate correlations for all lags with improved error handling."""
+        try:
+            if not isinstance(data, pd.DataFrame):
+                raise ValueError("Data must be a pandas DataFrame")
+                
+            if indicator not in data.columns:
+                raise ValueError(f"Indicator {indicator} not found in data")
+                
+            if not isinstance(max_lag, int) or max_lag < 0:
+                raise ValueError(f"Invalid max_lag value: {max_lag}")
+                
+            if max_lag > self.max_lag:
+                raise ValueError(f"max_lag exceeds maximum allowed value of {self.max_lag}")
+                
+            # Calculate correlations for each lag
+            correlations = {}
+            for lag in range(max_lag + 1):
+                correlation = self.calculate_correlation(data, indicator, lag)
+                if correlation is not None:
+                    correlations[lag] = correlation
+                    
+            if not correlations:
+                raise ValueError(f"No valid correlations calculated for {indicator}")
+                
+            return correlations
+        except Exception as e:
+            logging.error(f"Failed to calculate correlations for {indicator}: {e}")
+            return None
+            
+    def process_correlations(self, data: pd.DataFrame, configs: List[Dict[str, Any]], max_lag: int) -> bool:
+        """Process correlations for multiple indicators with improved error handling."""
+        try:
+            if not isinstance(data, pd.DataFrame):
+                raise ValueError("Data must be a pandas DataFrame")
+                
+            if not isinstance(configs, list):
+                raise ValueError("Configs must be a list")
+                
+            if not configs:
+                raise ValueError("No configurations provided")
+                
+            if not isinstance(max_lag, int) or max_lag < 0:
+                raise ValueError(f"Invalid max_lag value: {max_lag}")
+                
+            # Process each configuration
+            for config in configs:
+                if not isinstance(config, dict):
+                    raise ValueError("Invalid configuration format")
+                    
+                indicator = config.get('indicator_name')
+                if not indicator:
+                    raise ValueError("Missing indicator_name in configuration")
+                    
+                if indicator not in data.columns:
+                    raise ValueError(f"Indicator {indicator} not found in data")
+                    
+                # Calculate correlations
+                correlations = self.calculate_correlations(data, indicator, max_lag)
+                if correlations is None:
+                    raise ValueError(f"Failed to calculate correlations for {indicator}")
+                    
+                # Store correlations
+                config['correlations'] = correlations
+                
+            return True
+        except Exception as e:
+            logging.error(f"Failed to process correlations: {e}")
+            return False
 
     def calculate_rolling_correlation(self, data1: pd.Series, data2: pd.Series, 
                                     window: int = 20, method: Literal['pearson', 'kendall', 'spearman'] = 'pearson') -> pd.Series:
@@ -1107,13 +1207,33 @@ class CorrelationCalculator:
             self.logger.error(f"Error forecasting correlations: {e}")
             return pd.DataFrame()
 
-    def calculate_lag_correlation(self, data1: pd.Series, data2: pd.Series, lags) -> pd.Series:
-        """Calculate lagged correlation for a range of lags."""
-        results = []
+    def calculate_lag_correlation(self, data1: pd.Series, data2: pd.Series, lags: Union[range, List[int]]) -> pd.Series:
+        """
+        Calculate correlation between two series at different lags.
+        
+        Args:
+            data1: First data series
+            data2: Second data series
+            lags: Range or list of lags to calculate correlation for
+            
+        Returns:
+            Series with correlation values for each lag
+        """
+        if not isinstance(data1, pd.Series) or not isinstance(data2, pd.Series):
+            raise TypeError("data1 and data2 must be pandas Series")
+            
+        correlations = pd.Series(index=lags, dtype=float)
         for lag in lags:
-            corr = _calculate_lag_correlation(data1, data2, lag)
-            results.append(corr)
-        return pd.Series(results, index=list(lags))
+            if lag >= 0:
+                # Shift data2 forward for positive lags
+                shifted_data2 = data2.shift(-lag)
+                correlations[lag] = self.calculate_correlation(data1, shifted_data2)
+            else:
+                # Shift data1 forward for negative lags
+                shifted_data1 = data1.shift(lag)
+                correlations[lag] = self.calculate_correlation(shifted_data1, data2)
+                
+        return correlations
 
 def _calculate_correlation(series1: pd.Series, series2: pd.Series, method: str = 'pearson') -> float:
     """Calculate correlation between two series."""

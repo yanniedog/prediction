@@ -66,7 +66,26 @@ def initialize_database(db_path: Union[str, Path], symbol: str, timeframe: str) 
             try:
                 test_conn = create_connection(db_path)
                 if test_conn:
-                    test_conn.close()
+                    # Check if tables exist and have required columns
+                    cursor = test_conn.cursor()
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='symbols'")
+                    if not cursor.fetchone():
+                        logger.warning(f"Database {db_path} exists but is missing required tables. Recreating...")
+                        test_conn.close()
+                        db_path.unlink()
+                    else:
+                        # Verify symbol and timeframe exist
+                        cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
+                        symbol_id = cursor.fetchone()
+                        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
+                        timeframe_id = cursor.fetchone()
+                        if not symbol_id or not timeframe_id:
+                            logger.warning(f"Database {db_path} exists but missing required symbol/timeframe. Recreating...")
+                            test_conn.close()
+                            db_path.unlink()
+                        else:
+                            test_conn.close()
+                            return True
             except sqlite3.DatabaseError:
                 logger.warning(f"Database {db_path} appears to be corrupted. Removing...")
                 db_path.unlink()
@@ -186,12 +205,17 @@ def initialize_database(db_path: Union[str, Path], symbol: str, timeframe: str) 
             CREATE INDEX IF NOT EXISTS idx_leaderboard_correlation ON leaderboard(correlation_type, correlation_value);
         """)
         
-        # Insert initial symbol and timeframe
+        # Insert initial symbol and timeframe and get their IDs
         cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol,))
+        cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
+        symbol_id = cursor.fetchone()[0]
+        
         cursor.execute("INSERT OR IGNORE INTO timeframes (timeframe) VALUES (?)", (timeframe,))
+        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
+        timeframe_id = cursor.fetchone()[0]
         
         conn.commit()
-        logger.info(f"Database schema initialized/verified: {db_path}")
+        logger.info(f"Database schema initialized/verified: {db_path} (symbol_id={symbol_id}, timeframe_id={timeframe_id})")
         return True
         
     except sqlite3.Error as e:
@@ -199,12 +223,10 @@ def initialize_database(db_path: Union[str, Path], symbol: str, timeframe: str) 
         if conn:
             try:
                 conn.rollback()
-            except:
+            except sqlite3.Error:
                 pass
-        return False
-    finally:
-        if conn:
             conn.close()
+        return False
 
 def recover_database(db_path: str, symbol: str, timeframe: str) -> bool:
     """Attempt to recover a corrupted database."""
