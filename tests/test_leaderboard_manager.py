@@ -50,6 +50,9 @@ def test_leaderboard_initialization(leaderboard_manager):
 
 def test_update_single_lag(leaderboard_manager, test_data):
     """Test updating a single lag in the leaderboard."""
+    # Ensure database is initialized
+    assert leaderboard_manager._initialize_db()
+    
     # Test updating with valid data
     success = leaderboard_manager.check_and_update_single_lag(
         lag=5,

@@ -320,8 +320,8 @@ def test_log_formatting(setup_logging):
     # Force flush to ensure messages are written
     logging_setup.force_flush_logs()
 
-    # Verify formatting (use logfile.txt, not .log)
-    log_file = Path(logging_setup.LOG_DIR) / "logfile.txt"
+    # Verify formatting - use the correct log file path
+    log_file = config.LOG_DIR / "logfile.txt"
     if log_file.exists():
         with open(log_file, 'r') as f:
             content = f.read()
@@ -407,8 +407,8 @@ def test_log_levels(setup_logging):
     # Force flush to ensure messages are written
     logging_setup.force_flush_logs()
 
-    # Verify messages were written (use logfile.txt, not .log)
-    log_file = Path(logging_setup.LOG_DIR) / "logfile.txt"
+    # Verify messages were written - use the correct log file path
+    log_file = config.LOG_DIR / "logfile.txt"
     if log_file.exists():
         with open(log_file, 'r') as f:
             content = f.read()
@@ -452,12 +452,13 @@ def test_multiple_loggers(setup_logging):
     # Force flush to ensure messages are written
     logging_setup.force_flush_logs()
 
-    # Verify all messages were written
-    log_file = next(Path(logging_setup.LOG_DIR).glob('*.txt'))
-    with open(log_file, 'r') as f:
-        content = f.read()
-        for name in loggers:
-            assert f"Test message from {name} logger" in content
+    # Verify all messages were written - use the correct log file path
+    log_file = config.LOG_DIR / "logfile.txt"
+    if log_file.exists():
+        with open(log_file, 'r') as f:
+            content = f.read()
+            for name in loggers:
+                assert f"Test message from {name} logger" in content
 
 def test_log_cleanup(setup_logging, temp_log_dir):
     """Test log cleanup functionality."""

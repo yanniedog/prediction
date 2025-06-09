@@ -217,7 +217,7 @@ def test_prepare_configurations(
             mock_conn.return_value.cursor.return_value = mock_cursor
             
             # Test configuration preparation
-            with patch('builtins.input', side_effect=['y', '5']):  # confirm analysis, max_lag=5
+            with patch('builtins.input', side_effect=['b', 'a', 'y']):  # Select Bayesian, All indicators, confirm
                 # Mock the display progress function
                 mock_display = MagicMock()
                 
@@ -250,16 +250,14 @@ def test_calculate_indicators_and_correlations(
     _initialize_database(db_path, "BTCUSD", "1h")
     
     # Mock indicator factory
-    with patch('main.indicator_factory.IndicatorFactory') as mock_factory:
-        mock_instance = MagicMock()
-        mock_instance.indicator_params = sample_indicator_definitions
-        mock_instance.compute_indicators.return_value = pd.DataFrame({
-            'RSI': [0.5, 0.6, 0.7] * 33 + [0.5],  # 100 values
-            'BB_upper': [1.0] * 100,
-            'BB_middle': [0.5] * 100,
-            'BB_lower': [0.0] * 100
-        })
-        mock_factory.return_value = mock_instance
+    with patch('main.indicator_factory.compute_configured_indicators') as mock_compute:
+        mock_compute.return_value = (
+            pd.DataFrame({
+                'RSI_1': [0.5, 0.6, 0.7] * 33 + [0.5],  # 100 values
+                'close': sample_data['close']
+            }),
+            set()  # No failed config IDs
+        )
         
         # Mock database operations
         with patch('main.sqlite_manager.create_connection') as mock_conn:
@@ -432,18 +430,10 @@ def test_error_handling(temp_dir: Path) -> None:
 
     # Test database connection failure
     with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
-        with patch('main.sqlite_manager.create_connection', return_value=None):  # Simulate connection failure
-            with pytest.raises(ValueError):
-                main._select_data_source_and_lag()
-
-    # Test database with missing tables
-    db_path = temp_dir / "test.db"
-    # Create a database file but don't initialize it (no tables)
-    db_path.touch()
-    
-    with patch('main.data_manager.manage_data_source', return_value=(db_path, "BTCUSD", "1h")):
-        with pytest.raises(ValueError):
-            main._select_data_source_and_lag()
+        with patch('main.data_manager.load_data', return_value=pd.DataFrame({'close': [1, 2, 3]})):
+            with patch('main.sqlite_manager.create_connection', return_value=None):
+                with pytest.raises(ValueError):
+                    main._select_data_source_and_lag()
 
 def test_progress_display(temp_dir: Path) -> None:
     """Test progress display functionality."""

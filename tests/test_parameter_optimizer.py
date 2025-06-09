@@ -25,6 +25,7 @@ from pathlib import Path
 import tempfile
 import shutil
 import json
+import logging
 
 # Test fixtures
 @pytest.fixture
@@ -346,6 +347,9 @@ def test_format_final_evaluated_configs():
 # Test _log_optimization_summary
 def test_log_optimization_summary(caplog):
     """Test logging optimization summary."""
+    # Set up logging to capture messages
+    caplog.set_level(logging.INFO)
+    
     indicator_name = 'RSI'
     max_lag = 3
     best_config_per_lag = {
