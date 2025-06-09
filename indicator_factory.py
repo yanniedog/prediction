@@ -453,7 +453,13 @@ class IndicatorFactory:
 
     def get_indicator_params(self, name: str) -> Optional[Dict[str, Any]]:
         """Get parameters for a specific indicator."""
+        # Try different case variations
         indicator_def = self.indicator_params.get(name)
+        if not indicator_def:
+            indicator_def = self.indicator_params.get(name.lower())
+        if not indicator_def:
+            indicator_def = self.indicator_params.get(name.upper())
+        
         if not indicator_def:
             raise ValueError("Unknown indicator")
         return indicator_def.get('params') if indicator_def else None

@@ -419,7 +419,17 @@ def test_log_directory_creation(temp_log_dir):
     """Test log directory creation."""
     # Remove directory if it exists
     if temp_log_dir.exists():
-        shutil.rmtree(temp_log_dir)
+        try:
+            shutil.rmtree(temp_log_dir)
+        except PermissionError:
+            # If we can't delete, wait a moment and try again
+            import time
+            time.sleep(0.1)
+            try:
+                shutil.rmtree(temp_log_dir)
+            except PermissionError:
+                # If still can't delete, skip the test
+                pytest.skip("Cannot delete temporary directory - skipping test")
 
     # Set up logging with non-existent directory
     with patch('config.LOG_DIR', temp_log_dir):
@@ -432,6 +442,15 @@ def test_log_directory_creation(temp_log_dir):
         # Verify log file was created
         log_file = temp_log_dir / "logfile.txt"
         assert log_file.exists()
+        
+        # Clean up handlers to avoid file lock issues
+        logger = logging.getLogger()
+        for handler in logger.handlers[:]:
+            try:
+                handler.close()
+            except Exception:
+                pass
+            logger.removeHandler(handler)
 
 def test_multiple_loggers(setup_logging):
     """Test multiple logger instances."""

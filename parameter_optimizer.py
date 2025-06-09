@@ -774,20 +774,38 @@ def optimize_parameters_bayesian(data, indicator_def, n_trials=10):
     """Stub for Bayesian optimization. Returns best config and score using grid search for now."""
     if data is None or data.empty:
         raise ValueError("Input data is empty or None. Please provide valid market data.")
-    
+
     if not indicator_def or not isinstance(indicator_def, dict):
         raise ValueError("Invalid indicator definition. Expected a dictionary with 'name' and 'parameters' keys.")
+
+    # Handle the case where indicator_def is a dict with indicator name as key
+    if len(indicator_def) == 1:
+        # Extract the actual indicator definition
+        indicator_name = next(iter(indicator_def))
+        actual_def = indicator_def[indicator_name]
+        param_defs = actual_def.get("params") or actual_def.get("parameters")
+    else:
+        # Direct indicator definition
+        param_defs = indicator_def.get("params") or indicator_def.get("parameters")
     
-    param_defs = indicator_def.get("params") or indicator_def.get("parameters")
     if not param_defs or not isinstance(param_defs, dict):
         raise ValueError(f"Indicator '{indicator_def.get('name', 'UNKNOWN')}' must have 'params' or 'parameters' as a dictionary.")
     
     # Validate required fields
     missing_fields = []
-    if 'name' not in indicator_def:
-        missing_fields.append("'name'")
-    if 'type' not in indicator_def:
-        missing_fields.append("'type'")
+    if len(indicator_def) == 1:
+        # For nested format, check the actual definition
+        if 'name' not in actual_def:
+            missing_fields.append("'name'")
+        if 'type' not in actual_def:
+            missing_fields.append("'type'")
+    else:
+        # For direct format
+        if 'name' not in indicator_def:
+            missing_fields.append("'name'")
+        if 'type' not in indicator_def:
+            missing_fields.append("'type'")
+    
     if missing_fields:
         raise ValueError(f"Indicator definition missing required fields: {', '.join(missing_fields)}")
     
@@ -818,20 +836,20 @@ def optimize_parameters_bayesian(data, indicator_def, n_trials=10):
                 invalid_params.append(f"'{param_name}' (invalid default value)")
     
     if invalid_params:
-        raise ValueError(f"Invalid parameter definitions in indicator '{indicator_def['name']}': {', '.join(invalid_params)}")
+        indicator_name = next(iter(indicator_def)) if len(indicator_def) == 1 else indicator_def.get('name', 'UNKNOWN')
+        raise ValueError(f"Invalid parameter definitions in indicator '{indicator_name}': {', '.join(invalid_params)}")
 
-def optimize_parameters_classical(data, indicator_def):
-    """Classical optimization: grid search for best config by mean indicator value."""
-    if data is None or data.empty:
-        raise ValueError("Input data is empty.")
-    if not indicator_def or not isinstance(indicator_def, dict):
-        raise ValueError("Invalid indicator definition.")
-    param_defs = indicator_def.get("params") or indicator_def.get("parameters")
-    if not param_defs or not isinstance(param_defs, dict):
-        raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
+    # Get the indicator name for computing
+    if len(indicator_def) == 1:
+        indicator_name = next(iter(indicator_def))
+    else:
+        indicator_name = indicator_def.get("name", "IND")
+
+    # Simple grid search implementation for now
     factory = indicator_factory.IndicatorFactory()
     param_names = list(param_defs.keys())
     param_ranges = []
+    
     for p, spec in param_defs.items():
         if "min" in spec and "max" in spec and "default" in spec:
             if isinstance(spec["default"], int):
@@ -842,36 +860,30 @@ def optimize_parameters_classical(data, indicator_def):
                 param_ranges.append([spec["default"]])
         else:
             param_ranges.append([spec.get("default")])
+    
     from itertools import product
     best_params = None
     best_score = float('-inf')
+    
     for values in product(*param_ranges):
         params = dict(zip(param_names, values))
         try:
-            indicators = factory.compute_indicators(data, {indicator_def.get("name", "IND"): params})
-            score = indicators[indicator_def.get("name", "IND")].mean()
-            if score > best_score:
-                best_score = score
-                best_params = params
+            indicators = factory.compute_indicators(data, {indicator_name: params})
+            if indicator_name in indicators:
+                score = indicators[indicator_name].mean()
+                if score > best_score:
+                    best_score = score
+                    best_params = params
         except Exception:
             continue
+    
     if best_params is None:
         raise ValueError("No valid parameter set found")
+    
     return best_params, best_score
 
-def optimize_parameters(data, indicator_def, method="bayesian", n_trials=10):
-    """Main optimization function. Dispatches to Bayesian or classical optimization."""
-    if method == "bayesian":
-        return optimize_parameters_bayesian(data, indicator_def, n_trials=n_trials)
-    elif method == "classical":
-        return optimize_parameters_classical(data, indicator_def)
-    else:
-        raise ValueError(f"Unknown optimization method: {method}")
-
-def objective_function(config, data, indicator_def):
-    """Public objective function for optimization tests. Returns mean indicator value as score."""
-    if not isinstance(config, dict):
-        raise ValueError("Config must be a dict.")
+def optimize_parameters_classical(data, indicator_def):
+    """Classical optimization: grid search for best config by mean indicator value."""
     if data is None or data.empty:
         raise ValueError("Input data is empty.")
     if not indicator_def or not isinstance(indicator_def, dict):
@@ -890,38 +902,12 @@ def objective_function(config, data, indicator_def):
     if not param_defs or not isinstance(param_defs, dict):
         raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
     
-    factory = indicator_factory.IndicatorFactory()
-    
     # Get the indicator name for computing
     if len(indicator_def) == 1:
         indicator_name = next(iter(indicator_def))
     else:
         indicator_name = indicator_def.get("name", "IND")
     
-    try:
-        indicators = factory.compute_indicators(data, {indicator_name: config})
-        if indicator_name in indicators:
-            score = indicators[indicator_name].mean()
-            return score
-        else:
-            # Try to find any numeric column
-            for col in indicators.columns:
-                if pd.api.types.is_numeric_dtype(indicators[col]):
-                    return indicators[col].mean()
-            raise ValueError("No numeric indicator output found")
-    except Exception as e:
-        logger.error(f"Error computing indicator {indicator_name}: {e}")
-        return float('-inf')  # Return worst possible score on error
-
-def optimize_parameters_classical(data, indicator_def):
-    """Classical optimization: grid search for best config by mean indicator value."""
-    if data is None or data.empty:
-        raise ValueError("Input data is empty.")
-    if not indicator_def or not isinstance(indicator_def, dict):
-        raise ValueError("Invalid indicator definition.")
-    param_defs = indicator_def.get("params") or indicator_def.get("parameters")
-    if not param_defs or not isinstance(param_defs, dict):
-        raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
     factory = indicator_factory.IndicatorFactory()
     param_names = list(param_defs.keys())
     param_ranges = []
@@ -941,11 +927,12 @@ def optimize_parameters_classical(data, indicator_def):
     for values in product(*param_ranges):
         params = dict(zip(param_names, values))
         try:
-            indicators = factory.compute_indicators(data, {indicator_def.get("name", "IND"): params})
-            score = indicators[indicator_def.get("name", "IND")].mean()
-            if score > best_score:
-                best_score = score
-                best_params = params
+            indicators = factory.compute_indicators(data, {indicator_name: params})
+            if indicator_name in indicators:
+                score = indicators[indicator_name].mean()
+                if score > best_score:
+                    best_score = score
+                    best_params = params
         except Exception:
             continue
     if best_params is None:
@@ -986,6 +973,64 @@ def _prepare_optimization_data(data: pd.DataFrame, indicator_definition: dict) -
     indicator_def = {name: params_json[name]}
     return data, indicator_def
 
+def objective_function(config, data, indicator_def):
+    """Public objective function for optimization tests. Returns mean indicator value as score."""
+    if not isinstance(config, dict):
+        raise ValueError("Config must be a dict.")
+    if data is None or data.empty:
+        raise ValueError("Input data is empty.")
+    if not indicator_def or not isinstance(indicator_def, dict):
+        raise ValueError("Invalid indicator definition.")
+    
+    # Handle the case where indicator_def is a dict with indicator name as key
+    if len(indicator_def) == 1:
+        # Extract the actual indicator definition
+        indicator_name = next(iter(indicator_def))
+        actual_def = indicator_def[indicator_name]
+        param_defs = actual_def.get("params") or actual_def.get("parameters")
+    else:
+        # Direct indicator definition
+        param_defs = indicator_def.get("params") or indicator_def.get("parameters")
+    
+    if not param_defs or not isinstance(param_defs, dict):
+        raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
+    
+    # Validate config against param_defs
+    for param_name, spec in param_defs.items():
+        if param_name not in config:
+            if "default" in spec:
+                config[param_name] = spec["default"]
+            else:
+                raise ValueError(f"Missing required parameter: {param_name}")
+        
+        val = config[param_name]
+        if "min" in spec and val < spec["min"]:
+            raise ValueError(f"Parameter '{param_name}' below min: {val} < {spec['min']}")
+        if "max" in spec and val > spec["max"]:
+            raise ValueError(f"Parameter '{param_name}' above max: {val} > {spec['max']}")
+    
+    factory = indicator_factory.IndicatorFactory()
+    
+    # Get the indicator name for computing
+    if len(indicator_def) == 1:
+        indicator_name = next(iter(indicator_def))
+    else:
+        indicator_name = indicator_def.get("name", "IND")
+    
+    try:
+        indicators = factory.compute_indicators(data, {indicator_name: config})
+        if indicator_name in indicators:
+            score = indicators[indicator_name].mean()
+            return score
+        else:
+            # Try to find any numeric column
+            for col in indicators.columns:
+                if pd.api.types.is_numeric_dtype(indicators[col]):
+                    return indicators[col].mean()
+            raise ValueError("No numeric indicator output found")
+    except Exception as e:
+        logger.error(f"Error computing indicator {indicator_name}: {e}")
+        return float('-inf')  # Return worst possible score on error
 
 def _evaluate_configuration(config: dict, data: pd.DataFrame, indicator_def: dict) -> Tuple[float, pd.DataFrame]:
     """
@@ -998,35 +1043,53 @@ def _evaluate_configuration(config: dict, data: pd.DataFrame, indicator_def: dic
         raise ValueError("Input data is empty.")
     if not indicator_def or not isinstance(indicator_def, dict):
         raise ValueError("Invalid indicator definition.")
-    # Find the indicator name and params
-    if len(indicator_def) != 1:
-        raise ValueError("Indicator definition must have exactly one indicator.")
-    name = next(iter(indicator_def))
-    ind_def = indicator_def[name]
-    param_defs = ind_def.get("params") or ind_def.get("parameters")
+    
+    # Handle the case where indicator_def is a dict with indicator name as key
+    if len(indicator_def) == 1:
+        # Extract the actual indicator definition
+        indicator_name = next(iter(indicator_def))
+        actual_def = indicator_def[indicator_name]
+        param_defs = actual_def.get("params") or actual_def.get("parameters")
+    else:
+        # Direct indicator definition
+        param_defs = indicator_def.get("params") or indicator_def.get("parameters")
+    
     if not param_defs or not isinstance(param_defs, dict):
         raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
+    
     # Validate config against param_defs
-    for p, spec in param_defs.items():
-        if p not in config:
+    for param_name, spec in param_defs.items():
+        if param_name not in config:
             if "default" in spec:
-                config[p] = spec["default"]
+                config[param_name] = spec["default"]
             else:
-                raise ValueError(f"Missing required parameter: {p}")
-        val = config[p]
+                raise ValueError(f"Missing required parameter: {param_name}")
+        
+        val = config[param_name]
         if "min" in spec and val < spec["min"]:
-            raise ValueError(f"Parameter '{p}' below min: {val} < {spec['min']}")
+            raise ValueError(f"Parameter '{param_name}' below min: {val} < {spec['min']}")
         if "max" in spec and val > spec["max"]:
-            raise ValueError(f"Parameter '{p}' above max: {val} > {spec['max']}")
-    # Evaluate conditions if present
-    conditions = ind_def.get("conditions", [])
-    if hasattr(parameter_generator, "evaluate_conditions"):
-        if not parameter_generator.evaluate_conditions(config, conditions):
-            raise ValueError(f"Parameter conditions not met for indicator '{name}'")
-    # Compute indicator output
+            raise ValueError(f"Parameter '{param_name}' above max: {val} > {spec['max']}")
+    
+    # Get the indicator name for computing
+    if len(indicator_def) == 1:
+        indicator_name = next(iter(indicator_def))
+    else:
+        indicator_name = indicator_def.get("name", "IND")
+    
     factory = indicator_factory.IndicatorFactory()
-    output_df = factory.compute_indicators(data, {name: config})
-    if name not in output_df:
-        raise ValueError(f"Indicator output missing for {name}")
-    score = float(output_df[name].mean())
-    return score, output_df
+    
+    try:
+        indicators = factory.compute_indicators(data, {indicator_name: config})
+        if indicator_name in indicators:
+            score = indicators[indicator_name].mean()
+            return score, indicators
+        else:
+            # Try to find any numeric column
+            for col in indicators.columns:
+                if pd.api.types.is_numeric_dtype(indicators[col]):
+                    return indicators[col].mean(), indicators
+            raise ValueError("No numeric indicator output found")
+    except Exception as e:
+        logger.error(f"Error computing indicator {indicator_name}: {e}")
+        raise ValueError(f"Error computing indicator {indicator_name}: {e}")

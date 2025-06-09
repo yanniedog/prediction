@@ -101,6 +101,7 @@ def sample_indicator_definition() -> Dict[str, Any]:
     """Create sample indicator definition for testing."""
     return {
         "RSI": {
+            "name": "RSI",
             "type": "talib",
             "required_inputs": ["close"],
             "params": {
