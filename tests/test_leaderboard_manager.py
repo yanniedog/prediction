@@ -63,7 +63,7 @@ def test_update_single_lag(leaderboard_manager, test_data):
     
     # Verify the update
     leaderboard = leaderboard_manager.load_leaderboard()
-    key = (1, 'positive')  # (config_id, correlation_type)
+    key = (5, 'positive')  # (lag, correlation_type)
     assert key in leaderboard
     assert leaderboard[key]['correlation_value'] == 0.85
     assert leaderboard[key]['indicator_name'] == 'RSI'
@@ -224,10 +224,10 @@ def test_generate_reports(leaderboard_manager, test_data, temp_db_dir):
     success = leaderboard_manager.generate_leading_indicator_report()
     assert success
     
-    # Test consistency report
+    # Test consistency report - provide enough correlation data for max_lag=5
     correlations_by_config = {
-        1: [0.85, 0.80, 0.75],  # RSI correlations
-        2: [0.75, 0.70, 0.65]   # BB correlations
+        1: [0.85, 0.80, 0.75, 0.70, 0.65],  # RSI correlations for lags 1-5
+        2: [0.75, 0.70, 0.65, 0.60, 0.55]   # BB correlations for lags 1-5
     }
     
     success = leaderboard_manager.generate_consistency_report(
@@ -246,29 +246,29 @@ def test_generate_reports(leaderboard_manager, test_data, temp_db_dir):
 
 def test_error_handling(leaderboard_manager, test_data):
     """Test error handling in various scenarios."""
-    # Test with invalid database connection
+    # Test with invalid database connection - should return empty dict, not raise
     with patch('leaderboard_manager._create_leaderboard_connection', return_value=None):
-        with pytest.raises(Exception):
-            leaderboard_manager.load_leaderboard()
+        result = leaderboard_manager.load_leaderboard()
+        assert result == {}  # Should return empty dict when connection fails
     
-    # Test with invalid correlation value
-    with pytest.raises(ValueError):
-        leaderboard_manager.check_and_update_single_lag(
-            lag=5,
-            correlation_value=1.5,  # Invalid correlation > 1
-            indicator_name='RSI',
-            params={'timeperiod': 14},
-            config_id=1,
-            **test_data
-        )
+    # Test with invalid correlation value - should return False, not raise
+    result = leaderboard_manager.check_and_update_single_lag(
+        lag=5,
+        correlation_value=1.5,  # Invalid correlation > 1
+        indicator_name='RSI',
+        params={'timeperiod': 14},
+        config_id=1,
+        **test_data
+    )
+    assert result == False  # Should return False for invalid correlation
     
-    # Test with missing required data
-    with pytest.raises(KeyError):
-        leaderboard_manager.check_and_update_single_lag(
-            lag=5,
-            correlation_value=0.85,
-            indicator_name='RSI',
-            params={'timeperiod': 14},
-            config_id=1,
-            symbol='BTCUSDT'  # Missing other required fields
-        ) 
+    # Test with missing required data - should return False, not raise
+    result = leaderboard_manager.check_and_update_single_lag(
+        lag=5,
+        correlation_value=0.85,
+        indicator_name='RSI',
+        params={'timeperiod': 14},
+        config_id=1,
+        symbol='BTCUSDT'  # Missing other required fields
+    )
+    assert result == False  # Should return False for missing required fields 

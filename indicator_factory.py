@@ -148,6 +148,12 @@ class IndicatorFactory:
             if not indicator_def:
                 raise ValueError(f"Unknown indicator: {indicator_name}")
             
+            # Validate required inputs are present in data
+            required_inputs = indicator_def.get('required_inputs', ['close'])
+            missing_inputs = [input_name for input_name in required_inputs if input_name not in data.columns]
+            if missing_inputs:
+                raise ValueError(f"Missing required inputs for indicator '{indicator_name}': {missing_inputs}")
+            
             # Get the function based on indicator type
             indicator_type = indicator_def.get('type')
             if not indicator_type:
@@ -167,9 +173,7 @@ class IndicatorFactory:
 
             # Prepare inputs
             inputs = {}
-            for input_name in indicator_def.get('required_inputs', ['close']):
-                if input_name not in data.columns:
-                    raise ValueError(f"Required input column '{input_name}' not found in data")
+            for input_name in required_inputs:
                 inputs[input_name] = data[input_name].values
 
             # Get parameters and merge with defaults
@@ -248,7 +252,7 @@ class IndicatorFactory:
                 if "takes at least 1 positional argument" in str(e):
                     # Convert inputs dict to positional args in correct order
                     # Use the first required input as the default
-                    default_input = indicator_def.get('required_inputs', ['close'])[0]
+                    default_input = required_inputs[0]
                     ordered_inputs = [inputs[default_input]]
                     results = ta_func(*ordered_inputs, **merged_params)
                 else:

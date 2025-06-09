@@ -5,6 +5,7 @@ from datetime import datetime
 import config # Assuming config.py defines LOG_DIR
 import os
 from typing import List, Dict
+from pathlib import Path
 
 # Global variable to hold the console handler reference
 _console_handler = None
@@ -15,6 +16,7 @@ _default_console_level = logging.INFO
 _file_log_level = logging.WARNING # Default to WARNING
 
 LOG_DIR = config.LOG_DIR
+LOG_LEVEL = logging.INFO  # Default log level for compatibility with tests
 
 def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_mode='w'):
     """Configures logging with levels for console/file, overwriting log file by default."""
@@ -25,9 +27,23 @@ def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_m
     _default_console_level = console_level # Update default if changed
     _file_log_level = file_level        # Update file level if changed
 
-    log_filename = config.LOG_DIR / "logfile.txt"
-    config.LOG_DIR.mkdir(parents=True, exist_ok=True)
+    # Ensure LOG_DIR is a Path object and create it
+    if isinstance(LOG_DIR, str):
+        log_dir = Path(LOG_DIR)
+    else:
+        log_dir = LOG_DIR
+    
+    # Create the log directory if it doesn't exist
+    try:
+        log_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        print(f"CRITICAL ERROR creating log directory {log_dir}: {e}", file=sys.stderr)
+        # Fallback to current directory
+        log_dir = Path.cwd() / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
 
+    log_filename = log_dir / "logfile.txt"
+    
     # Define formatters
     file_formatter = logging.Formatter('%(asctime)s - %(levelname)-8s - [%(name)s:%(lineno)d] - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
     console_formatter = logging.Formatter('%(levelname)s: %(message)s')
@@ -85,7 +101,6 @@ def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_m
     ]
     for lib_name in libraries_to_quiet:
         logging.getLogger(lib_name).setLevel(logging.WARNING)
-
 
     # Log initialization info (will go to handlers based on their levels)
     logger.info(f"Logging initialized (Console: {logging.getLevelName(_default_console_level)}, File: {logging.getLevelName(_file_log_level)}, Mode: '{file_mode}', Path: {log_filename})")

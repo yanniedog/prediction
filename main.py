@@ -36,16 +36,8 @@ from indicator_params import indicator_definitions
 from sqlite_manager import SQLiteManager
 
 # Configure logging
+logging_setup.setup_logging()
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-
-# Create console handler if not already exists
-if not logger.handlers:
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
 
 # --- Configuration Constants (Fetched from config) ---
 ETA_UPDATE_INTERVAL_SECONDS: int = config.DEFAULTS.get("eta_update_interval_seconds", 15)
@@ -70,6 +62,8 @@ def _setup_and_select_mode(timestamp_str: str) -> Optional[str]:
     Returns:
         Optional[str]: Selected mode ('a', 'c', 'b') or None if quit
     """
+    # Get logger for this function
+    logger = logging.getLogger(__name__)
     logger.info("Initializing leaderboard database (pre-cleanup)...")
     
     if not leaderboard_manager.initialize_leaderboard_db():

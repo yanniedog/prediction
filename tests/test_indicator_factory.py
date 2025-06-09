@@ -353,9 +353,17 @@ def test_compute_single_indicator(factory, test_data):
     """Test single indicator computation."""
     # Test RSI computation
     rsi_config = {
-        'indicator_name': 'RSI',
-        'params': {'timeperiod': 14},
-        'config_id': 1
+        'name': 'RSI',
+        'type': 'talib',
+        'required_inputs': ['close'],
+        'params': {
+            'timeperiod': {
+                'type': 'int',
+                'min': 2,
+                'max': 200,
+                'default': 14
+            }
+        }
     }
     result = factory._compute_single_indicator(test_data, 'RSI', rsi_config, {'timeperiod': 14})
     assert isinstance(result, pd.DataFrame)
@@ -365,9 +373,30 @@ def test_compute_single_indicator(factory, test_data):
     
     # Test BB computation
     bb_config = {
-        'indicator_name': 'BB',
-        'params': {'timeperiod': 20, 'nbdevup': 2, 'nbdevdn': 2},
-        'config_id': 2
+        'name': 'BBANDS',
+        'type': 'talib',
+        'required_inputs': ['close'],
+        'params': {
+            'timeperiod': {
+                'type': 'int',
+                'min': 2,
+                'max': 200,
+                'default': 20
+            },
+            'nbdevup': {
+                'type': 'float',
+                'min': 0.1,
+                'max': 5.0,
+                'default': 2.0
+            },
+            'nbdevdn': {
+                'type': 'float',
+                'min': 0.1,
+                'max': 5.0,
+                'default': 2.0
+            }
+        },
+        'output_names': ['BB_upper', 'BB_middle', 'BB_lower']
     }
     result = factory._compute_single_indicator(test_data, 'BB', bb_config, {'timeperiod': 20, 'nbdevup': 2, 'nbdevdn': 2})
     assert isinstance(result, pd.DataFrame)
@@ -694,7 +723,7 @@ def complex_test_data():
     data['low'] = data[['open', 'close', 'low']].min(axis=1)
     
     # Clean any NaN values to ensure indicators work properly
-    data = data.fillna(method='ffill').fillna(method='bfill')
+    data = data.ffill().bfill()
     
     return data
 

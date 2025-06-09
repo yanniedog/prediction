@@ -246,7 +246,7 @@ def test_extract_project_files_with_datamanager(temp_dir, sample_data):
     loaded = manager.load_data(dest_dir / "data.csv")
     pd.testing.assert_frame_equal(loaded, sample_data)
 
-def test_indicator_factory_parameter_generation(factory):
+def test_indicator_factory_parameter_generation(factory, sample_data):
     """Test parameter generation and configuration handling in IndicatorFactory."""
     # Generate parameter configurations for RSI
     rsi_configs = factory.generate_parameter_configurations('RSI', method='grid')
@@ -258,7 +258,7 @@ def test_indicator_factory_parameter_generation(factory):
         factory.validate_params('RSI', config)
         
         # Compute indicator with configuration
-        result = factory.compute_indicators(test_data, {'RSI': config})
+        result = factory.compute_indicators(sample_data, {'RSI': config})
         assert 'RSI' in result.columns
         assert not result['RSI'].isna().all()
         
@@ -272,7 +272,7 @@ def test_indicator_factory_parameter_generation(factory):
         factory.validate_params('BB', config)
         
         # Compute indicator with configuration
-        result = factory.compute_indicators(test_data, {'BB': config})
+        result = factory.compute_indicators(sample_data, {'BB': config})
         assert 'BB_upper' in result.columns
         assert 'BB_middle' in result.columns
         assert 'BB_lower' in result.columns
@@ -293,7 +293,7 @@ def test_indicator_factory_parameter_generation(factory):
         factory.validate_params('CUSTOM_MA', config)
         
         # Compute indicator with configuration
-        result = factory.compute_indicators(test_data, {'CUSTOM_MA': config})
+        result = factory.compute_indicators(sample_data, {'CUSTOM_MA': config})
         assert 'CUSTOM_MA' in result.columns
         assert not result['CUSTOM_MA'].isna().all()
         
