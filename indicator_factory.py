@@ -185,6 +185,20 @@ class IndicatorFactory:
                 elif 'timeperiod' in merged_params and 'period' in merged_params:
                     # If both exist, prefer period for custom indicators
                     merged_params['period'] = merged_params.pop('timeperiod')
+                
+                # Remove parameters that custom indicators don't accept
+                if indicator_name.lower() == 'returns':
+                    # compute_returns only accepts 'period' parameter
+                    if 'length' in merged_params:
+                        merged_params.pop('length')
+                    if 'timeperiod' in merged_params:
+                        merged_params.pop('timeperiod')
+                elif indicator_name.lower() in ['volatility', 'custom_rsi']:
+                    # These only accept 'period' parameter
+                    if 'length' in merged_params:
+                        merged_params.pop('length')
+                    if 'timeperiod' in merged_params:
+                        merged_params.pop('timeperiod')
             else:
                 # Normalize parameter names for TA-Lib indicators
                 param_mapping = {

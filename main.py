@@ -549,7 +549,7 @@ def _select_data_source_and_lag(choice: Optional[int] = None, max_lag: Optional[
         if timeframe_result:
             timeframe = timeframe_result[0]  # Use actual timeframe from database
         
-        data = data_manager.load_data(conn, symbol, timeframe)
+        data = data_manager.load_data(db_path, symbol, timeframe)
         if data is None or data.empty:
             raise ValueError("No data available")
             

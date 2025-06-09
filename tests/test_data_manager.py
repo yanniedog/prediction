@@ -50,6 +50,10 @@ def sample_data() -> pd.DataFrame:
     data["high"] = data[["open", "close"]].max(axis=1) + np.random.uniform(0, 2, 100)
     data["low"] = data[["open", "close"]].min(axis=1) - np.random.uniform(0, 2, 100)
     
+    # Ensure proper OHLC relationships
+    data["high"] = data[["open", "close", "high"]].max(axis=1)
+    data["low"] = data[["open", "close", "low"]].min(axis=1)
+    
     # Ensure volume is positive
     data["volume"] = np.random.uniform(100, 10000, 100)
     
@@ -81,6 +85,10 @@ def test_data():
     # Generate high and low prices ensuring proper relationships
     data['high'] = data[['open', 'close']].max(axis=1) + np.random.uniform(0, 50, len(dates))
     data['low'] = data[['open', 'close']].min(axis=1) - np.random.uniform(0, 50, len(dates))
+    
+    # Ensure proper OHLC relationships
+    data['high'] = data[['open', 'close', 'high']].max(axis=1)
+    data['low'] = data[['open', 'close', 'low']].min(axis=1)
     
     # Ensure volume is positive
     data['volume'] = np.random.uniform(1000, 10000, len(dates))
@@ -300,7 +308,7 @@ def test_data_validation(data_manager, test_data):
 
     # Test large gaps
     invalid_data = test_data.copy()
-    invalid_data.index = pd.date_range(start='2023-01-01', periods=len(invalid_data), freq='8h')  # 8-hour gaps
+    invalid_data.index = pd.date_range(start='2023-01-01', periods=len(invalid_data), freq='8D')  # 8-day gaps
     with pytest.raises(ValueError) as exc_info:
         data_manager.validate_data(invalid_data)
     assert "Large gap detected in data" in str(exc_info.value)

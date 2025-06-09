@@ -137,20 +137,22 @@ def test_database_connection_handling():
         # Initialize database
         _initialize_database(str(test_db), "BTCUSDT", "1h")
         
-        # Test concurrent writes
+        # Test concurrent writes with separate transactions
         cursor1 = conn1.cursor()
         cursor2 = conn2.cursor()
         
-        # Insert test data
-        cursor1.execute("INSERT INTO symbols (symbol) VALUES (?)", ("BTCUSDT",))
-        cursor2.execute("INSERT INTO timeframes (timeframe) VALUES (?)", ("1d",))
+        # Insert test data in separate transactions
+        cursor1.execute("BEGIN")
+        cursor1.execute("INSERT INTO symbols (symbol) VALUES (?)", ("ETHUSDT",))
+        cursor1.execute("COMMIT")
         
-        conn1.commit()
-        conn2.commit()
+        cursor2.execute("BEGIN")
+        cursor2.execute("INSERT INTO timeframes (timeframe) VALUES (?)", ("1d",))
+        cursor2.execute("COMMIT")
         
         # Verify data
-        cursor1.execute("SELECT symbol FROM symbols WHERE symbol = ?", ("BTCUSDT",))
-        assert cursor1.fetchone()[0] == "BTCUSDT", "Failed to verify symbol insertion"
+        cursor1.execute("SELECT symbol FROM symbols WHERE symbol = ?", ("ETHUSDT",))
+        assert cursor1.fetchone()[0] == "ETHUSDT", "Failed to verify symbol insertion"
         
         cursor2.execute("SELECT timeframe FROM timeframes WHERE timeframe = ?", ("1d",))
         assert cursor2.fetchone()[0] == "1d", "Failed to verify timeframe insertion"

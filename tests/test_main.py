@@ -108,8 +108,8 @@ def test_select_data_source_and_lag(temp_dir: Path, sample_data: pd.DataFrame) -
                 mock_cursor.fetchone.side_effect = fetchone_side_effects
                 mock_conn_instance.cursor.return_value = mock_cursor
                 mock_conn.return_value = mock_conn_instance
-                # Patch input to avoid stdin error
-                with patch('builtins.input', return_value=''):
+                # Patch input to provide a valid integer instead of empty string
+                with patch('builtins.input', return_value='10'):
                     # Test successful selection
                     result = main._select_data_source_and_lag()
                     assert len(result) == 8

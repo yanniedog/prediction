@@ -14,15 +14,28 @@ from data_manager import DataManager
 
 @pytest.fixture
 def sample_data():
-    """Create sample OHLCV data"""
-    dates = pd.date_range(start='2023-01-01', end='2023-01-31', freq='1h')
+    """Create sample data for testing."""
+    dates = pd.date_range(start='2023-01-01', periods=721, freq='h')
+    np.random.seed(42)
+    
+    # Generate base prices with proper relationships
+    base_price = 100
+    price_changes = np.random.normal(0, 1, 721)
+    close_prices = base_price + np.cumsum(price_changes)
+    
+    # Generate OHLC data with proper relationships
     data = pd.DataFrame({
-        'open': np.random.randn(len(dates)).cumsum() + 100,
-        'high': np.random.randn(len(dates)).cumsum() + 101,
-        'low': np.random.randn(len(dates)).cumsum() + 99,
-        'close': np.random.randn(len(dates)).cumsum() + 100,
-        'volume': np.random.randint(1000, 10000, len(dates))
+        'open': close_prices + np.random.normal(0, 0.5, 721),
+        'high': close_prices + np.random.uniform(1, 3, 721),  # Always higher than close
+        'low': close_prices - np.random.uniform(1, 3, 721),   # Always lower than close
+        'close': close_prices,
+        'volume': np.random.uniform(1000, 10000, 721)
     }, index=dates)
+    
+    # Ensure proper OHLC relationships
+    data['high'] = data[['open', 'close', 'high']].max(axis=1)
+    data['low'] = data[['open', 'close', 'low']].min(axis=1)
+    
     return data
 
 @pytest.fixture
@@ -230,7 +243,7 @@ def test_data_validation(sample_data):
     assert sample_data['high'].dtype in [np.float64, np.float32]
     assert sample_data['low'].dtype in [np.float64, np.float32]
     assert sample_data['close'].dtype in [np.float64, np.float32]
-    assert sample_data['volume'].dtype in [np.int64, np.int32]
+    assert sample_data['volume'].dtype in [np.int64, np.int32, np.float64, np.float32]  # Allow both int and float
     
     # Test value ranges
     assert (sample_data['high'] >= sample_data['low']).all()

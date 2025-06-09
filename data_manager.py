@@ -482,11 +482,43 @@ def manage_data_source(choice: Optional[int] = None) -> Optional[Tuple[Path, str
         return None
 
 # --- Load Data ---
-def load_data(conn: sqlite3.Connection, symbol: str, timeframe: str) -> Optional[pd.DataFrame]:
+def get_symbol_id(db_path: Path, symbol: str) -> int:
+    """Get symbol ID from database."""
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
+        result = cursor.fetchone()
+        conn.close()
+        if result:
+            return result[0]
+        else:
+            raise ValueError(f"Symbol {symbol} not found in database")
+    except Exception as e:
+        logger.error(f"Error getting symbol ID for {symbol}: {e}")
+        raise
+
+def get_timeframe_id(db_path: Path, timeframe: str) -> int:
+    """Get timeframe ID from database."""
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
+        result = cursor.fetchone()
+        conn.close()
+        if result:
+            return result[0]
+        else:
+            raise ValueError(f"Timeframe {timeframe} not found in database")
+    except Exception as e:
+        logger.error(f"Error getting timeframe ID for {timeframe}: {e}")
+        raise
+
+def load_data(db_path: Path, symbol: str, timeframe: str) -> Optional[pd.DataFrame]:
     """Load data from database with improved error handling."""
     try:
-        if not conn:
-            raise ValueError("Invalid database connection")
+        if not db_path.exists():
+            raise ValueError(f"Database file not found: {db_path}")
             
         if not is_valid_symbol(symbol):
             raise ValueError(f"Invalid symbol format: {symbol}")
@@ -494,6 +526,8 @@ def load_data(conn: sqlite3.Connection, symbol: str, timeframe: str) -> Optional
         if not is_valid_timeframe(timeframe):
             raise ValueError(f"Invalid timeframe format: {timeframe}")
             
+        conn = sqlite3.connect(str(db_path))
+        
         # Get symbol and timeframe IDs
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
@@ -514,6 +548,7 @@ def load_data(conn: sqlite3.Connection, symbol: str, timeframe: str) -> Optional
             ORDER BY open_time
         """
         df = pd.read_sql_query(query, conn, params=(symbol_id[0], timeframe_id[0]))
+        conn.close()
         
         if df.empty:
             raise ValueError(f"No data found for {symbol} {timeframe}")
@@ -659,6 +694,9 @@ class DataManager:
         """Normalize specified columns to have mean 0 and standard deviation 1.
         For price columns (open, high, low, close), maintains price relationships.
         """
+        if data.empty:
+            raise ValueError("Empty DataFrame provided")
+            
         if columns is None:
             columns = data.select_dtypes(include=[np.number]).columns.tolist()
         
@@ -666,8 +704,8 @@ class DataManager:
         normalized = data.copy()
         
         # Handle price columns specially to maintain relationships
-        price_cols = [col for col in ['open', 'high', 'low', 'close'] if col in columns]
-        if price_cols:
+        price_cols = [col for col in ['open', 'high', 'low', 'close'] if col in columns and col in data.columns]
+        if price_cols and len(price_cols) >= 2:  # Need at least high and low
             # Calculate price ranges and midpoints
             high = data['high']
             low = data['low']
@@ -705,14 +743,12 @@ class DataManager:
             normalized['open'] = low_norm + open_range * range_norm
             normalized['close'] = low_norm + close_range * range_norm
             
-            # Verify and adjust standard deviation if needed
-            for col in price_cols:
-                std = normalized[col].std()
-                if not np.isclose(std, 1.0, atol=1e-10):
-                    normalized[col] = normalized[col] / std
+            # Ensure proper price relationships after normalization
+            normalized['high'] = normalized[['open', 'close', 'high']].max(axis=1)
+            normalized['low'] = normalized[['open', 'close', 'low']].min(axis=1)
         
         # Handle non-price columns
-        other_cols = [col for col in columns if col not in price_cols]
+        other_cols = [col for col in columns if col not in price_cols and col in normalized.columns]
         for col in other_cols:
             if col in normalized.columns:
                 mean = normalized[col].mean()
@@ -721,11 +757,6 @@ class DataManager:
                     logger.warning(f"Zero standard deviation in column {col}, skipping normalization")
                     continue
                 normalized[col] = (normalized[col] - mean) / std
-                
-                # Verify and adjust standard deviation if needed
-                std = normalized[col].std()
-                if not np.isclose(std, 1.0, atol=1e-10):
-                    normalized[col] = normalized[col] / std
         
         return normalized
 
