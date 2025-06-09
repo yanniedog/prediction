@@ -34,11 +34,10 @@ def sample_data() -> pd.DataFrame:
     data = pd.DataFrame({
         "timestamp": dates,
         "open": np.random.normal(100, 1, 100),
-        "high": np.random.normal(101, 1, 100),
-        "low": np.random.normal(99, 1, 100),
         "close": np.random.normal(100, 1, 100),
         "volume": np.random.normal(1000, 100, 100)
     })
+    # Ensure proper price relationships
     data["high"] = data[["open", "close"]].max(axis=1) + abs(np.random.normal(0, 0.1, 100))
     data["low"] = data[["open", "close"]].min(axis=1) - abs(np.random.normal(0, 0.1, 100))
     return data
@@ -47,7 +46,7 @@ def sample_data() -> pd.DataFrame:
 def data_manager(temp_dir: Path):
     # DataManager does not accept data_dir, so use config or default
     import config as app_config
-    return DataManager(app_config)
+    return DataManager(data_dir=temp_dir)
 
 @pytest.fixture
 def test_data():
@@ -55,15 +54,13 @@ def test_data():
     dates = pd.date_range(start='2020-01-01', end='2020-03-01', freq='h')
     data = pd.DataFrame({
         'open': np.random.uniform(1000, 6000, len(dates)),
-        'high': np.random.uniform(1000, 6000, len(dates)),
-        'low': np.random.uniform(1000, 6000, len(dates)),
         'close': np.random.uniform(1000, 6000, len(dates)),
         'volume': np.random.uniform(1000, 10000, len(dates))
     }, index=dates)
     
-    # Ensure high is always >= low
-    data['high'] = data[['open', 'close', 'high']].max(axis=1)
-    data['low'] = data[['open', 'close', 'low']].min(axis=1)
+    # Ensure proper price relationships
+    data['high'] = data[['open', 'close']].max(axis=1) + np.random.uniform(0, 100, len(dates))
+    data['low'] = data[['open', 'close']].min(axis=1) - np.random.uniform(0, 100, len(dates))
     
     return data
 

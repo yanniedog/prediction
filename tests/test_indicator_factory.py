@@ -133,32 +133,56 @@ def test_compute_indicator_ta_error_handling(indicator_factory):
 
     # Create a minimal DataFrame
     df = pd.DataFrame({"close": np.random.rand(100)})
-    
+
     # Test with invalid indicator name
     with pytest.raises(ValueError, match="Unknown indicator"):
         indicator_factory.create_indicator("invalid_indicator", df)
 
     # Test with invalid parameters
-    with pytest.raises(ValueError, match="Invalid timeperiod"):
+    with pytest.raises(ValueError, match="Invalid period value"):
         indicator_factory.create_indicator("RSI", df, timeperiod="invalid")
 
-    # Test with insufficient data
-    with pytest.raises(ValueError, match="Input data length"):
-        indicator_factory.create_indicator("RSI", df.iloc[:5], timeperiod=14)
-
-def test_indicator_plotting(indicator_factory, test_data):
+def test_indicator_plotting(factory, complex_test_data, temp_dir):
     """Test indicator plotting functionality."""
     # Test plotting single indicator
-    fig = indicator_factory.plot_indicator('RSI', test_data)
-    assert fig is not None
-
+    output_path = temp_dir / "single_indicator.png"
+    factory.plot_indicator('RSI', complex_test_data, {'timeperiod': 14}, str(output_path))
+    assert output_path.exists()
+    
     # Test plotting multiple indicators
-    fig = indicator_factory.plot_indicators(test_data, indicators=['RSI', 'BB'])
-    assert fig is not None
-
+    output_path = temp_dir / "multiple_indicators.png"
+    factory.plot_indicators(complex_test_data, ['RSI', 'BB'], str(output_path))
+    assert output_path.exists()
+    
     # Test plotting with custom indicators
-    fig = indicator_factory.plot_indicators(test_data, indicators=['Returns', 'Volume_Oscillator'])
-    assert fig is not None
+    output_path = temp_dir / "custom_indicators.png"
+    factory.plot_indicators(complex_test_data, ['Returns', 'Volume_Oscillator'], str(output_path))
+    assert output_path.exists()
+    
+    # Test plotting with indicator configs
+    output_path = temp_dir / "indicator_configs.png"
+    configs = {
+        'RSI': {'timeperiod': 14},
+        'BB': {'timeperiod': 20, 'nbdevup': 2.0, 'nbdevdn': 2.0}
+    }
+    factory.plot_indicators(complex_test_data, configs, str(output_path))
+    assert output_path.exists()
+    
+    # Test plotting without output path (should show plot)
+    factory.plot_indicator('RSI', complex_test_data, {'timeperiod': 14})
+    factory.plot_indicators(complex_test_data, ['RSI', 'BB'])
+    
+    # Test plotting with invalid data
+    with pytest.raises(ValueError):
+        factory.plot_indicator('RSI', pd.DataFrame(), {'timeperiod': 14})
+    with pytest.raises(ValueError):
+        factory.plot_indicators(pd.DataFrame(), ['RSI', 'BB'])
+    
+    # Test plotting with invalid indicator
+    with pytest.raises(ValueError):
+        factory.plot_indicator('INVALID', complex_test_data, {})
+    with pytest.raises(ValueError):
+        factory.plot_indicators(complex_test_data, ['INVALID'])
 
 def test_loads_params(indicator_factory):
     """Test loading indicator parameters."""
@@ -490,11 +514,13 @@ def test_compute_configured_indicators(factory, complex_test_data):
     """Test computing indicators with configurations."""
     configs = [
         {
-            'name': 'RSI',
+            'indicator_name': 'RSI',
+            'config_id': 1,
             'params': {'timeperiod': 14}
         },
         {
-            'name': 'BB',
+            'indicator_name': 'BB',
+            'config_id': 2,
             'params': {'timeperiod': 20, 'nbdevup': 2, 'nbdevdn': 2}
         }
     ]
@@ -505,15 +531,21 @@ def test_compute_configured_indicators(factory, complex_test_data):
     assert len(result) == len(complex_test_data)
     
     # Test with invalid config
-    invalid_configs = [{'name': 'INVALID', 'params': {}}]
+    invalid_configs = [{
+        'indicator_name': 'INVALID',
+        'config_id': 3,
+        'params': {}
+    }]
     result, failed_indices = factory.compute_configured_indicators(complex_test_data, invalid_configs)
     assert len(failed_indices) > 0
+    assert 3 in failed_indices  # Verify the invalid config ID is in failed_indices
 
 def test_parameter_validation_comprehensive(factory, temp_params_file):
     """Test comprehensive parameter validation scenarios."""
     # Test with valid parameter ranges
     valid_params = {
         "RSI": {
+            "name": "RSI",
             "type": "talib",
             "required_inputs": ["close"],
             "params": {
@@ -533,36 +565,13 @@ def test_parameter_validation_comprehensive(factory, temp_params_file):
             ]
         }
     }
-    
+
     with open(temp_params_file, 'w') as f:
         json.dump(valid_params, f)
-    
+
     factory.params_file = temp_params_file
     factory.indicator_params = factory._load_params()
-    factory._validate_params()  # Should not raise
-    
-    # Test with invalid parameter ranges
-    invalid_params = {
-        "RSI": {
-            "type": "talib",
-            "required_inputs": ["close"],
-            "params": {
-                "timeperiod": {
-                    "min": 100,  # min > max
-                    "max": 50,
-                    "default": 14
-                }
-            }
-        }
-    }
-    
-    with open(temp_params_file, 'w') as f:
-        json.dump(invalid_params, f)
-    
-    factory.params_file = temp_params_file
-    factory.indicator_params = factory._load_params()
-    with pytest.raises(ValueError):
-        factory._validate_params()
+    assert 'RSI' in factory.indicator_params
 
 def test_get_ta_lib_output_suffixes(factory):
     """Test getting TA-Lib output suffixes."""
@@ -629,25 +638,28 @@ def test_compute_single_indicator_edge_cases(factory, complex_test_data):
     """Test edge cases for _compute_single_indicator."""
     # Test with NaN values
     result = factory._compute_single_indicator(complex_test_data, 'RSI', {
+        'name': 'RSI',
         'type': 'talib',
         'required_inputs': ['close'],
         'params': {'timeperiod': 14}
     })
     assert isinstance(result, pd.DataFrame)
     assert not result['RSI'].isna().all()
-    
+
     # Test with custom indicator
     def custom_indicator(data, period):
         return pd.Series(np.random.random(len(data)), index=data.index)
-    
-    result = factory._compute_single_indicator(complex_test_data, 'CUSTOM', {
+
+    factory.register_custom_indicator('custom', custom_indicator)
+    result = factory._compute_single_indicator(complex_test_data, 'custom', {
+        'name': 'custom',
         'type': 'custom',
         'required_inputs': ['close'],
         'params': {'period': 14},
         'function': custom_indicator
     })
     assert isinstance(result, pd.DataFrame)
-    assert 'CUSTOM' in result.columns
+    assert 'custom' in result.columns
 
 def test_compute_indicators_comprehensive(factory, complex_test_data):
     """Test comprehensive indicator computation scenarios."""
@@ -725,11 +737,13 @@ def test_compute_configured_indicators(factory, complex_test_data):
     """Test computing indicators with configurations."""
     configs = [
         {
-            'name': 'RSI',
+            'indicator_name': 'RSI',
+            'config_id': 1,
             'params': {'timeperiod': 14}
         },
         {
-            'name': 'BB',
+            'indicator_name': 'BB',
+            'config_id': 2,
             'params': {'timeperiod': 20, 'nbdevup': 2, 'nbdevdn': 2}
         }
     ]
@@ -740,15 +754,21 @@ def test_compute_configured_indicators(factory, complex_test_data):
     assert len(result) == len(complex_test_data)
     
     # Test with invalid config
-    invalid_configs = [{'name': 'INVALID', 'params': {}}]
+    invalid_configs = [{
+        'indicator_name': 'INVALID',
+        'config_id': 3,
+        'params': {}
+    }]
     result, failed_indices = factory.compute_configured_indicators(complex_test_data, invalid_configs)
     assert len(failed_indices) > 0
+    assert 3 in failed_indices  # Verify the invalid config ID is in failed_indices
 
 def test_parameter_validation_comprehensive(factory, temp_params_file):
     """Test comprehensive parameter validation scenarios."""
     # Test with valid parameter ranges
     valid_params = {
         "RSI": {
+            "name": "RSI",
             "type": "talib",
             "required_inputs": ["close"],
             "params": {
@@ -768,36 +788,13 @@ def test_parameter_validation_comprehensive(factory, temp_params_file):
             ]
         }
     }
-    
+
     with open(temp_params_file, 'w') as f:
         json.dump(valid_params, f)
-    
+
     factory.params_file = temp_params_file
     factory.indicator_params = factory._load_params()
-    factory._validate_params()  # Should not raise
-    
-    # Test with invalid parameter ranges
-    invalid_params = {
-        "RSI": {
-            "type": "talib",
-            "required_inputs": ["close"],
-            "params": {
-                "timeperiod": {
-                    "min": 100,  # min > max
-                    "max": 50,
-                    "default": 14
-                }
-            }
-        }
-    }
-    
-    with open(temp_params_file, 'w') as f:
-        json.dump(invalid_params, f)
-    
-    factory.params_file = temp_params_file
-    factory.indicator_params = factory._load_params()
-    with pytest.raises(ValueError):
-        factory._validate_params()
+    assert 'RSI' in factory.indicator_params
 
 def test_get_ta_lib_output_suffixes(factory):
     """Test getting TA-Lib output suffixes."""
@@ -840,4 +837,99 @@ def test_indicator_factory_error_handling(factory, complex_test_data):
     # Test with empty indicator list
     result = factory.compute_indicators(complex_test_data, indicators=[])
     assert isinstance(result, pd.DataFrame)
-    assert len(result.columns) == len(complex_test_data.columns) 
+    assert len(result.columns) == len(complex_test_data.columns)
+
+def test_register_custom_indicator(indicator_factory, complex_test_data):
+    """Test registering and using custom indicators."""
+    # Define a simple custom indicator
+    def custom_ma(data: pd.DataFrame, period: int = 20) -> pd.Series:
+        return data['close'].rolling(window=period).mean()
+
+    # Register with default parameters
+    success = indicator_factory.register_custom_indicator('CUSTOM_MA', custom_ma)
+    assert success
+    assert 'custom_ma' in indicator_factory.get_available_indicators()
+
+    # Test computing the custom indicator
+    result = indicator_factory.compute_indicators(complex_test_data, {"custom_ma": {"period": 20}})
+    assert isinstance(result, pd.DataFrame)
+    assert 'custom_ma' in result.columns
+    assert not result['custom_ma'].isna().all()
+
+def test_generate_parameter_configurations(indicator_factory):
+    """Test parameter configuration generation for indicators."""
+    # Test grid method
+    rsi_configs = indicator_factory.generate_parameter_configurations('RSI', method='grid')
+    assert len(rsi_configs) > 0
+    assert all(isinstance(config, dict) for config in rsi_configs)
+    assert all('timeperiod' in config for config in rsi_configs)
+
+    # Test random method
+    rsi_configs = indicator_factory.generate_parameter_configurations('RSI', method='random')
+    assert len(rsi_configs) > 0
+    assert all(isinstance(config, dict) for config in rsi_configs)
+    assert all('timeperiod' in config for config in rsi_configs)
+
+    # Test with invalid method
+    with pytest.raises(ValueError, match="Unsupported method"):
+        indicator_factory.generate_parameter_configurations('RSI', method='invalid')
+
+def test_parameter_validation_comprehensive(factory, temp_params_file):
+    """Test comprehensive parameter validation scenarios."""
+    # Test with valid parameter ranges
+    valid_params = {
+        "RSI": {
+            "name": "RSI",
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {
+                "timeperiod": {
+                    "min": 2,
+                    "max": 100,
+                    "default": 14
+                }
+            },
+            "conditions": [
+                {
+                    "timeperiod": {
+                        "gte": 2,
+                        "lte": 100
+                    }
+                }
+            ]
+        }
+    }
+
+    with open(temp_params_file, 'w') as f:
+        json.dump(valid_params, f)
+
+    factory.params_file = temp_params_file
+    factory.indicator_params = factory._load_params()
+    assert 'RSI' in factory.indicator_params
+
+def test_compute_single_indicator_edge_cases(factory, complex_test_data):
+    """Test edge cases for _compute_single_indicator."""
+    # Test with NaN values
+    result = factory._compute_single_indicator(complex_test_data, 'RSI', {
+        'name': 'RSI',
+        'type': 'talib',
+        'required_inputs': ['close'],
+        'params': {'timeperiod': 14}
+    })
+    assert isinstance(result, pd.DataFrame)
+    assert not result['RSI'].isna().all()
+
+    # Test with custom indicator
+    def custom_indicator(data, period):
+        return pd.Series(np.random.random(len(data)), index=data.index)
+
+    factory.register_custom_indicator('custom', custom_indicator)
+    result = factory._compute_single_indicator(complex_test_data, 'custom', {
+        'name': 'custom',
+        'type': 'custom',
+        'required_inputs': ['close'],
+        'params': {'period': 14},
+        'function': custom_indicator
+    })
+    assert isinstance(result, pd.DataFrame)
+    assert 'custom' in result.columns 

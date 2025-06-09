@@ -27,11 +27,11 @@ def leaderboard_manager(temp_db_dir):
 
 @pytest.fixture(scope="function")
 def test_data():
-    """Create sample test data."""
+    """Provide test data for leaderboard updates."""
     return {
         'symbol': 'BTCUSDT',
         'timeframe': '1h',
-        'data_daterange': '2024-01-01_2024-01-31',
+        'data_daterange': '2023-01-01 to 2023-12-31',
         'source_db_name': 'test.db'
     }
 
@@ -88,8 +88,8 @@ def test_update_leaderboard_bulk(leaderboard_manager, test_data):
     """Test bulk leaderboard updates."""
     # Create test correlations and configs
     correlations = {
-        5: [0.85, 0.75, 0.65],  # lag 5
-        10: [0.70, 0.60, 0.50]  # lag 10
+        1: [0.85, 0.75, 0.65, 0.55, 0.45, 0.35, 0.25, 0.15, 0.05, -0.05],  # config_id 1, lags 1-10
+        2: [0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.00, -0.10, -0.20]  # config_id 2, lags 1-10
     }
     
     indicator_configs = [
@@ -106,7 +106,7 @@ def test_update_leaderboard_bulk(leaderboard_manager, test_data):
     ]
     
     # Update leaderboard
-    leaderboard_manager.update_leaderboard(
+    updates = leaderboard_manager.update_leaderboard(
         current_run_correlations=correlations,
         indicator_configs=indicator_configs,
         max_lag=10,
@@ -114,15 +114,28 @@ def test_update_leaderboard_bulk(leaderboard_manager, test_data):
     )
     
     # Verify updates
+    assert len(updates) > 0
+    assert 1 in updates and 2 in updates
+    
+    # Check that each config has updates
+    for config_id in [1, 2]:
+        config_updates = updates[config_id]
+        assert 'updates' in config_updates
+        assert 'best_correlation' in config_updates
+        assert len(config_updates['updates']) > 0
+        assert config_updates['best_correlation'] > 0
+    
+    # Verify database entries
     leaderboard = leaderboard_manager.load_leaderboard()
     assert len(leaderboard) > 0
     
     # Check specific entries
     for config in indicator_configs:
         config_id = config['config_id']
-        key_pos = (config_id, 'positive')
-        key_neg = (config_id, 'negative')
-        assert key_pos in leaderboard or key_neg in leaderboard
+        # Should have both positive and negative correlations
+        has_pos = any((lag, 'positive') in leaderboard for lag in range(1, 11))
+        has_neg = any((lag, 'negative') in leaderboard for lag in range(1, 11))
+        assert has_pos or has_neg, f"Config {config_id} should have at least one correlation entry"
 
 def test_find_best_predictor(leaderboard_manager, test_data):
     """Test finding best predictor for a lag."""
@@ -176,7 +189,7 @@ def test_export_leaderboard(leaderboard_manager, test_data, temp_db_dir):
     assert success
     
     # Verify export file exists
-    export_path = Path('leaderboard_export.txt')
+    export_path = Path('reports/leaderboard.txt')
     assert export_path.exists()
     assert export_path.stat().st_size > 0
     

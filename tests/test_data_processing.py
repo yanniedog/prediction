@@ -79,6 +79,8 @@ def test_data_date_range(sample_data):
     assert isinstance(date_range, str)
     assert '2023-01-01' in date_range
     assert '2023-01-31' in date_range
+    # Check format is YYYY-MM-DD-YYYY-MM-DD
+    assert len(date_range.split('-')) == 6
 
 def test_data_date_range_with_invalid_dates(sample_data_with_invalid_dates):
     """Test date range extraction with invalid dates"""
@@ -153,14 +155,15 @@ def test_data_source_selection(tmp_path):
     cursor.execute("INSERT INTO indicators (name, type, description) VALUES (?, ?, ?)", 
                   ("RSI", "momentum", "Relative Strength Index"))
     
-    # Generate sample data
+    # Generate sample data with proper price relationships
     dates = pd.date_range(start='2024-01-01', periods=100, freq='h')
+    base_price = 1000
     sample_data = pd.DataFrame({
         'open_time': [int(d.timestamp() * 1000) for d in dates],
-        'open': np.random.randn(100).cumsum() + 1000,
-        'high': np.random.randn(100).cumsum() + 1000,
-        'low': np.random.randn(100).cumsum() + 1000,
-        'close': np.random.randn(100).cumsum() + 1000,
+        'open': base_price + np.random.randn(100).cumsum() * 10,
+        'high': base_price + np.random.randn(100).cumsum() * 10 + 5,  # Ensure high > open
+        'low': base_price + np.random.randn(100).cumsum() * 10 - 5,   # Ensure low < open
+        'close': base_price + np.random.randn(100).cumsum() * 10,
         'volume': np.random.randint(100, 1000, 100),
         'close_time': [int((d + pd.Timedelta(hours=1)).timestamp() * 1000) for d in dates],
         'quote_asset_volume': np.random.randint(1000, 10000, 100),
@@ -168,6 +171,10 @@ def test_data_source_selection(tmp_path):
         'taker_buy_base_asset_volume': np.random.randint(50, 500, 100),
         'taker_buy_quote_asset_volume': np.random.randint(500, 5000, 100)
     })
+    
+    # Ensure proper price relationships
+    sample_data['high'] = sample_data[['open', 'close', 'high']].max(axis=1)
+    sample_data['low'] = sample_data[['open', 'close', 'low']].min(axis=1)
     
     # Insert sample data
     for _, row in sample_data.iterrows():
@@ -187,21 +194,26 @@ def test_data_source_selection(tmp_path):
     conn.commit()
     conn.close()
     
-    # Test data source selection with pre-selected choice and max_lag
-    result = _select_data_source_and_lag(choice=1, max_lag=10)
-    assert result is not None
-    assert len(result) == 8
-    
-    db_path, symbol, timeframe, data, max_lag, symbol_id, timeframe_id, data_daterange = result
-    assert symbol == "BTCUSDT"
-    assert timeframe == "1h"
-    assert max_lag == 10
-    assert isinstance(data, pd.DataFrame)
-    assert not data.empty
-    assert symbol_id == 1
-    assert timeframe_id == 1
-    assert isinstance(data_daterange, str)
-    assert "2024-01-01" in data_daterange
+    # Mock the manage_data_source function to return our test database
+    with patch('data_manager.manage_data_source') as mock_manage:
+        mock_manage.return_value = (db_path, "BTCUSDT", "1h")
+        
+        # Test data source selection with pre-selected choice and max_lag
+        result = _select_data_source_and_lag(choice=1, max_lag=10)
+        assert result is not None
+        assert len(result) == 8
+        
+        db_path, symbol, timeframe, data, max_lag, symbol_id, timeframe_id, data_daterange = result
+        assert symbol == "BTCUSDT"
+        assert timeframe == "1h"
+        assert max_lag == 10
+        assert isinstance(data, pd.DataFrame)
+        assert not data.empty
+        assert symbol_id == 1
+        assert timeframe_id == 1
+        assert isinstance(data_daterange, str)
+        assert "2024-01-01" in data_daterange
+        assert "2024-01-05" in data_daterange  # 100 hours from 2024-01-01 = 2024-01-05
 
 def test_data_validation(sample_data):
     """Test data validation"""

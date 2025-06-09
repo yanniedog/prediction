@@ -2,7 +2,7 @@ import pytest
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from sqlite_manager_class import SQLiteManager
+from sqlite_manager import SQLiteManager
 import time
 from unittest.mock import patch
 import sqlite3
@@ -193,7 +193,7 @@ def test_transaction_handling(temp_db):
     
     # Test failed transaction
     try:
-        with patch('sqlite_manager_class.logger.error'), patch('builtins.print'):
+        with patch('sqlite_manager.logger.error'), patch('builtins.print'):
             with temp_db.transaction():
                 temp_db.insert_data(table_name, {'name': 'test3', 'value': 3.0})
                 raise ValueError("Simulated error")
@@ -242,17 +242,17 @@ def test_data_validation(temp_db):
     temp_db.insert_data(table_name, valid_data)
     
     # Test invalid data - NULL name
-    with patch('sqlite_manager_class.logger.error'):
+    with patch('sqlite_manager.logger.error'):
         with pytest.raises(sqlite3.IntegrityError, match="NOT NULL constraint failed"):
             temp_db.insert_data(table_name, {'name': None, 'value': 1.0})
     
     # Test invalid data - negative value
-    with patch('sqlite_manager_class.logger.error'):
+    with patch('sqlite_manager.logger.error'):
         with pytest.raises(sqlite3.IntegrityError, match="CHECK constraint failed"):
             temp_db.insert_data(table_name, {'name': 'test', 'value': -1.0})
     
     # Test invalid data - missing required column
-    with patch('sqlite_manager_class.logger.error'):
+    with patch('sqlite_manager.logger.error'):
         with pytest.raises(sqlite3.IntegrityError):
             temp_db.insert_data(table_name, {'value': 1.0})
 

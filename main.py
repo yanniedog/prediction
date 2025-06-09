@@ -33,7 +33,7 @@ import leaderboard_manager
 import predictor
 import backtester
 from indicator_params import indicator_definitions
-from sqlite_manager_class import SQLiteManager
+from sqlite_manager import SQLiteManager
 
 # Configure logging
 logger = logging.getLogger(__name__)

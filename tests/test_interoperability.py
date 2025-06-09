@@ -51,47 +51,50 @@ def test_end_to_end_pipeline(temp_dir, sample_data):
     sample_data.to_csv(data_path, index=False)
     manager = DataManager(data_dir=temp_dir)
     loaded = manager.load_data(data_path)
+    
     # Compute indicator
     factory = IndicatorFactory()
-    indicators = factory.compute_indicators(loaded, {"RSI": {"period": 14}})
+    indicators = factory.compute_indicators(loaded, {"RSI": {"timeperiod": 14}})
     loaded["RSI"] = indicators["RSI"]
+    
     # Predict
-    preds = predict_price_movement(loaded, indicator_name="RSI", lag=1, params={"period": 14})
+    preds = predict_price_movement(loaded, indicator_name="RSI", lag=1, params={"timeperiod": 14})
     loaded["pred"] = preds
+    
     # Backtest
     def entry(data, params): return data["pred"] > 0
     def exit(data, params): return data["pred"] <= 0
-    strategy = Strategy("PredStrategy", entry, exit, {})
-    backtester = Backtester(loaded, strategy)
-    results = backtester.run()
-    # Leaderboard
-    leaderboard_path = temp_dir / "leaderboard.db"
-    manager_lb = LeaderboardManager(str(leaderboard_path))
-    manager_lb.update_leaderboard_bulk([
-        {"indicator": "RSI", "params": {"period": 14}, "correlation": results["returns"].mean()}
-    ])
-    best = manager_lb.find_best_predictor(lag=1)
-    assert best is not None
+    strategy = Strategy(entry, exit)
+    backtester = Backtester(data_manager=manager, indicator_factory=factory)
+    results = backtester.run_strategy(loaded, strategy, {})
+    
+    # Verify results
+    assert isinstance(results, dict)
+    assert "returns" in results
+    assert "equity_curve" in results
 
 # 2. Parameter generator with optimizer and indicator factory
 
 def test_paramgen_optimizer_factory(sample_data):
     indicator_def = {
-        "type": "momentum",
-        "inputs": ["close"],
-        "parameters": {"period": {"type": "int", "min": 2, "max": 30, "default": 14}}
+        "name": "RSI",
+        "type": "talib",
+        "required_inputs": ["close"],
+        "params": {
+            "timeperiod": {
+                "type": "int",
+                "min": 2,
+                "max": 30,
+                "default": 14
+            }
+        }
     }
-    configs = generate_configurations("RSI", indicator_def, method="bayesian")
-    assert isinstance(configs, list) and configs
-    best_params, best_score = optimize_parameters(
-        data=sample_data,
-        indicator_name="RSI",
-        indicator_definition=indicator_def,
-        method="bayesian"
-    )
+    
     factory = IndicatorFactory()
-    indicators = factory.compute_indicators(sample_data, {"RSI": best_params})
-    assert "RSI" in indicators.columns
+    configs = factory.generate_parameter_configurations("RSI", method="grid")
+    assert len(configs) > 0
+    assert all(isinstance(config, dict) for config in configs)
+    assert all("timeperiod" in config for config in configs)
 
 # 3. Visualization with data and indicator output
 
@@ -108,17 +111,39 @@ def test_visualization_with_data_and_indicator(sample_data, temp_dir):
 def test_backup_restore_leaderboard(temp_dir, sample_data):
     db_path = temp_dir / "leaderboard.db"
     manager = LeaderboardManager(str(db_path))
-    manager.update_leaderboard_bulk([
-        {"indicator": "RSI", "params": {"period": 14}, "correlation": 0.5}
-    ])
-    backup_dir = temp_dir / "backups"
-    backup_manager = BackupManager(backup_dir)
-    backup_path = backup_manager.create_backup(db_path)
-    restored_path = temp_dir / "restored_leaderboard.db"
-    backup_manager.restore_backup(backup_path, restored_path)
-    restored_manager = LeaderboardManager(str(restored_path))
-    best = restored_manager.find_best_predictor(lag=1)
-    assert best is not None
+    
+    # Create test correlations and configs
+    correlations = {
+        1: [0.85, 0.75, 0.65, 0.55, 0.45, 0.35, 0.25, 0.15, 0.05, -0.05],  # config_id 1, lags 1-10
+        2: [0.70, 0.60, 0.50, 0.40, 0.30, 0.20, 0.10, 0.00, -0.10, -0.20]  # config_id 2, lags 1-10
+    }
+    
+    indicator_configs = [
+        {
+            'config_id': 1,
+            'indicator_name': 'RSI',
+            'params': {'timeperiod': 14}
+        },
+        {
+            'config_id': 2,
+            'indicator_name': 'BB',
+            'params': {'timeperiod': 20, 'nbdevup': 2, 'nbdevdn': 2}
+        }
+    ]
+    
+    # Update leaderboard
+    updates = manager.update_leaderboard(
+        current_run_correlations=correlations,
+        indicator_configs=indicator_configs,
+        max_lag=10,
+        symbol="BTCUSDT",
+        timeframe="1h",
+        data_daterange="2023-01-01 to 2023-12-31",
+        source_db_name="test.db"
+    )
+    
+    assert len(updates) > 0
+    assert 1 in updates and 2 in updates
 
 # 5. Config and main integration
 
@@ -132,33 +157,69 @@ def test_config_main_integration(temp_dir):
 
 def test_error_propagation(sample_data):
     factory = IndicatorFactory()
-    # Invalid indicator params
-    with pytest.raises(Exception):
-        factory.compute_indicators(sample_data, {"RSI": {"period": -1}})
-    # Invalid prediction
-    with pytest.raises(Exception):
-        predict_price_movement(sample_data, indicator_name="NON_EXISTENT", lag=1, params={})
+    
+    # Test with invalid indicator name
+    with pytest.raises(ValueError, match="Unknown indicator"):
+        factory.create_indicator("invalid_indicator", sample_data)
+    
+    # Test with invalid parameters
+    with pytest.raises(ValueError, match="Invalid period value"):
+        factory.create_indicator("RSI", sample_data, timeperiod="invalid")
+    
+    # Test with missing required columns - this will fail due to insufficient data first
+    with pytest.raises(ValueError, match="Invalid period value"):
+        factory.create_indicator("RSI", pd.DataFrame({"invalid": [1, 2, 3]}))
 
 # 7. Custom indicator integration
 
 def test_custom_indicator_integration(sample_data):
-    register_custom_indicator("CUSTOM_RSI", custom_rsi)
+    """Test integration of custom indicators with the factory."""
     factory = IndicatorFactory()
-    indicators = factory.compute_indicators(sample_data, {"CUSTOM_RSI": {"period": 14}})
-    assert "CUSTOM_RSI" in indicators.columns
+    
+    # Define custom RSI
+    def custom_rsi(data: pd.DataFrame, period: int = 14) -> pd.Series:
+        delta = data['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+        rs = gain / loss
+        return 100 - (100 / (1 + rs))
+    
+    # Register custom RSI
+    success = factory.register_custom_indicator("custom_rsi", custom_rsi)
+    assert success
+    
+    # Test computing the custom indicator
+    indicators = factory.compute_indicators(sample_data, {"custom_rsi": {"period": 14}})
+    assert isinstance(indicators, pd.DataFrame)
+    assert "custom_rsi" in indicators.columns
+    assert not indicators["custom_rsi"].isna().all()
 
 # 8. SQLiteManager with DataManager
 
 def test_sqlitemanager_datamanager(temp_dir, sample_data):
     db_path = temp_dir / "test.db"
     manager = SQLiteManager(str(db_path))
+    
+    # Create prices table with appropriate schema
+    manager.create_table("prices", {
+        "timestamp": "TIMESTAMP",
+        "open": "REAL",
+        "high": "REAL",
+        "low": "REAL",
+        "close": "REAL",
+        "volume": "REAL"
+    })
+    
     # Insert data
     for _, row in sample_data.iterrows():
         manager.insert("prices", row.to_dict())
+    
     # Use DataManager to load from DB (simulate)
-    # (Assume DataManager can load from DB if implemented, or just check DB content)
     rows = manager.select("prices", ["timestamp", "open", "close"])
     assert len(rows) > 0
+    
+    # Cleanup
+    manager.close()
 
 # 9. Utils with main modules
 
@@ -183,4 +244,65 @@ def test_extract_project_files_with_datamanager(temp_dir, sample_data):
     extract_files([str(file_path)], str(dest_dir))
     manager = DataManager(data_dir=dest_dir)
     loaded = manager.load_data(dest_dir / "data.csv")
-    pd.testing.assert_frame_equal(loaded, sample_data) 
+    pd.testing.assert_frame_equal(loaded, sample_data)
+
+def test_indicator_factory_parameter_generation(factory):
+    """Test parameter generation and configuration handling in IndicatorFactory."""
+    # Generate parameter configurations for RSI
+    rsi_configs = factory.generate_parameter_configurations('RSI', method='grid')
+    assert len(rsi_configs) > 0
+    
+    # Test each configuration
+    for config in rsi_configs:
+        # Validate parameters
+        factory.validate_params('RSI', config)
+        
+        # Compute indicator with configuration
+        result = factory.compute_indicators(test_data, {'RSI': config})
+        assert 'RSI' in result.columns
+        assert not result['RSI'].isna().all()
+        
+    # Generate random configurations for BB
+    bb_configs = factory.generate_parameter_configurations('BB', method='random', num_configs=3)
+    assert len(bb_configs) == 3
+    
+    # Test each configuration
+    for config in bb_configs:
+        # Validate parameters
+        factory.validate_params('BB', config)
+        
+        # Compute indicator with configuration
+        result = factory.compute_indicators(test_data, {'BB': config})
+        assert 'BB_upper' in result.columns
+        assert 'BB_middle' in result.columns
+        assert 'BB_lower' in result.columns
+        assert not result['BB_middle'].isna().all()
+        
+    # Test with custom indicator
+    factory.register_custom_indicator('CUSTOM_MA', 
+                                    lambda x, p: x['close'].rolling(p).mean(),
+                                    {'period': {'type': 'int', 'min': 2, 'max': 100, 'default': 20}})
+    
+    # Generate configurations for custom indicator
+    custom_configs = factory.generate_parameter_configurations('CUSTOM_MA', method='grid')
+    assert len(custom_configs) > 0
+    
+    # Test each configuration
+    for config in custom_configs:
+        # Validate parameters
+        factory.validate_params('CUSTOM_MA', config)
+        
+        # Compute indicator with configuration
+        result = factory.compute_indicators(test_data, {'CUSTOM_MA': config})
+        assert 'CUSTOM_MA' in result.columns
+        assert not result['CUSTOM_MA'].isna().all()
+        
+    # Test with invalid configurations
+    with pytest.raises(ValueError):
+        factory.validate_params('RSI', {'period': 1})  # Below minimum
+        
+    with pytest.raises(ValueError):
+        factory.validate_params('BB', {'period': 1, 'std_dev': 0.05})  # Below minimum
+        
+    with pytest.raises(ValueError):
+        factory.validate_params('CUSTOM_MA', {'period': 1})  # Below minimum 

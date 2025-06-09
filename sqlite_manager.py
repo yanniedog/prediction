@@ -13,6 +13,7 @@ import math # Added for ceiling division in batching
 import utils
 import shutil
 import time
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -562,94 +563,353 @@ def get_indicator_configs_by_ids(conn: sqlite3.Connection, config_ids: List[int]
         return []
 
 class SQLiteManager:
-    def __init__(self, db_path: Union[str, Path]):
-        self.db_path = Path(db_path)
-        self.conn = None
-        self._initialize_db()
-        
-    def _initialize_db(self):
-        """Initialize database connection and create tables if they don't exist."""
-        try:
-            self.conn = sqlite3.connect(self.db_path)
-            self._create_tables()
-        except sqlite3.Error as e:
-            logging.error(f"Database initialization failed: {e}")
-            raise
-            
-    def _create_tables(self):
-        """Create required tables if they don't exist."""
-        cursor = self.conn.cursor()
-        cursor.executescript("""
-            CREATE TABLE IF NOT EXISTS symbols (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                symbol TEXT NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            
-            CREATE TABLE IF NOT EXISTS timeframes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timeframe TEXT NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            
-            CREATE TABLE IF NOT EXISTS historical_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                symbol_id INTEGER NOT NULL,
-                timeframe_id INTEGER NOT NULL,
-                open_time INTEGER NOT NULL,
-                open REAL NOT NULL,
-                high REAL NOT NULL,
-                low REAL NOT NULL,
-                close REAL NOT NULL,
-                volume REAL NOT NULL,
-                close_time INTEGER NOT NULL,
-                quote_asset_volume REAL,
-                number_of_trades INTEGER,
-                taker_buy_base_asset_volume REAL,
-                taker_buy_quote_asset_volume REAL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
-                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id) ON DELETE CASCADE,
-                UNIQUE(symbol_id, timeframe_id, open_time)
-            );
-        """)
-        self.conn.commit()
-        
-    def _execute(self, query: str, params: tuple = None) -> sqlite3.Cursor:
-        """Execute a SQL query with parameters.
+    """Class for managing SQLite database operations."""
+    
+    def __init__(self, db_path: Union[str, Path], timeout: float = 30.0):
+        """Initialize SQLiteManager with database path.
         
         Args:
-            query: SQL query to execute
-            params: Query parameters
+            db_path: Path to SQLite database file
+            timeout: Connection timeout in seconds
+        """
+        self.db_path = Path(db_path)
+        self.timeout = timeout
+        self.connection = None
+        self.initialize_database()
+    
+    def create_connection(self) -> Optional[sqlite3.Connection]:
+        """Create a connection to the SQLite database."""
+        try:
+            conn = sqlite3.connect(str(self.db_path), timeout=self.timeout)
+            conn.row_factory = sqlite3.Row
+            return conn
+        except sqlite3.Error as e:
+            logger.error(f"Error connecting to database {self.db_path}: {e}")
+            return None
+    
+    def initialize_database(self) -> bool:
+        """Initialize database schema and create necessary tables."""
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            
+            # Create tables
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS symbols (
+                    id INTEGER PRIMARY KEY,
+                    symbol TEXT UNIQUE NOT NULL
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS timeframes (
+                    id INTEGER PRIMARY KEY,
+                    timeframe TEXT UNIQUE NOT NULL
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS indicators (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT UNIQUE NOT NULL,
+                    type TEXT NOT NULL,
+                    description TEXT
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS indicator_configs (
+                    id INTEGER PRIMARY KEY,
+                    indicator_id INTEGER NOT NULL,
+                    config_json TEXT NOT NULL,
+                    FOREIGN KEY (indicator_id) REFERENCES indicators(id)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS historical_data (
+                    id INTEGER PRIMARY KEY,
+                    symbol_id INTEGER NOT NULL,
+                    timeframe_id INTEGER NOT NULL,
+                    open_time TIMESTAMP NOT NULL,
+                    open REAL NOT NULL,
+                    high REAL NOT NULL,
+                    low REAL NOT NULL,
+                    close REAL NOT NULL,
+                    volume REAL NOT NULL,
+                    FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+                    FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS correlations (
+                    id INTEGER PRIMARY KEY,
+                    symbol_id INTEGER NOT NULL,
+                    timeframe_id INTEGER NOT NULL,
+                    indicator_id INTEGER NOT NULL,
+                    config_id INTEGER NOT NULL,
+                    lag INTEGER NOT NULL,
+                    correlation_type TEXT NOT NULL,
+                    correlation_value REAL NOT NULL,
+                    calculation_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+                    FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
+                    FOREIGN KEY (indicator_id) REFERENCES indicators(id),
+                    FOREIGN KEY (config_id) REFERENCES indicator_configs(id)
+                )
+            """)
+            
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS leaderboard (
+                    id INTEGER PRIMARY KEY,
+                    lag INTEGER NOT NULL,
+                    correlation_type TEXT NOT NULL CHECK(correlation_type IN ('positive', 'negative')),
+                    correlation_value REAL NOT NULL,
+                    indicator_name TEXT NOT NULL,
+                    config_json TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    timeframe TEXT NOT NULL,
+                    dataset_daterange TEXT NOT NULL,
+                    calculation_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    config_id_source_db INTEGER,
+                    source_db_name TEXT,
+                    UNIQUE(lag, correlation_type, indicator_name, config_json, symbol, timeframe)
+                )
+            """)
+            
+            # Create indices
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_historical_data_symbol_timeframe ON historical_data(symbol_id, timeframe_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_historical_data_open_time ON historical_data(open_time)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_symbols ON correlations(symbol_id, timeframe_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_correlation ON leaderboard(correlation_value)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_lag ON leaderboard(lag)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_lag_val ON leaderboard(lag, correlation_value)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_indicator_config ON leaderboard(indicator_name, config_id_source_db)")
+            
+            conn.commit()
+            conn.close()
+            logger.info(f"Database schema initialized/verified: {self.db_path}")
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error initializing database {self.db_path}: {e}")
+            if conn:
+                conn.close()
+            return False
+    
+    def create_table(self, table_name: str, columns: Dict[str, str]) -> bool:
+        """Create a new table with specified columns.
+        
+        Args:
+            table_name: Name of the table to create
+            columns: Dictionary mapping column names to SQLite types
             
         Returns:
-            sqlite3.Cursor: Cursor with query results
+            bool: True if table was created successfully
         """
         try:
-            cursor = self.conn.cursor()
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            self.conn.commit()
-            return cursor
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            
+            # Build CREATE TABLE statement
+            column_defs = [f"{col} {type_}" for col, type_ in columns.items()]
+            create_stmt = f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(column_defs)})"
+            
+            cursor.execute(create_stmt)
+            conn.commit()
+            conn.close()
+            return True
+            
         except sqlite3.Error as e:
-            logging.error(f"Query execution failed: {e}")
-            self.conn.rollback()
-            raise
+            logger.error(f"Error creating table {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+    
+    def insert_data(self, table_name: str, data: Dict[str, Any]) -> bool:
+        """Insert a single row of data into a table."""
+        # Convert non-primitive types to strings (e.g., pd.Timestamp)
+        clean_data = {k: (str(v) if hasattr(v, 'isoformat') or type(v).__name__ == 'Timestamp' else v) for k, v in data.items()}
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            cursor = conn.cursor()
+            # Build INSERT statement
+            columns = list(clean_data.keys())
+            placeholders = ['?' for _ in columns]
+            insert_stmt = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(placeholders)})"
+            cursor.execute(insert_stmt, list(clean_data.values()))
+            conn.commit()
+            conn.close()
+            return True
+        except sqlite3.Error as e:
+            logger.error(f"Error inserting data into {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+    
+    def insert_many(self, table_name: str, data_list: List[Dict[str, Any]]) -> bool:
+        """Insert multiple rows of data into a table.
+        
+        Args:
+            table_name: Name of the table to insert into
+            data_list: List of dictionaries mapping column names to values
+            
+        Returns:
+            bool: True if all inserts were successful
+        """
+        if not data_list:
+            return True
+            
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return False
+            
+            cursor = conn.cursor()
+            
+            # Build INSERT statement using first row's keys
+            columns = list(data_list[0].keys())
+            placeholders = ['?' for _ in columns]
+            insert_stmt = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(placeholders)})"
+            
+            # Prepare values for each row
+            values = [[row[col] for col in columns] for row in data_list]
+            
+            cursor.executemany(insert_stmt, values)
+            conn.commit()
+            conn.close()
+            return True
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error inserting multiple rows into {table_name}: {e}")
+            if conn:
+                conn.close()
+            return False
+    
+    def execute_query(self, query: str, params: Tuple = ()) -> List[Dict[str, Any]]:
+        """Execute a SQL query and return results as list of dictionaries.
+        
+        Args:
+            query: SQL query string
+            params: Tuple of parameters for the query
+            
+        Returns:
+            List of dictionaries containing query results
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return []
+            
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            results = [dict(row) for row in cursor.fetchall()]
+            conn.close()
+            return results
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error executing query: {e}")
+            if conn:
+                conn.close()
+            return []
+    
+    def get_or_create_id(self, table_name: str, name_column: str, value: str) -> Optional[int]:
+        """Get or create an ID for a value in a lookup table.
+        
+        Args:
+            table_name: Name of the lookup table
+            name_column: Name of the column containing the value
+            value: Value to look up or insert
+            
+        Returns:
+            Optional[int]: ID of the value, or None if operation failed
+        """
+        try:
+            conn = self.create_connection()
+            if not conn:
+                return None
+            
+            cursor = conn.cursor()
+            
+            # Try to get existing ID
+            cursor.execute(f"SELECT id FROM {table_name} WHERE {name_column} = ?", (value,))
+            result = cursor.fetchone()
+            
+            if result:
+                id_ = result['id']
+            else:
+                # Insert new value
+                cursor.execute(f"INSERT INTO {table_name} ({name_column}) VALUES (?)", (value,))
+                id_ = cursor.lastrowid
+                conn.commit()
+            
+            conn.close()
+            return id_
+            
+        except sqlite3.Error as e:
+            logger.error(f"Error getting/creating ID for {value} in {table_name}: {e}")
+            if conn:
+                conn.close()
+            return None
+    
+    def close(self):
+        """Close the database connection if it exists."""
+        if self.connection:
+            self.connection.close()
+            self.connection = None
 
-    def insert(self, table, row_dict):
-        cols = ', '.join(row_dict.keys())
-        placeholders = ', '.join(['?'] * len(row_dict))
-        sql = f"INSERT INTO {table} ({cols}) VALUES ({placeholders})"
-        values = list(row_dict.values())
-        cur = self.conn.cursor()
-        cur.execute(sql, values)
-        self.conn.commit()
+    def insert(self, table_name: str, data: dict) -> bool:
+        """Insert a single row into a table."""
+        # Convert non-primitive types to strings (e.g., pd.Timestamp)
+        clean_data = {k: (str(v) if hasattr(v, 'isoformat') or type(v).__name__ == 'Timestamp' else v) for k, v in data.items()}
+        return self.insert_data(table_name, clean_data)
 
-    def select(self, table, columns):
-        cols = ', '.join(columns)
-        sql = f"SELECT {cols} FROM {table}"
-        cur = self.conn.cursor()
-        cur.execute(sql)
-        return cur.fetchall()
+    def select(self, table_name: str, columns: list) -> list:
+        """Select rows from a table."""
+        query = f"SELECT {', '.join(columns)} FROM {table_name}"
+        conn = self.create_connection()
+        if not conn:
+            return []
+        cursor = conn.cursor()
+        cursor.execute(query)
+        rows = cursor.fetchall()
+        conn.close()
+        return rows
+
+    def update(self, table_name: str, data: dict, where: str = None) -> bool:
+        """Update rows in a table."""
+        set_clause = ', '.join([f"{k} = ?" for k in data.keys()])
+        query = f"UPDATE {table_name} SET {set_clause}"
+        if where:
+            query += f" WHERE {where}"
+        conn = self.create_connection()
+        if not conn:
+            return False
+        cursor = conn.cursor()
+        cursor.execute(query, list(data.values()))
+        conn.commit()
+        conn.close()
+        return True
+
+    def delete(self, table_name: str, where: str = None) -> bool:
+        """Delete rows from a table."""
+        query = f"DELETE FROM {table_name}"
+        if where:
+            query += f" WHERE {where}"
+        conn = self.create_connection()
+        if not conn:
+            return False
+        cursor = conn.cursor()
+        cursor.execute(query)
+        conn.commit()
+        conn.close()
+        return True

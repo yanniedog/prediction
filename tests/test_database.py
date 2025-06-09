@@ -217,9 +217,17 @@ def test_database_recovery(temp_db_path, valid_symbol, valid_timeframe):
     # Create and initialize database
     _initialize_database(temp_db_path, valid_symbol, valid_timeframe)
     
+    # Close any existing connections
+    import gc
+    gc.collect()
+    
     # Corrupt database file
     with open(temp_db_path, 'wb') as f:
         f.write(b'corrupted data')
+    
+    # Wait a moment for file system
+    import time
+    time.sleep(0.1)
     
     # Attempt to initialize again
     result = _initialize_database(temp_db_path, valid_symbol, valid_timeframe)

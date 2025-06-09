@@ -7,7 +7,7 @@ import shutil
 import sqlite3
 import json
 from typing import Dict, List, Any, Optional, Tuple
-from sqlite_manager_class import SQLiteManager
+from sqlite_manager import SQLiteManager
 
 @pytest.fixture(scope="function")
 def temp_db_dir() -> Path:
