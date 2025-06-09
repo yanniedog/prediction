@@ -42,6 +42,7 @@ import data_manager
 import indicator_factory
 import leaderboard_manager
 import sqlite_manager
+from data_processing import validate_data as validate_dataframe, process_data
 
 logger = logging.getLogger(__name__)
 
@@ -883,20 +884,13 @@ def _prepare_prediction_data(data: pd.DataFrame, indicator_def: Dict[str, Any]) 
     if not isinstance(indicator_def, dict) or not indicator_def:
         raise ValueError("Indicator definition must be a non-empty dictionary")
         
-    # Validate required columns
-    required_cols = ['open', 'high', 'low', 'close', 'volume']
-    missing_cols = [col for col in required_cols if col not in data.columns]
-    if missing_cols:
-        raise ValueError(f"Missing required columns: {missing_cols}")
+    # Validate data
+    is_valid, message = validate_dataframe(data)
+    if not is_valid:
+        raise ValueError(f"Data validation failed: {message}")
         
-    # Convert columns to numeric
-    for col in required_cols:
-        data[col] = pd.to_numeric(data[col], errors='coerce')
-        
-    # Drop rows with NaN values
-    data = data.dropna(subset=required_cols)
-    if data.empty:
-        raise ValueError("No valid data points after cleaning")
+    # Process data
+    data = process_data(data)
         
     # Validate indicator definitions
     for name, defn in indicator_def.items():

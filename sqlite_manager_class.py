@@ -46,30 +46,45 @@ class SQLiteManager:
         if not self.connection:
             logger.error("No database connection")
             return False
-            
         try:
             cursor = self.connection.cursor()
-            # Use DEFERRED transaction for initialization
             self.connection.execute("BEGIN DEFERRED;")
-            
             # --- Metadata Tables ---
-            cursor.execute("CREATE TABLE IF NOT EXISTS symbols (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT UNIQUE NOT NULL);")
-            cursor.execute("CREATE TABLE IF NOT EXISTS timeframes (id INTEGER PRIMARY KEY AUTOINCREMENT, timeframe TEXT UNIQUE NOT NULL);")
-            cursor.execute("CREATE TABLE IF NOT EXISTS indicators (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL);")
-            
+            cursor.execute("CREATE TABLE IF NOT EXISTS symbols (id INTEGER PRIMARY KEY AUTOINCREMENT, symbol TEXT UNIQUE NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
+            cursor.execute("CREATE TABLE IF NOT EXISTS timeframes (id INTEGER PRIMARY KEY AUTOINCREMENT, timeframe TEXT UNIQUE NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);")
+            cursor.execute("CREATE TABLE IF NOT EXISTS indicators (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL, type TEXT);")
             # --- Indicator Configuration Table ---
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS indicator_configs (
-                config_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 indicator_id INTEGER NOT NULL,
                 config_hash TEXT NOT NULL,
                 config_json TEXT NOT NULL,
                 FOREIGN KEY (indicator_id) REFERENCES indicators(id) ON DELETE CASCADE,
-                UNIQUE (indicator_id, config_hash)
+                UNIQUE(indicator_id, config_hash)
             );""")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_indicator_configs_indicator_id ON indicator_configs(indicator_id);")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_indicator_configs_hash ON indicator_configs(config_hash);")
-            
+            # --- Historical Data Table ---
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS historical_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol_id INTEGER NOT NULL,
+                timeframe_id INTEGER NOT NULL,
+                open_time INTEGER NOT NULL,
+                open REAL NOT NULL,
+                high REAL NOT NULL,
+                low REAL NOT NULL,
+                close REAL NOT NULL,
+                volume REAL NOT NULL,
+                close_time INTEGER NOT NULL,
+                quote_asset_volume REAL,
+                number_of_trades INTEGER,
+                taker_buy_base_asset_volume REAL,
+                taker_buy_quote_asset_volume REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
+                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id) ON DELETE CASCADE,
+                UNIQUE(symbol_id, timeframe_id, open_time)
+            );""")
             # --- Correlation Results Table ---
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS correlations (
@@ -81,16 +96,36 @@ class SQLiteManager:
                 correlation_value REAL,
                 FOREIGN KEY (symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
                 FOREIGN KEY (timeframe_id) REFERENCES timeframes(id) ON DELETE CASCADE,
-                FOREIGN KEY (indicator_config_id) REFERENCES indicator_configs(config_id) ON DELETE CASCADE,
+                FOREIGN KEY (indicator_config_id) REFERENCES indicator_configs(id) ON DELETE CASCADE,
                 UNIQUE(symbol_id, timeframe_id, indicator_config_id, lag)
             );""")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_main ON correlations (symbol_id, timeframe_id, indicator_config_id, lag);")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_config_lag ON correlations (indicator_config_id, lag);")
-            
+            # --- Leaderboard Table ---
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS leaderboard (
+                lag INTEGER NOT NULL,
+                correlation_type TEXT NOT NULL CHECK(correlation_type IN ('positive', 'negative')),
+                correlation_value REAL NOT NULL,
+                indicator_name TEXT NOT NULL,
+                config_json TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                timeframe TEXT NOT NULL,
+                dataset_daterange TEXT NOT NULL,
+                calculation_timestamp TEXT NOT NULL,
+                config_id_source_db INTEGER,
+                source_db_name TEXT,
+                PRIMARY KEY (lag, correlation_type)
+            );""")
+            # --- Indices ---
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_historical_data_symbol_timeframe ON historical_data(symbol_id, timeframe_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_historical_data_open_time ON historical_data(open_time);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_symbols ON correlations(symbol_id, timeframe_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_correlation ON leaderboard(correlation_value);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_lag ON leaderboard(lag);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_lag_val ON leaderboard(lag, correlation_value);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_indicator_config ON leaderboard(indicator_name, config_id_source_db);")
             self.connection.commit()
             logger.info(f"Database schema initialized/verified: {self.db_path}")
             return True
-            
         except sqlite3.Error as e:
             logger.error(f"Error operating on DB schema '{self.db_path}': {e}", exc_info=True)
             try:

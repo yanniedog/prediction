@@ -33,6 +33,7 @@ import leaderboard_manager
 import predictor
 import backtester
 from indicator_params import indicator_definitions
+from sqlite_manager_class import SQLiteManager
 
 # --- Configuration Constants (Fetched from config) ---
 ETA_UPDATE_INTERVAL_SECONDS: int = config.DEFAULTS.get("eta_update_interval_seconds", 15)
@@ -353,62 +354,34 @@ def _run_backtest_check_mode(timestamp_str: str) -> None:
 
 def _initialize_database(db_path: Path, symbol: str, timeframe: str) -> bool:
     """Initialize database with proper tables and validation."""
-    try:
-        if not utils.is_valid_symbol(symbol) or not utils.is_valid_timeframe(timeframe):
-            return False
-            
-        conn = sqlite_manager.create_connection(str(db_path))
-        if not conn:
-            return False
-            
-        # Create required tables if they don't exist
-        tables = [
-            """CREATE TABLE IF NOT EXISTS prices (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME NOT NULL,
-                open REAL NOT NULL,
-                high REAL NOT NULL,
-                low REAL NOT NULL,
-                close REAL NOT NULL,
-                volume REAL NOT NULL,
-                UNIQUE(timestamp)
-            )""",
-            """CREATE TABLE IF NOT EXISTS indicators (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                type TEXT NOT NULL
-            )""",
-            """CREATE TABLE IF NOT EXISTS indicator_configs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                indicator_id INTEGER NOT NULL,
-                config_hash TEXT NOT NULL,
-                config_json TEXT NOT NULL,
-                FOREIGN KEY (indicator_id) REFERENCES indicators(id),
-                UNIQUE(indicator_id, config_hash)
-            )""",
-            """CREATE TABLE IF NOT EXISTS correlations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                config_id INTEGER NOT NULL,
-                lag INTEGER NOT NULL,
-                correlation REAL NOT NULL,
-                FOREIGN KEY (config_id) REFERENCES indicator_configs(id),
-                UNIQUE(config_id, lag)
-            )"""
-        ]
-        
-        for table_sql in tables:
-            sqlite_manager._execute(conn, table_sql)
-            
-        conn.commit()
-        conn.close()
-        return True
-    except Exception as e:
-        logging.error(f"Database initialization failed: {e}")
-        return False
+    if not utils.is_valid_symbol(symbol) or not utils.is_valid_timeframe(timeframe):
+        raise ValueError("Invalid symbol or timeframe")
+    db_manager = SQLiteManager(str(db_path))
+    db_manager.initialize_database()  # Ensure schema is created
+    db_manager._get_or_create_id("symbols", "symbol", symbol)
+    db_manager._get_or_create_id("timeframes", "timeframe", timeframe)
+    db_manager.close()
+    return True
 
-def _select_data_source_and_lag() -> Tuple[Path, str, str, pd.DataFrame, int, int, int, str]:
-    """Select data source and get lag input with improved error handling."""
-    result = data_manager.manage_data_source()
+def _select_data_source_and_lag(choice: Optional[int] = None, max_lag: Optional[int] = None) -> Tuple[Path, str, str, pd.DataFrame, int, int, int, str]:
+    """Select data source and get lag input with improved error handling.
+    
+    Args:
+        choice (Optional[int]): Pre-selected choice for testing purposes. If None, prompts user for input.
+        max_lag (Optional[int]): Pre-selected max lag for testing purposes. If None, prompts user for input.
+        
+    Returns:
+        Tuple containing:
+        - Path: Database path
+        - str: Symbol
+        - str: Timeframe
+        - pd.DataFrame: Loaded data
+        - int: Maximum lag
+        - int: Symbol ID
+        - int: Timeframe ID
+        - str: Date range string
+    """
+    result = data_manager.manage_data_source(choice=choice)
     if not result:
         raise SystemExit("No data source selected")
         
@@ -432,11 +405,15 @@ def _select_data_source_and_lag() -> Tuple[Path, str, str, pd.DataFrame, int, in
         symbol_id = sqlite_manager._get_or_create_id(conn, "symbols", "name", symbol)
         timeframe_id = sqlite_manager._get_or_create_id(conn, "timeframes", "name", timeframe)
         
-        # Get max lag from user
+        # Get max lag from user or use provided value
         while True:
             try:
-                max_lag = int(input("Enter maximum lag (1-100): ").strip())
-                if 1 <= max_lag <= 100:
+                if max_lag is not None:
+                    selected_max_lag = max_lag
+                else:
+                    selected_max_lag = int(input("Enter maximum lag (1-100): ").strip())
+                    
+                if 1 <= selected_max_lag <= 100:
                     break
                 print("Please enter a number between 1 and 100")
             except ValueError:
@@ -445,7 +422,7 @@ def _select_data_source_and_lag() -> Tuple[Path, str, str, pd.DataFrame, int, in
         # Get date range string
         data_daterange = f"{data.index[0].strftime('%Y%m%d')}-{data.index[-1].strftime('%Y%m%d')}"
         
-        return db_path, symbol, timeframe, data, max_lag, symbol_id, timeframe_id, data_daterange
+        return db_path, symbol, timeframe, data, selected_max_lag, symbol_id, timeframe_id, data_daterange
     finally:
         conn.close()
 

@@ -438,20 +438,64 @@ def test_data_validation(prediction_data: Tuple[pd.DataFrame, Dict[str, Any]]):
     
     # Test with missing required columns
     invalid_data = data.drop(columns=["close"])
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as exc_info:
         predict_price_movement(invalid_data, indicator_def["RSI"], {"timeperiod": 14})
+    assert "Missing required columns: ['close']" in str(exc_info.value)
     
     # Test with non-numeric data
     invalid_data = data.copy()
     invalid_data["close"] = "invalid"
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as exc_info:
         predict_price_movement(invalid_data, indicator_def["RSI"], {"timeperiod": 14})
+    assert "NaN values found in columns: ['close']" in str(exc_info.value)
     
     # Test with all NaN data
     invalid_data = data.copy()
     invalid_data["close"] = np.nan
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as exc_info:
         predict_price_movement(invalid_data, indicator_def["RSI"], {"timeperiod": 14})
+    assert "NaN values found in columns: ['close']" in str(exc_info.value)
+    
+    # Test with negative values
+    invalid_data = data.copy()
+    invalid_data["volume"] = -1
+    with pytest.raises(ValueError) as exc_info:
+        predict_price_movement(invalid_data, indicator_def["RSI"], {"timeperiod": 14})
+    assert "Negative values found in columns: ['volume']" in str(exc_info.value)
+    
+    # Test with invalid price relationships
+    invalid_data = data.copy()
+    invalid_data.loc[invalid_data.index[0], "high"] = invalid_data.loc[invalid_data.index[0], "low"] - 1
+    with pytest.raises(ValueError) as exc_info:
+        predict_price_movement(invalid_data, indicator_def["RSI"], {"timeperiod": 14})
+    assert "Invalid price relationship" in str(exc_info.value)
+    
+    # Test with insufficient data points
+    invalid_data = data.iloc[:50]  # Less than 100 points
+    with pytest.raises(ValueError) as exc_info:
+        predict_price_movement(invalid_data, indicator_def["RSI"], {"timeperiod": 14})
+    assert "Insufficient data points (minimum 100 required)" in str(exc_info.value)
+    
+    # Test with duplicate timestamps
+    invalid_data = data.copy()
+    invalid_data.index = pd.DatetimeIndex([invalid_data.index[0]] * len(invalid_data))
+    with pytest.raises(ValueError) as exc_info:
+        predict_price_movement(invalid_data, indicator_def["RSI"], {"timeperiod": 14})
+    assert "Duplicate timestamps found in data" in str(exc_info.value)
+    
+    # Test with non-monotonic timestamps
+    invalid_data = data.copy()
+    invalid_data.index = invalid_data.index[::-1]  # Reverse order
+    with pytest.raises(ValueError) as exc_info:
+        predict_price_movement(invalid_data, indicator_def["RSI"], {"timeperiod": 14})
+    assert "Timestamps must be in ascending order" in str(exc_info.value)
+    
+    # Test with large gaps
+    invalid_data = data.copy()
+    invalid_data.index = pd.date_range(start='2023-01-01', periods=len(invalid_data), freq='8D')  # 8-day gaps
+    with pytest.raises(ValueError) as exc_info:
+        predict_price_movement(invalid_data, indicator_def["RSI"], {"timeperiod": 14})
+    assert "Large gap detected in data" in str(exc_info.value)
 
 def test_indicator_validation(prediction_data: Tuple[pd.DataFrame, Dict[str, Any]]):
     """Test indicator validation in prediction."""

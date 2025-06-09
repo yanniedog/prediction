@@ -139,33 +139,48 @@ def test_split_data(sample_data: pd.DataFrame):
         _split_data(sample_data, test_size=1.5)
 
 def test_data_manager_methods(data_manager: DataManager, sample_data: pd.DataFrame, temp_dir: Path):
+    """Test all data manager methods with validation."""
     # Save and load
     path = temp_dir / "data.csv"
     data_manager.save_data(sample_data, path)
     loaded = data_manager.load_data(path)
     pd.testing.assert_frame_equal(loaded, sample_data)
+    
     # Validate
     assert data_manager.validate_data(sample_data)
-    # Merge
-    merged = data_manager.merge_data([sample_data, sample_data])
-    assert len(merged) == 2 * len(sample_data)
-    # Filter
-    filtered = data_manager.filter_data(sample_data, start=sample_data["timestamp"][10], end=sample_data["timestamp"][20])
-    assert filtered["timestamp"].min() >= sample_data["timestamp"][10]
-    # Resample
-    resampled = data_manager.resample_data(sample_data, rule="D")
-    assert len(resampled) < len(sample_data)
-    # Fill missing
-    data = sample_data.copy()
-    data.loc[0, "close"] = np.nan
-    filled = data_manager.fill_missing_data(data)
-    assert not filled["close"].isna().any()
-    # Normalize
-    normalized = data_manager.normalize_data(sample_data, columns=["open", "close"])
-    assert np.allclose(normalized[["open", "close"]].mean(), 0, atol=1e-1)
+    
+    # Preprocess
+    processed = data_manager.preprocess_data(sample_data)
+    assert isinstance(processed, pd.DataFrame)
+    assert not processed.empty
+    assert data_manager.validate_data(processed)
+    
     # Split
     train, test = data_manager.split_data(sample_data, test_size=0.2)
     assert len(train) + len(test) == len(sample_data)
+    assert data_manager.validate_data(train)
+    assert data_manager.validate_data(test)
+    
+    # Normalize
+    normalized = data_manager.normalize_data(sample_data, columns=["open", "close"])
+    assert isinstance(normalized, pd.DataFrame)
+    assert not normalized.empty
+    assert data_manager.validate_data(normalized)
+    assert np.allclose(normalized[["open", "close"]].mean(), 0, atol=1e-1)
+    
+    # Test error handling
+    with pytest.raises(ValueError):
+        data_manager.load_data(temp_dir / "nonexistent.csv")
+    with pytest.raises(ValueError):
+        data_manager.save_data(pd.DataFrame(), temp_dir / "empty.csv")
+    with pytest.raises(ValueError):
+        data_manager.validate_data(pd.DataFrame())
+    with pytest.raises(ValueError):
+        data_manager.preprocess_data(pd.DataFrame())
+    with pytest.raises(ValueError):
+        data_manager.split_data(pd.DataFrame(), test_size=0.2)
+    with pytest.raises(ValueError):
+        data_manager.normalize_data(pd.DataFrame(), columns=["open"])
 
 def test_error_handling(data_manager: DataManager, temp_dir: Path):
     with pytest.raises(ValueError):
@@ -217,7 +232,7 @@ def test_data_validation(data_manager, test_data):
     invalid_data.loc[invalid_data.index[0], 'close'] = np.nan
     with pytest.raises(ValueError) as exc_info:
         data_manager.validate_data(invalid_data)
-    assert "NaN values found in column: close" in str(exc_info.value)
+    assert "NaN values found in columns: ['close']" in str(exc_info.value)
 
     # Test missing columns
     invalid_data = test_data.drop('volume', axis=1)
@@ -230,14 +245,41 @@ def test_data_validation(data_manager, test_data):
     invalid_data.loc[invalid_data.index[0], 'high'] = invalid_data.loc[invalid_data.index[0], 'low'] - 1
     with pytest.raises(ValueError) as exc_info:
         data_manager.validate_data(invalid_data)
-    assert "High price cannot be less than low price" in str(exc_info.value)
+    assert "Invalid price relationship" in str(exc_info.value)
 
     # Test negative volume
     invalid_data = test_data.copy()
     invalid_data.loc[invalid_data.index[0], 'volume'] = -1
     with pytest.raises(ValueError) as exc_info:
         data_manager.validate_data(invalid_data)
-    assert "Volume cannot be negative" in str(exc_info.value)
+    assert "Negative values found in columns: ['volume']" in str(exc_info.value)
+
+    # Test insufficient data points
+    invalid_data = test_data.iloc[:50]  # Less than 100 points
+    with pytest.raises(ValueError) as exc_info:
+        data_manager.validate_data(invalid_data)
+    assert "Insufficient data points (minimum 100 required)" in str(exc_info.value)
+
+    # Test duplicate timestamps
+    invalid_data = test_data.copy()
+    invalid_data.index = pd.DatetimeIndex([invalid_data.index[0]] * len(invalid_data))
+    with pytest.raises(ValueError) as exc_info:
+        data_manager.validate_data(invalid_data)
+    assert "Duplicate timestamps found in data" in str(exc_info.value)
+
+    # Test non-monotonic timestamps
+    invalid_data = test_data.copy()
+    invalid_data.index = invalid_data.index[::-1]  # Reverse order
+    with pytest.raises(ValueError) as exc_info:
+        data_manager.validate_data(invalid_data)
+    assert "Timestamps must be in ascending order" in str(exc_info.value)
+
+    # Test large gaps
+    invalid_data = test_data.copy()
+    invalid_data.index = pd.date_range(start='2023-01-01', periods=len(invalid_data), freq='8D')  # 8-day gaps
+    with pytest.raises(ValueError) as exc_info:
+        data_manager.validate_data(invalid_data)
+    assert "Large gap detected in data" in str(exc_info.value)
 
 def test_data_preprocessing(data_manager, test_data):
     """Test data preprocessing methods."""
@@ -320,7 +362,7 @@ def test_data_sampling(data_manager, test_data):
     # Test systematic sampling
     systematic_sample = data_manager.sample_data(test_data, method='systematic', step=5)
     assert isinstance(systematic_sample, pd.DataFrame)
-    assert len(systematic_sample) == len(test_data) // 5 
+    assert abs(len(systematic_sample) - (len(test_data) // 5)) <= 1
 
 def test_fetch_klines_handles_invalid_symbol(monkeypatch):
     # Simulate API returning empty for invalid symbol

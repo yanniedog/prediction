@@ -84,43 +84,102 @@ def test_data_date_range_with_invalid_dates(sample_data_with_invalid_dates):
         get_data_date_range(sample_data_with_invalid_dates)
     assert "Invalid date range" in str(exc_info.value)
 
-def test_data_source_selection(tmp_path, sample_data):
-    """Test data source selection and validation"""
-    # Create a temporary database with proper schema
+def test_data_source_selection(tmp_path):
+    """Test data source selection and validation process."""
+    # Create a temporary database
     db_path = tmp_path / "BTCUSDT_1h.db"
+    conn = sqlite3.connect(str(db_path))
+    cursor = conn.cursor()
     
-    # Initialize database manager
-    db_manager = SQLiteManager(db_path)
+    # Create tables with correct schema
+    cursor.executescript("""
+        CREATE TABLE IF NOT EXISTS symbols (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        CREATE TABLE IF NOT EXISTS timeframes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timeframe TEXT NOT NULL UNIQUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        CREATE TABLE IF NOT EXISTS historical_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol_id INTEGER NOT NULL,
+            timeframe_id INTEGER NOT NULL,
+            open_time INTEGER NOT NULL,
+            open REAL NOT NULL,
+            high REAL NOT NULL,
+            low REAL NOT NULL,
+            close REAL NOT NULL,
+            volume REAL NOT NULL,
+            close_time INTEGER NOT NULL,
+            quote_asset_volume REAL,
+            number_of_trades INTEGER,
+            taker_buy_base_asset_volume REAL,
+            taker_buy_quote_asset_volume REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (symbol_id) REFERENCES symbols(id) ON DELETE CASCADE,
+            FOREIGN KEY (timeframe_id) REFERENCES timeframes(id) ON DELETE CASCADE,
+            UNIQUE(symbol_id, timeframe_id, open_time)
+        );
+    """)
     
-    # Insert required symbol and timeframe
-    db_manager._execute("INSERT INTO symbols (symbol) VALUES (?)", ("BTCUSDT",))
-    symbol_id = db_manager._execute("SELECT last_insert_rowid()").fetchone()[0]
-    db_manager._execute("INSERT INTO timeframes (timeframe) VALUES (?)", ("1h",))
-    timeframe_id = db_manager._execute("SELECT last_insert_rowid()").fetchone()[0]
+    # Insert symbol and timeframe
+    cursor.execute("INSERT INTO symbols (symbol) VALUES (?)", ("BTCUSDT",))
+    cursor.execute("INSERT INTO timeframes (timeframe) VALUES (?)", ("1h",))
     
-    # Convert sample data to match historical_data schema
-    sample_data['open_time'] = sample_data.index.astype(np.int64) // 10**6
-    sample_data['close_time'] = sample_data['open_time'] + 3600000  # 1 hour in milliseconds
+    # Generate sample data
+    dates = pd.date_range(start='2024-01-01', periods=100, freq='h')
+    sample_data = pd.DataFrame({
+        'open_time': [int(d.timestamp() * 1000) for d in dates],
+        'open': np.random.randn(100).cumsum() + 1000,
+        'high': np.random.randn(100).cumsum() + 1000,
+        'low': np.random.randn(100).cumsum() + 1000,
+        'close': np.random.randn(100).cumsum() + 1000,
+        'volume': np.random.randint(100, 1000, 100),
+        'close_time': [int((d + pd.Timedelta(hours=1)).timestamp() * 1000) for d in dates],
+        'quote_asset_volume': np.random.randint(1000, 10000, 100),
+        'number_of_trades': np.random.randint(100, 1000, 100),
+        'taker_buy_base_asset_volume': np.random.randint(50, 500, 100),
+        'taker_buy_quote_asset_volume': np.random.randint(500, 5000, 100)
+    })
     
     # Insert sample data
     for _, row in sample_data.iterrows():
-        db_manager._execute("""
+        cursor.execute("""
             INSERT INTO historical_data (
                 symbol_id, timeframe_id, open_time, open, high, low, close, volume,
                 close_time, quote_asset_volume, number_of_trades,
                 taker_buy_base_asset_volume, taker_buy_quote_asset_volume
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
-            symbol_id, timeframe_id, row['open_time'],
-            row['open'], row['high'], row['low'], row['close'], row['volume'],
-            row['close_time'], row['volume'], 100, row['volume']/2, row['volume']/2
+            1, 1, row['open_time'], row['open'], row['high'], row['low'], row['close'],
+            row['volume'], row['close_time'], row['quote_asset_volume'],
+            row['number_of_trades'], row['taker_buy_base_asset_volume'],
+            row['taker_buy_quote_asset_volume']
         ))
     
-    # Test data source selection
-    result = _select_data_source_and_lag()
+    conn.commit()
+    conn.close()
+    
+    # Test data source selection with pre-selected choice and max_lag
+    result = _select_data_source_and_lag(choice=1, max_lag=10)
     assert result is not None
-    assert isinstance(result, tuple)
-    assert len(result) == 8  # db_path, symbol, timeframe, data, min_lag, max_lag, target_lag, target_col
+    assert len(result) == 8
+    
+    db_path, symbol, timeframe, data, max_lag, symbol_id, timeframe_id, data_daterange = result
+    assert symbol == "BTCUSDT"
+    assert timeframe == "1h"
+    assert max_lag == 10
+    assert isinstance(data, pd.DataFrame)
+    assert not data.empty
+    assert symbol_id == 1
+    assert timeframe_id == 1
+    assert isinstance(data_daterange, str)
+    assert "2024-01-01" in data_daterange
 
 def test_data_validation(sample_data):
     """Test data validation"""
@@ -163,43 +222,43 @@ def test_data_processing_with_invalid_values(sample_data):
     data = sample_data.copy()
     data.loc[data.index[0], 'high'] = -1  # Invalid high price
     data.loc[data.index[1], 'volume'] = -100  # Invalid volume
-    
+
     # Test validation directly
     with pytest.raises(ValueError) as exc_info:
         _validate_data(data)
-    assert "Invalid values detected" in str(exc_info.value)
+    assert "High price cannot be less than low price" in str(exc_info.value)
 
 def test_data_processing_with_duplicate_dates(sample_data):
     """Test data processing with duplicate dates"""
     # Add duplicate dates
     data = sample_data.copy()
     data.index = data.index.tolist()[:-1] + [data.index[-1]]
-    
+
     # Mock data manager functions to return invalid data
     with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
         with patch('main.data_manager.load_data', return_value=data):
             with pytest.raises(ValueError) as exc_info:
                 _select_data_source_and_lag()
-            assert "Duplicate dates found" in str(exc_info.value)
+            assert "Duplicate timestamps found in data" in str(exc_info.value)
 
 def test_data_processing_with_non_monotonic_dates(sample_data):
     """Test data processing with non-monotonic dates"""
     # Shuffle dates
     data = sample_data.copy()
     data.index = data.index.tolist()[::-1]
-    
+
     # Mock data manager functions to return invalid data
     with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
         with patch('main.data_manager.load_data', return_value=data):
             with pytest.raises(ValueError) as exc_info:
                 _select_data_source_and_lag()
-            assert "Dates must be monotonically increasing" in str(exc_info.value)
+            assert "Timestamps must be in ascending order" in str(exc_info.value)
 
 def test_data_processing_with_insufficient_data(sample_data):
     """Test data processing with insufficient data"""
     # Create small dataset
     data = sample_data.iloc[:5]
-    
+
     # Mock data manager functions to return insufficient data
     with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
         with patch('main.data_manager.load_data', return_value=data):

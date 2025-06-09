@@ -15,6 +15,7 @@ import numpy as np  # Add numpy import
 import config
 import sqlite_manager
 import utils
+from data_processing import validate_data as validate_dataframe, process_data, validate_required_columns_and_nans
 
 logger = logging.getLogger(__name__)
 
@@ -424,16 +425,23 @@ def validate_data(db_path: Path) -> bool:
     finally:
         if conn: conn.close()
 
-def manage_data_source() -> Optional[Tuple[Path, str, str]]:
-    """Manage data source selection with improved error handling."""
+def manage_data_source(choice: Optional[int] = None) -> Optional[Tuple[Path, str, str]]:
+    """Manage data source selection with improved error handling.
+    
+    Args:
+        choice (Optional[int]): Pre-selected choice for testing purposes. If None, prompts user for input.
+        
+    Returns:
+        Optional[Tuple[Path, str, str]]: Selected database file, symbol, and timeframe, or None if cancelled
+    """
     try:
-        # Get list of available databases
-        db_files = list(config.DB_DIR.glob("*.db"))
+        # List available databases
+        db_files = list_existing_databases()
         if not db_files:
-            print("No database files found in", config.DB_DIR)
+            logging.warning("No existing databases found")
             return None
             
-        # Display available databases
+        # Print available options
         print("\nAvailable databases:")
         for i, db_file in enumerate(db_files, 1):
             print(f"{i}. {db_file.name}")
@@ -441,17 +449,21 @@ def manage_data_source() -> Optional[Tuple[Path, str, str]]:
         # Get user selection
         while True:
             try:
-                choice = int(input("\nSelect database (number) or 0 to quit: ").strip())
-                if choice == 0:
+                if choice is not None:
+                    selected_choice = choice
+                else:
+                    selected_choice = int(input("\nSelect database (number) or 0 to quit: ").strip())
+                    
+                if selected_choice == 0:
                     return None
-                if 1 <= choice <= len(db_files):
+                if 1 <= selected_choice <= len(db_files):
                     break
                 print(f"Please enter a number between 1 and {len(db_files)}")
             except ValueError:
                 print("Please enter a valid number")
                 
         # Parse symbol and timeframe from filename
-        db_file = db_files[choice - 1]
+        db_file = db_files[selected_choice - 1]
         try:
             symbol, timeframe = db_file.stem.split('_')
         except ValueError:
@@ -511,8 +523,10 @@ def load_data(conn: sqlite3.Connection, symbol: str, timeframe: str) -> Optional
         df.drop('open_time', axis=1, inplace=True)
         
         # Validate data
-        validate_data(df)
-        
+        is_valid, message = validate_dataframe(df)
+        if not is_valid:
+            raise ValueError(f"Data validation failed: {message}")
+            
         return df
     except Exception as e:
         logging.error(f"Failed to load data: {e}")
@@ -566,52 +580,70 @@ class DataManager:
         self.config = config
 
     def save_data(self, df, path):
+        """Save data to file with validation."""
         if df.empty:
             raise ValueError("Cannot save empty DataFrame")
+        is_valid, message = validate_dataframe(df)
+        if not is_valid:
+            raise ValueError(f"Cannot save invalid data: {message}")
         _save_csv(df, path)
 
     def load_data(self, path):
+        """Load data from file with validation."""
         if isinstance(path, pd.DataFrame):
+            is_valid, message = validate_dataframe(path)
+            if not is_valid:
+                raise ValueError(f"Invalid DataFrame: {message}")
             return path
         if not os.path.exists(path):
             raise ValueError(f"File not found: {path}")
-        return _load_csv(path)
+        df = _load_csv(path)
+        is_valid, message = validate_dataframe(df)
+        if not is_valid:
+            raise ValueError(f"Invalid data in file: {message}")
+        return df
 
     def validate_data(self, data):
-        if data.empty:
-            raise ValueError("Empty DataFrame provided")
-        return _validate_data(data)
+        """Validate data using consolidated validation function."""
+        is_valid, message = validate_dataframe(data)
+        if not is_valid:
+            raise ValueError(message)
+        return True
 
     def preprocess_data(self, data):
+        """Preprocess data using consolidated processing function."""
         if data.empty:
             raise ValueError("Empty DataFrame provided")
-        return self.clean_data(data)
+        return process_data(data)
 
     def split_data(self, data, test_size=0.2):
+        """Split data into train and test sets with validation."""
         if data.empty:
             raise ValueError("Empty DataFrame provided")
         if not 0 < test_size < 1:
             raise ValueError("test_size must be between 0 and 1")
+        is_valid, message = validate_dataframe(data)
+        if not is_valid:
+            raise ValueError(f"Cannot split invalid data: {message}")
         return _split_data(data, test_size)
 
     def engineer_features(self, data):
+        """Engineer features with validation."""
         if data.empty:
             raise ValueError("Empty DataFrame provided")
+        is_valid, message = validate_dataframe(data)
+        if not is_valid:
+            raise ValueError(f"Cannot engineer features from invalid data: {message}")
         return data  # Placeholder for feature engineering
 
     def normalize_data(self, data, columns=None):
-        """Normalize data using z-score normalization.
-        
-        Args:
-            data (pd.DataFrame): Input data
-            columns (list, optional): List of columns to normalize. If None, normalizes all numeric columns.
-            
-        Returns:
-            pd.DataFrame: Normalized data with mean=0 and std=1
-        """
+        """Normalize data using z-score normalization with validation."""
         if data.empty:
             raise ValueError("Empty DataFrame provided")
-            
+        is_valid, message = validate_dataframe(data)
+        if not is_valid:
+            raise ValueError(f"Cannot normalize invalid data: {message}")
+        
         df = data.copy()
         
         # Store index if it's datetime
@@ -645,6 +677,10 @@ class DataManager:
         if is_datetime_index:
             df.index = index
         
+        # Only check for required columns and NaNs after normalization
+        is_valid, message = validate_required_columns_and_nans(df)
+        if not is_valid:
+            raise ValueError(message)
         return df
 
     def aggregate_data(self, data, freq, on=None):
