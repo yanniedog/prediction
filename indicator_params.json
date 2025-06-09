@@ -225,14 +225,42 @@
         "type": "custom",
         "required_inputs": ["close"],
         "params": {
-            "timeperiod": {
+            "period": {
                 "type": "int",
                 "min": 1,
-                "max": 200,
+                "max": 100,
                 "default": 1,
-                "description": "Returns period"
+                "description": "Return period"
             }
         },
         "conditions": []
+    },
+    "Volume_Oscillator": {
+        "name": "Volume_Oscillator",
+        "type": "custom",
+        "required_inputs": ["volume"],
+        "params": {
+            "fast_period": {
+                "type": "int",
+                "min": 2,
+                "max": 50,
+                "default": 12,
+                "description": "Fast period"
+            },
+            "slow_period": {
+                "type": "int",
+                "min": 2,
+                "max": 100,
+                "default": 26,
+                "description": "Slow period"
+            }
+        },
+        "conditions": [
+            {
+                "fast_period": {
+                    "lt": "slow_period"
+                }
+            }
+        ]
     }
 }

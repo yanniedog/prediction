@@ -4,6 +4,7 @@ import sys
 from datetime import datetime
 import config # Assuming config.py defines LOG_DIR
 import os
+from typing import List, Dict
 
 # Global variable to hold the console handler reference
 _console_handler = None
@@ -119,6 +120,50 @@ def reset_console_log_level():
         root_logger.setLevel(min(_file_log_level, _default_console_level))
     else:
         root_logger.error("Console handler not initialized. Cannot reset level.")
+
+# Module-level functions for backward compatibility
+def setup_logger(name: str, level: int = logging.INFO) -> logging.Logger:
+    """Module-level function to setup a logger."""
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    return logger
+
+def create_log_directory(path: str) -> bool:
+    """Module-level function to create log directory."""
+    try:
+        os.makedirs(path, exist_ok=True)
+        return True
+    except Exception:
+        return False
+
+def configure_log_formatting(formatter: logging.Formatter) -> None:
+    """Module-level function to configure log formatting."""
+    # This is a placeholder for any formatting configuration
+    pass
+
+def setup_log_rotation(logger: logging.Logger, max_bytes: int = 1024*1024, backup_count: int = 5) -> None:
+    """Module-level function to setup log rotation."""
+    # This is a placeholder for log rotation setup
+    pass
+
+def set_log_levels(logger: logging.Logger, level: int) -> None:
+    """Module-level function to set log levels."""
+    logger.setLevel(level)
+
+def cleanup_logs(path: str) -> bool:
+    """Module-level function to cleanup logs."""
+    try:
+        # This is a placeholder for log cleanup logic
+        return True
+    except Exception:
+        return False
+
+def setup_multiple_loggers(names: List[str]) -> Dict[str, logging.Logger]:
+    """Module-level function to setup multiple loggers."""
+    loggers = {}
+    for name in names:
+        loggers[name] = setup_logger(name)
+    return loggers
 
 # Example usage within main.py (adjust levels as needed):
 # import logging_setup

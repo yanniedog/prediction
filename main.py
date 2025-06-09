@@ -572,6 +572,10 @@ def _select_data_source_and_lag(choice: Optional[int] = None, max_lag: Optional[
                 print("Please enter a valid number")
                 
         # Get date range string
+        # Ensure data index is datetime before calling strftime
+        if not isinstance(data.index[0], pd.Timestamp):
+            # Convert to datetime if it's not already
+            data.index = pd.to_datetime(data.index)
         data_daterange = f"{data.index[0].strftime('%Y%m%d')}-{data.index[-1].strftime('%Y%m%d')}"
         
         return db_path, symbol, timeframe, data, selected_max_lag, symbol_id, timeframe_id, data_daterange

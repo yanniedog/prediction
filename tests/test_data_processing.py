@@ -92,8 +92,9 @@ def test_data_date_range(sample_data):
     assert isinstance(date_range, str)
     assert '2023-01-01' in date_range
     assert '2023-01-31' in date_range
-    # Check format is YYYY-MM-DD-YYYY-MM-DD
-    assert len(date_range.split('-')) == 6
+    # Check format is YYYY-MM-DD-YYYY-MM-DD (with dashes)
+    parts = date_range.split('-')
+    assert len(parts) == 6  # Should have 6 parts: YYYY, MM, DD, YYYY, MM, DD
 
 def test_data_date_range_with_invalid_dates(sample_data_with_invalid_dates):
     """Test date range extraction with invalid dates"""

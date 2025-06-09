@@ -857,3 +857,16 @@ class IndicatorFactory:
             
         else:
             raise ValueError(f"Unsupported method: {method}")
+
+def compute_configured_indicators(data: pd.DataFrame, indicator_configs: List[Dict[str, Any]]) -> Tuple[pd.DataFrame, Set[int]]:
+    """Module-level function to compute configured indicators.
+    
+    Args:
+        data: Input DataFrame with price data
+        indicator_configs: List of indicator configurations
+        
+    Returns:
+        Tuple of (DataFrame with indicators, Set of failed config IDs)
+    """
+    factory = IndicatorFactory()
+    return factory.compute_configured_indicators(data, indicator_configs)

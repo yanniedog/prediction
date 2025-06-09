@@ -136,7 +136,7 @@ def test_prepare_configurations(
     mock_display = MagicMock()
     
     # Test classical path
-    with patch('builtins.input', side_effect=['c', 'y']):
+    with patch('builtins.input', side_effect=['c', 'y'] * 10):  # Provide enough values for all input calls
         with patch('main.sqlite_manager.create_connection') as mock_conn:
             mock_conn_instance = MagicMock()
             mock_cursor = MagicMock()
