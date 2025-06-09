@@ -166,3 +166,4 @@ cython_debug/
 /.venv_old
 temp_test_test_backup_and_restore.db-shm
 temp_test_test_backup_and_restore.db-wal
+*.db-shm

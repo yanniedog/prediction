@@ -448,240 +448,101 @@ def _export_prediction_details(
 
 
 # --- Main Prediction Function ---
-def predict_price(db_path: Path, symbol: str, timeframe: str, final_target_lag: int) -> None:
-    """
-    Main prediction function orchestrator. Predicts for all lags up to final_target_lag.
-    """
-    if not STATSMODELS_AVAILABLE:
-        print("\nError: Prediction requires 'statsmodels'. Cannot proceed.")
-        logger.error("Prediction skipped: statsmodels missing.")
-        return
-    if not isinstance(final_target_lag, int) or final_target_lag <= 0:
-        logger.error(f"Invalid final_target_lag ({final_target_lag}) passed to predict_price.")
-        print(f"\nError: Invalid target lag ({final_target_lag}) provided for prediction.")
-        return
-
-    utils.clear_screen(); print(f"\n--- Price Prediction for {symbol} ({timeframe}) ---");
-    logger.info(f"Starting prediction: {symbol}/{timeframe}, Target Lag: {final_target_lag}")
-
-    # 1. Get latest data point
-    latest_data_df = _get_latest_data_point(db_path)
-    if latest_data_df is None or latest_data_df.empty:
-        print("Error: Cannot load latest data point. Prediction aborted."); return
-    latest_data = latest_data_df.iloc[0]; current_price = latest_data['close']; latest_date = latest_data['date']
-    price_prec = utils.estimate_price_precision(current_price) # Get precision for display
-    print(f"Latest Data: {latest_date.strftime('%Y-%m-%d %H:%M')} UTC - Current Close: {current_price:.{price_prec}f}")
-    print(f"Predicting price path for Lags 1 to {final_target_lag}...")
-
-    # 2. Load full historical data ONCE
-    full_historical_data = data_manager.load_data(db_path)
-    if full_historical_data is None or full_historical_data.empty:
-        print("Error: Failed load full historical data. Prediction aborted."); return
-    # Validate essential columns after loading
-    if 'close' not in full_historical_data.columns or not pd.api.types.is_numeric_dtype(full_historical_data['close']):
-        print("Error: 'close' column missing/invalid. Prediction aborted.")
-        logger.error("Prediction aborted: historical data missing/invalid 'close'.")
-        return
-    if 'date' not in full_historical_data.columns or not pd.api.types.is_datetime64_any_dtype(full_historical_data['date']):
-         print("Error: 'date' column missing/invalid. Prediction aborted.")
-         logger.error("Prediction aborted: historical data missing/invalid 'date'.")
-         return
-    # Final check on historical data length relative to target lag
-    if len(full_historical_data) < final_target_lag + MIN_REGRESSION_POINTS:
-         logger.error(f"Insufficient history ({len(full_historical_data)}) for lag {final_target_lag} + {MIN_REGRESSION_POINTS} regression points.")
-         print(f"\nError: Not enough historical data ({len(full_historical_data)}) to predict up to lag {final_target_lag}. Need at least {final_target_lag + MIN_REGRESSION_POINTS}.")
-         return
-
-    # 3. Get Symbol/Timeframe IDs (Error handling improved)
-    conn_ids = None; sym_id = -1; tf_id = -1
+def predict_price(db_path: Path, symbol: str, timeframe: str, final_target_lag: int) -> Optional[pd.DataFrame]:
+    """Predict price using historical data and indicators."""
+    logger.info(f"Starting price prediction for {symbol} ({timeframe}) with lag {final_target_lag}")
+    
+    # Initialize database connection
+    conn = sqlite_manager.create_connection(str(db_path))
+    if not conn:
+        logger.error(f"Failed to connect to database: {db_path}")
+        return None
+        
     try:
-        conn_ids = sqlite_manager.create_connection(str(db_path))
-        if conn_ids is None: raise ConnectionError("Failed to connect to DB for IDs.")
-        conn_ids.execute("BEGIN;"); # Start transaction for IDs
-        symbol_id = sqlite_manager._get_or_create_id(conn_ids, 'symbols', 'symbol', symbol)
-        timeframe_id = sqlite_manager._get_or_create_id(conn_ids, 'timeframes', 'timeframe', timeframe)
-        conn_ids.commit() # Commit IDs
-        logger.info(f"Using DB IDs - Symbol: {symbol_id}, Timeframe: {timeframe_id}")
-    except Exception as id_err:
-        logger.error(f"Failed get/create DB Symbol/Timeframe IDs: {id_err}", exc_info=True)
-        if conn_ids:
-            try: conn_ids.rollback(); logger.warning("Rolled back transaction for sym/tf IDs due to error.")
-            except Exception as rb_err: logger.error(f"Rollback failed after ID error: {rb_err}")
-        print("\nError: Failed to get Symbol/Timeframe ID. Prediction aborted.")
-        return # Exit if IDs failed
-    finally:
-        if conn_ids: conn_ids.close()
-
-    # --- Prediction Loop ---
-    prediction_results: List[Dict] = []
-    # Cache computed indicators within this prediction run (local scope)
-    indicator_series_cache_predict: Dict[str, pd.DataFrame] = {}
-
-    print("\nCalculating predictions for each lag...")
-    skipped_lags = 0
-    for current_lag in range(1, final_target_lag + 1):
-        print(f" Processing Lag: {current_lag}/{final_target_lag}", end='\r') # Use \r for overwrite
-
-        # 4. Find best predictor for CURRENT lag from leaderboard
-        # logger.info(f"Querying leaderboard for best predictor: Lag {current_lag}") # Reduce noise
-        predictor_info = leaderboard_manager.find_best_predictor_for_lag(current_lag)
-        if not predictor_info:
-            logger.warning(f"No predictor found for Lag = {current_lag}. Skipping this lag."); skipped_lags+=1; continue
-
-        # Validate predictor_info structure
-        ind_name = predictor_info.get('indicator_name')
-        params = predictor_info.get('params') # Already a dict from find_best_predictor...
-        cfg_id = predictor_info.get('config_id_source_db')
-        lb_corr = predictor_info.get('correlation_value')
-
-        if not all([ind_name, isinstance(params, dict), cfg_id is not None, lb_corr is not None]):
-             logger.error(f"Incomplete predictor info from leaderboard for Lag {current_lag}: {predictor_info}. Skipping.")
-             skipped_lags += 1; continue
-
-        # logger.info(f" Predictor for Lag {current_lag}: {ind_name} (CfgID: {cfg_id}), LB Corr: {lb_corr:.4f}") # Reduce noise
-        indicator_config = {'indicator_name': ind_name, 'params': params, 'config_id': cfg_id}
-
-        # 5. Calculate current indicator value (using cached indicator if possible)
-        current_ind_val = None
-        cache_key = f"{ind_name}_{cfg_id}"
-        indicator_df_full = indicator_series_cache_predict.get(cache_key)
-        is_cached_failure_pred = False
-
-        if indicator_df_full is None: # Not cached
-            # logger.info(f"Calculating indicator series for current value {ind_name} (ID: {cfg_id})...") # Reduce noise
-            # Use the already loaded full historical data
-            temp_df = _indicator_factory._compute_single_indicator(
-                data=full_historical_data.copy(),
-                name=ind_name,
-                config=indicator_config
-            )
-            if temp_df is not None and not temp_df.empty:
-                indicator_series_cache_predict[cache_key] = temp_df # Cache result
-                indicator_df_full = temp_df
-            else:
-                logger.error(f"Failed compute indicator {ind_name} Cfg {cfg_id} for current value. Skipping lag {current_lag}.")
-                indicator_series_cache_predict[cache_key] = pd.DataFrame() # Cache failure
-                skipped_lags+=1; continue
-        elif indicator_df_full.empty: # Cached failure
-            logger.warning(f"Skipping lag {current_lag}: Indicator Cfg {cfg_id} previously failed calculation.")
-            is_cached_failure_pred = True # Mark as cached failure
-            skipped_lags+=1; continue
-
-        if is_cached_failure_pred: continue # Skip if marked as failure
-
-        # Extract the current value from the potentially multi-output DataFrame
-        if ind_name is None or cfg_id is None:
-            logger.error("ind_name or cfg_id is None. Skipping lag {current_lag}."); skipped_lags+=1; continue
-        pattern = re.compile(rf"^{re.escape(str(ind_name))}_{cfg_id}(_.*)?$")
-        potential_cols = [col for col in indicator_df_full.columns if pattern.match(col)]
-        if not potential_cols:
-            logger.error(f"Could not find output col for CfgID {cfg_id} in cached/calculated DF. Cols: {list(indicator_df_full.columns)}"); skipped_lags+=1; continue
-        current_ind_col = potential_cols[0] # Use first match
-
-        # Get the last non-NaN value for the current indicator value
-        current_ind_series = indicator_df_full[current_ind_col].dropna()
-        if current_ind_series.empty:
-            logger.error(f"Current indicator series '{current_ind_col}' (Cfg {cfg_id}) is all NaN. Skipping lag {current_lag}.")
-            skipped_lags+=1; continue
-        current_ind_val = current_ind_series.iloc[-1]
-        # logger.info(f" Current Indicator Value (Lag {current_lag}, Cfg {cfg_id}, Col {current_ind_col}): {current_ind_val:.4f}") # Reduce noise
-
-        # 6. Get historical pairs (pass the prediction-specific cache)
-        hist_pairs = _get_historical_indicator_price_pairs(
-            db_path, symbol_id, timeframe_id, indicator_config, current_lag,
-            full_historical_data, indicator_series_cache_predict # Pass prediction cache
-            )
-        if hist_pairs is None:
-             logger.warning(f"Could not get historical pairs for lag {current_lag}. Skipping lag."); skipped_lags+=1; continue
-
-        # 7. Perform regression
-        reg_res = _perform_prediction_regression(hist_pairs, current_ind_val, current_lag)
-        if reg_res is None:
-            logger.warning(f"Regression failed for lag {current_lag}. Skipping lag."); skipped_lags+=1; continue
-
-        # 8. Estimate target date for this specific lag
-        estimated_target_date = utils.estimate_future_date(latest_date, current_lag, timeframe)
-        if not estimated_target_date:
-            logger.warning(f"Could not estimate target date for lag {current_lag}. Using placeholder offset.")
-            estimated_target_date = latest_date + timedelta(days=current_lag) # Crude fallback
-
-        # 9. Store results
-        prediction_results.append({
-            "lag": current_lag,
-            "target_date": estimated_target_date,
-            "predictor_cfg_id": cfg_id,
-            "predictor_name": ind_name,
-            "predictor_params": params, # Store the params dict
-            "predictor_lb_corr": lb_corr,
-            "current_indicator_value": current_ind_val,
-            **reg_res # Unpack all results from regression function
+        # Get symbol and timeframe IDs
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
+        symbol_id = cursor.fetchone()[0]
+        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
+        timeframe_id = cursor.fetchone()[0]
+        
+        # Get historical data
+        query = """
+            SELECT 
+                open_time,
+                open,
+                high,
+                low,
+                close,
+                volume
+            FROM historical_data
+            WHERE symbol_id = ? AND timeframe_id = ?
+            ORDER BY open_time ASC
+        """
+        df = pd.read_sql_query(query, conn, params=(symbol_id, timeframe_id))
+        
+        if df.empty:
+            logger.error(f"No historical data found for {symbol} ({timeframe})")
+            return None
+            
+        # Convert timestamp to datetime
+        df['open_time'] = pd.to_datetime(df['open_time'], unit='ms')
+        df.set_index('open_time', inplace=True)
+        
+        # Compute indicators
+        indicator_factory = IndicatorFactory()
+        df_with_indicators = indicator_factory.compute_indicators(df)
+        
+        if df_with_indicators.empty:
+            logger.error("Failed to compute indicators")
+            return None
+            
+        # Prepare features and target
+        features = df_with_indicators.drop(['open', 'high', 'low', 'close', 'volume'], axis=1)
+        target = df_with_indicators['close'].shift(-final_target_lag)
+        
+        # Remove rows with NaN values
+        valid_idx = ~(features.isna().any(axis=1) | target.isna())
+        features = features[valid_idx]
+        target = target[valid_idx]
+        
+        if len(features) < MIN_REGRESSION_POINTS:
+            logger.error(f"Insufficient samples for prediction: {len(features)} < {MIN_REGRESSION_POINTS}")
+            return None
+            
+        # Train model
+        model = sm.OLS(target, features).fit()
+        
+        # Make predictions
+        predictions = model.predict(features)
+        
+        # Create results DataFrame
+        results = pd.DataFrame({
+            'timestamp': features.index,
+            'actual': target,
+            'predicted': predictions,
+            'error': target - predictions
         })
-    # --- End Prediction Loop ---
-    print() # Newline after loop finishes
-
-    if skipped_lags > 0:
-        print(f"Note: Skipped {skipped_lags} lags due to missing predictors or calculation errors.")
-
-    if not prediction_results:
-        print("\nError: No successful predictions were made for any lag.")
-        return
-
-    # 10. Export Prediction Details to Text File
-    try:
-        safe_symbol = re.sub(r'[\\/*?:"<>|\s]+', '_', symbol)
-        timestamp_str = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
-        export_prefix = f"{timestamp_str}_{safe_symbol}_{timeframe}_predpath_{final_target_lag}lags"
-        _export_prediction_details(
-            prediction_results, export_prefix,
-            symbol, timeframe, latest_date, current_price
-        )
-    except Exception as export_err:
-        logger.error(f"Failed to export prediction details: {export_err}", exc_info=True)
-
-    # 11. Display Final Results Summary (for the MAX lag predicted)
-    final_prediction = prediction_results[-1] # Get the result for the last successful lag
-    final_lag_actual = final_prediction['lag'] # Actual final lag achieved
-
-    pred_p = final_prediction['predicted_value']; ci_l = final_prediction['ci_lower']; ci_u = final_prediction['ci_upper']
-    r2 = final_prediction['r_squared']; reg_corr = final_prediction['correlation']; lb_corr_final = final_prediction['predictor_lb_corr']
-    slope = final_prediction['slope']; intercept = final_prediction['intercept']
-    final_cfg_id = final_prediction['predictor_cfg_id']; final_ind_name = final_prediction['predictor_name']
-    final_target_dt_actual = final_prediction['target_date']
-
-    print("\n--- Final Prediction Summary ---")
-    print(f"Target: {final_lag_actual} periods ({final_target_dt_actual.strftime('%Y-%m-%d %H:%M') if final_target_dt_actual else 'N/A'} UTC)")
-    print(f"Final Predictor: {final_ind_name} (CfgID: {final_cfg_id})")
-    print(f"Predicted Price: {pred_p:.{price_prec}f}")
-    print(f"95% Confidence Interval: [{ci_l:.{price_prec}f} - {ci_u:.{price_prec}f}]")
-    print(f"Regression R2: {r2:.4f} (Final Lag)")
-    print(f"Regression Corr: {reg_corr:.4f} (Leaderboard Corr: {lb_corr_final:.4f} for final lag predictor)")
-    print(f"Model (Final Lag): Price[t+{final_lag_actual}] = {slope:.4f} * Ind[t] + {intercept:.{price_prec}f}")
-
-    # 12. Calculate Yield to Final Target
-    pct_chg = ((pred_p - current_price) / current_price) * 100 if current_price != 0 else 0
-    print(f"\nExpected Gain/Loss vs Current (to Lag {final_lag_actual}): {pct_chg:.2f}%")
-    approx_days = utils.estimate_days_in_periods(final_lag_actual, timeframe)
-    if approx_days is not None and approx_days > 0.1:
-        daily_yield = np.clip(pct_chg / approx_days, -100.0, 100.0) # Clip extreme values
-        print(f"Approx Daily Yield: {daily_yield:.3f}% (over ~{approx_days:.1f} days)")
-    else: print("Cannot estimate meaningful daily yield.")
-
-    # 13. Generate Plot with full prediction path
-    try:
-        # Use the same prefix generated for the export function
-        plot_prefix = export_prefix
-        # Ensure dates/prices start from the actual current data point (lag 0)
-        plot_dates = [latest_date] + [res['target_date'] for res in prediction_results]
-        plot_prices = [current_price] + [res['predicted_value'] for res in prediction_results]
-        plot_ci_lower = [current_price] + [res['ci_lower'] for res in prediction_results]
-        plot_ci_upper = [current_price] + [res['ci_upper'] for res in prediction_results]
-
-        plot_predicted_path(
-            plot_dates, plot_prices, plot_ci_lower, plot_ci_upper,
-            timeframe, symbol, plot_prefix, final_target_lag, # Pass original target lag
-            prediction_results # <<< --- ***** PASS RESULTS HERE *****
-        )
-    except Exception as plot_err: logger.error(f"Failed generate prediction plot: {plot_err}", exc_info=True); print("\nWarning: Could not generate plot.")
+        
+        # Calculate metrics
+        mse = mean_squared_error(target, predictions)
+        rmse = np.sqrt(mse)
+        mae = mean_absolute_error(target, predictions)
+        r2 = r2_score(target, predictions)
+        
+        logger.info(f"Prediction metrics for {symbol} ({timeframe}):")
+        logger.info(f"RMSE: {rmse:.2f}")
+        logger.info(f"MAE: {mae:.2f}")
+        logger.info(f"R2: {r2:.2f}")
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"Error during prediction: {e}", exc_info=True)
+        return None
+    finally:
+        if conn:
+            conn.close()
 
 
 # --- Plotting Function ---
@@ -865,8 +726,8 @@ class Predictor:
         symbol: str,
         timeframe: str,
         final_target_lag: int
-    ) -> None:
-        """Predict future price based on historical data."""
+    ) -> Optional[pd.DataFrame]:
+        """Predict price using historical data and indicators."""
         return predict_price(db_path, symbol, timeframe, final_target_lag)
     
     def plot_predicted_path(

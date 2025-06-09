@@ -2,7 +2,7 @@
 import sqlite3
 import json
 import logging
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List, Tuple, Union
 import numpy as np
 import pandas as pd
 import config
@@ -20,145 +20,191 @@ logger = logging.getLogger(__name__)
 # Check your specific SQLite version if needed, but 900 is generally safe.
 SQLITE_MAX_VARIABLE_NUMBER = config.DEFAULTS.get("sqlite_max_variable_number", 900)
 
-def create_connection(db_path: str, timeout: float = 30.0) -> Optional[sqlite3.Connection]:
+def create_connection(db_path: Union[str, Path], timeout: float = 30.0) -> Optional[sqlite3.Connection]:
     """Create a database connection with retry logic."""
+    db_path = Path(db_path)
     max_retries = 3
     retry_delay = 1.0
     
     for attempt in range(max_retries):
         try:
-            conn = sqlite3.connect(db_path, timeout=timeout)
-            conn.execute("PRAGMA journal_mode=WAL;")  # Enable Write-Ahead Logging
-            conn.execute("PRAGMA busy_timeout=30000;")  # Set busy timeout to 30 seconds
-            conn.execute("PRAGMA synchronous=NORMAL;")  # Faster writes with reasonable safety
-            conn.execute("PRAGMA foreign_keys=ON;")  # Enable foreign key constraints
+            # Create parent directories if they don't exist
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Connect with timeout and other optimizations
+            conn = sqlite3.connect(str(db_path), timeout=timeout)
+            
+            # Set pragmas for better performance and reliability
+            conn.execute("PRAGMA journal_mode=WAL")  # Write-Ahead Logging
+            conn.execute("PRAGMA synchronous=NORMAL")  # Faster writes
+            conn.execute("PRAGMA foreign_keys=ON")  # Enforce foreign key constraints
+            conn.execute("PRAGMA busy_timeout=5000")  # 5 second busy timeout
+            
             return conn
+            
         except sqlite3.Error as e:
             if attempt < max_retries - 1:
                 logger.warning(f"Database connection attempt {attempt + 1} failed: {e}. Retrying...")
-                time.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
+                time.sleep(retry_delay * (2 ** attempt))  # Exponential backoff
             else:
-                logger.error(f"Error connecting to database '{db_path}': {e}", exc_info=True)
+                logger.error(f"Failed to connect to database after {max_retries} attempts: {e}")
                 raise
+                
     return None
 
-def initialize_database(db_path: str, symbol: str, timeframe: str) -> bool:
+def initialize_database(db_path: Union[str, Path], symbol: str, timeframe: str) -> bool:
     """Initialize database with required tables and constraints."""
+    conn = None
     try:
-        # Create database directory if it doesn't exist
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        db_path = Path(db_path)
         
-        # Remove existing database if corrupted
-        if os.path.exists(db_path):
+        # Create parent directories if they don't exist
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Check if database exists and is corrupted
+        if db_path.exists():
             try:
-                conn = create_connection(db_path)
-                if conn is None:
-                    os.remove(db_path)
+                test_conn = create_connection(db_path)
+                if test_conn:
+                    test_conn.close()
             except sqlite3.DatabaseError:
-                os.remove(db_path)
-            except Exception as e:
-                logger.error(f"Error checking database {db_path}: {e}")
-                return False
-        
+                logger.warning(f"Database {db_path} appears to be corrupted. Removing...")
+                db_path.unlink()
+                
+        # Create new connection
         conn = create_connection(db_path)
-        if conn is None:
+        if not conn:
             return False
             
         cursor = conn.cursor()
         
-        # Create tables
+        # Create tables with proper constraints
         cursor.executescript("""
+            -- Symbols table
             CREATE TABLE IF NOT EXISTS symbols (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                symbol TEXT UNIQUE NOT NULL,
+                symbol TEXT NOT NULL UNIQUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             
+            -- Timeframes table
             CREATE TABLE IF NOT EXISTS timeframes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timeframe TEXT UNIQUE NOT NULL,
+                timeframe TEXT NOT NULL UNIQUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             
+            -- Indicators table
             CREATE TABLE IF NOT EXISTS indicators (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
+                name TEXT NOT NULL UNIQUE,
                 type TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(name, type)
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             
+            -- Indicator configurations table
             CREATE TABLE IF NOT EXISTS indicator_configs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 indicator_id INTEGER NOT NULL,
-                params TEXT NOT NULL,
+                params JSON NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (indicator_id) REFERENCES indicators(id),
-                UNIQUE(indicator_id, params)
+                FOREIGN KEY (indicator_id) REFERENCES indicators(id)
+                    ON DELETE CASCADE
             );
             
+            -- Historical data table
             CREATE TABLE IF NOT EXISTS historical_data (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 symbol_id INTEGER NOT NULL,
                 timeframe_id INTEGER NOT NULL,
-                timestamp INTEGER NOT NULL,
+                open_time INTEGER NOT NULL,
                 open REAL NOT NULL,
                 high REAL NOT NULL,
                 low REAL NOT NULL,
                 close REAL NOT NULL,
                 volume REAL NOT NULL,
+                close_time INTEGER NOT NULL,
+                quote_asset_volume REAL,
+                number_of_trades INTEGER,
+                taker_buy_base_asset_volume REAL,
+                taker_buy_quote_asset_volume REAL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (symbol_id) REFERENCES symbols(id),
-                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
-                UNIQUE(symbol_id, timeframe_id, timestamp)
+                FOREIGN KEY (symbol_id) REFERENCES symbols(id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
+                    ON DELETE CASCADE,
+                UNIQUE(symbol_id, timeframe_id, open_time)
             );
             
+            -- Correlations table
             CREATE TABLE IF NOT EXISTS correlations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                indicator1_id INTEGER NOT NULL,
-                indicator2_id INTEGER NOT NULL,
                 symbol_id INTEGER NOT NULL,
                 timeframe_id INTEGER NOT NULL,
-                correlation REAL NOT NULL,
+                indicator_id INTEGER NOT NULL,
                 lag INTEGER NOT NULL,
+                correlation REAL NOT NULL,
+                p_value REAL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (indicator1_id) REFERENCES indicators(id),
-                FOREIGN KEY (indicator2_id) REFERENCES indicators(id),
-                FOREIGN KEY (symbol_id) REFERENCES symbols(id),
-                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
-                UNIQUE(indicator1_id, indicator2_id, symbol_id, timeframe_id, lag)
+                FOREIGN KEY (symbol_id) REFERENCES symbols(id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (indicator_id) REFERENCES indicators(id)
+                    ON DELETE CASCADE,
+                UNIQUE(symbol_id, timeframe_id, indicator_id, lag)
             );
             
+            -- Leaderboard table
             CREATE TABLE IF NOT EXISTS leaderboard (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                indicator_id INTEGER NOT NULL,
                 symbol_id INTEGER NOT NULL,
                 timeframe_id INTEGER NOT NULL,
+                indicator_id INTEGER NOT NULL,
                 lag INTEGER NOT NULL,
-                score REAL NOT NULL,
-                params TEXT NOT NULL,
+                correlation_type TEXT NOT NULL CHECK(correlation_type IN ('positive', 'negative')),
+                correlation_value REAL NOT NULL,
+                config_json TEXT NOT NULL,
+                dataset_daterange TEXT NOT NULL,
+                calculation_timestamp TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (indicator_id) REFERENCES indicators(id),
-                FOREIGN KEY (symbol_id) REFERENCES symbols(id),
-                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
-                UNIQUE(indicator_id, symbol_id, timeframe_id, lag)
+                FOREIGN KEY (symbol_id) REFERENCES symbols(id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (indicator_id) REFERENCES indicators(id)
+                    ON DELETE CASCADE,
+                UNIQUE(symbol_id, timeframe_id, indicator_id, lag, correlation_type)
             );
+            
+            -- Create indices for better query performance
+            CREATE INDEX IF NOT EXISTS idx_historical_data_symbol_timeframe ON historical_data(symbol_id, timeframe_id);
+            CREATE INDEX IF NOT EXISTS idx_historical_data_open_time ON historical_data(open_time);
+            CREATE INDEX IF NOT EXISTS idx_correlations_main ON correlations(symbol_id, timeframe_id, indicator_id, lag);
+            CREATE INDEX IF NOT EXISTS idx_leaderboard_main ON leaderboard(symbol_id, timeframe_id, indicator_id, lag);
+            CREATE INDEX IF NOT EXISTS idx_leaderboard_correlation ON leaderboard(correlation_type, correlation_value);
         """)
         
-        # Insert initial data
+        # Insert initial symbol and timeframe
         cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol,))
         cursor.execute("INSERT OR IGNORE INTO timeframes (timeframe) VALUES (?)", (timeframe,))
         
         conn.commit()
-        conn.close()
+        logger.info(f"Database schema initialized/verified: {db_path}")
         return True
         
-    except Exception as e:
-        logger.error(f"Error initializing database {db_path}: {e}", exc_info=True)
+    except sqlite3.Error as e:
+        logger.error(f"Error initializing database: {e}")
+        if conn:
+            try:
+                conn.rollback()
+            except:
+                pass
+        return False
+    finally:
         if conn:
             conn.close()
-        return False
 
 def recover_database(db_path: str, symbol: str, timeframe: str) -> bool:
     """Attempt to recover a corrupted database."""
@@ -248,7 +294,7 @@ def get_or_create_indicator_config_id(conn: sqlite3.Connection, indicator_name: 
         config_str = json.dumps(params, sort_keys=True, separators=(',', ':'))
 
         # Check if this exact config (indicator_id + hash) already exists
-        cursor.execute("SELECT config_id, config_json FROM indicator_configs WHERE indicator_id = ? AND config_hash = ?", (indicator_id, config_hash))
+        cursor.execute("SELECT id, config_json FROM indicator_configs WHERE indicator_id = ? AND config_hash = ?", (indicator_id, config_hash))
         result = cursor.fetchone()
 
         if result:
@@ -268,7 +314,7 @@ def get_or_create_indicator_config_id(conn: sqlite3.Connection, indicator_name: 
                 new_config_id = cursor.lastrowid
                 if new_config_id is None:
                     # Re-query if insert didn't return ID (should be rare)
-                    cursor.execute("SELECT config_id FROM indicator_configs WHERE indicator_id = ? AND config_hash = ?", (indicator_id, config_hash))
+                    cursor.execute("SELECT id FROM indicator_configs WHERE indicator_id = ? AND config_hash = ?", (indicator_id, config_hash))
                     result_requery = cursor.fetchone()
                     if result_requery: new_config_id = result_requery[0]
                     else: raise sqlite3.Error("INSERT successful but could not retrieve new config_id.")
@@ -279,7 +325,7 @@ def get_or_create_indicator_config_id(conn: sqlite3.Connection, indicator_name: 
                 conn.rollback() # Rollback the failed insert attempt
                 logger.warning(f"IntegrityError inserting config for indicator ID {indicator_id}, hash {config_hash}. Re-querying.")
                 # Re-query to get the ID inserted by the other process
-                cursor.execute("SELECT config_id, config_json FROM indicator_configs WHERE indicator_id = ? AND config_hash = ?", (indicator_id, config_hash))
+                cursor.execute("SELECT id, config_json FROM indicator_configs WHERE indicator_id = ? AND config_hash = ?", (indicator_id, config_hash))
                 result = cursor.fetchone()
                 if result:
                     config_id_found, existing_json = result
@@ -469,12 +515,12 @@ def get_indicator_configs_by_ids(conn: sqlite3.Connection, config_ids: List[int]
             placeholders = ','.join('?' * len(batch_ids)) # Generate placeholders for IN clause
             query = f"""
                 SELECT
-                    ic.config_id,
+                    ic.id,
                     i.name AS indicator_name,
                     ic.config_json
                 FROM indicator_configs ic
                 JOIN indicators i ON ic.indicator_id = i.id
-                WHERE ic.config_id IN ({placeholders});
+                WHERE ic.id IN ({placeholders});
             """
             logger.debug(f"Executing fetch batch {i+1}/{num_batches} for config details ({len(batch_ids)} IDs)")
             cursor.execute(query, batch_ids) # Pass only the batch IDs as parameters

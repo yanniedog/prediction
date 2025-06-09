@@ -4,41 +4,39 @@ from pathlib import Path
 from typing import List, Optional
 
 def extract_files(source_files: List[str], dest_dir: str) -> None:
-    """Extract and copy project files to destination directory.
+    """Extract and copy project files.
     
     Args:
-        source_files: List of source file paths to extract
+        source_files: List of source file paths to copy
         dest_dir: Destination directory path
         
     Raises:
-        ValueError: If source files list is empty, destination is not a directory,
-                   or any source file doesn't exist
+        ValueError: If source_files is empty, dest_dir is not a directory,
+                   source file doesn't exist, or copy operation fails
     """
     if not source_files:
         raise ValueError("No source files provided")
         
-    # Validate destination directory
-    if not os.path.isdir(dest_dir):
-        raise ValueError(f"Destination path is not a directory: {dest_dir}")
+    dest_path = Path(dest_dir)
+    if dest_path.exists() and not dest_path.is_dir():
+        raise ValueError(f"Destination {dest_dir} exists but is not a directory")
         
     # Create destination directory if it doesn't exist
-    os.makedirs(dest_dir, exist_ok=True)
+    dest_path.mkdir(parents=True, exist_ok=True)
     
-    # Validate and copy each source file
-    for src_path in source_files:
-        if not os.path.exists(src_path):
-            raise ValueError(f"Source file does not exist: {src_path}")
+    # Copy each file
+    for src_file in source_files:
+        src_path = Path(src_file)
+        if not src_path.exists():
+            raise ValueError(f"Source file {src_file} does not exist")
+        if not src_path.is_file():
+            raise ValueError(f"Source path {src_file} is not a file")
             
-        if not os.path.isfile(src_path):
-            raise ValueError(f"Source path is not a file: {src_path}")
-            
-        # Get destination path
-        dest_path = os.path.join(dest_dir, os.path.basename(src_path))
-        
         try:
-            shutil.copy2(src_path, dest_path)
-        except (shutil.Error, OSError) as e:
-            raise ValueError(f"Error copying file {src_path}: {e}")
+            dest_file = dest_path / src_path.name
+            shutil.copy2(src_path, dest_file)
+        except Exception as e:
+            raise ValueError(f"Failed to copy {src_file} to {dest_dir}: {str(e)}")
 
 def _filter_files(files: List[str], ext: str) -> List[str]:
     """Filter files by extension."""

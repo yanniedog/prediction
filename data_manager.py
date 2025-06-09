@@ -197,13 +197,15 @@ def _process_klines(klines: List[List[Any]]) -> pd.DataFrame:
 # --- Database Saving ---
 def _save_to_sqlite(df: pd.DataFrame, db_path: str, symbol: str, timeframe: str) -> bool:
     """Saves the DataFrame to SQLite using INSERT OR IGNORE behavior, with stricter type checks."""
-    if df.empty: logger.info("No processed data to save."); return True
+    if df.empty: 
+        logger.info("No processed data to save.")
+        return True
 
     # ---> Final check before saving <---
     min_valid_timestamp_ms = EARLIEST_VALID_DATE.timestamp() * 1000
     if 'open_time' not in df.columns:
-         logger.error("CRITICAL: 'open_time' column missing before save. Aborting.")
-         return False
+        logger.error("CRITICAL: 'open_time' column missing before save. Aborting.")
+        return False
     # Convert to numeric just in case, coercing errors
     open_time_numeric = pd.to_numeric(df['open_time'], errors='coerce')
     if open_time_numeric.isnull().any():
@@ -216,152 +218,109 @@ def _save_to_sqlite(df: pd.DataFrame, db_path: str, symbol: str, timeframe: str)
 
     logger.debug(f"Attempting to save {len(df)} records to {db_path}...")
     conn = sqlite_manager.create_connection(db_path)
-    if not conn: return False
+    if not conn: 
+        return False
 
     try:
         # Get IDs within a transaction
         conn.execute("BEGIN IMMEDIATE;") # Use IMMEDIATE for faster lock acquisition
-        symbol_id = sqlite_manager._get_or_create_id(conn, 'symbols', 'symbol', symbol)
-        timeframe_id = sqlite_manager._get_or_create_id(conn, 'timeframes', 'timeframe', timeframe)
-        # We commit IDs later with the data
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
+        symbol_id = cursor.fetchone()[0]
+        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
+        timeframe_id = cursor.fetchone()[0]
 
+        # Prepare data for insertion
         df_to_insert = df.copy()
         df_to_insert['symbol_id'] = symbol_id
         df_to_insert['timeframe_id'] = timeframe_id
 
-        db_columns = [
-            "symbol_id", "timeframe_id", "open_time", "open", "high", "low", "close", "volume",
-            "close_time", "quote_asset_volume", "number_of_trades",
+        # Ensure all required columns exist
+        required_columns = [
+            "symbol_id", "timeframe_id", "open_time", "open", "high", "low", 
+            "close", "volume", "close_time"
+        ]
+        optional_columns = [
+            "quote_asset_volume", "number_of_trades",
             "taker_buy_base_asset_volume", "taker_buy_quote_asset_volume"
         ]
-        # Ensure only existing columns are selected
-        cols_to_keep = [col for col in db_columns if col in df_to_insert.columns]
-        df_to_insert = df_to_insert[cols_to_keep]
 
-        required_db_cols = ["symbol_id", "timeframe_id", "open_time", "open", "high", "low", "close", "volume", "close_time"]
-        if not all(col in df_to_insert.columns for col in required_db_cols):
-            logger.error(f"DataFrame missing required DB columns for saving: {required_db_cols}. Have: {list(df_to_insert.columns)}. Aborting save.")
+        # Check required columns
+        missing_required = [col for col in required_columns if col not in df_to_insert.columns]
+        if missing_required:
+            logger.error(f"DataFrame missing required columns: {missing_required}")
             conn.rollback()
             return False
 
-        # --- Explicit Type Conversion Before Saving ---
-        logger.debug("Performing explicit type conversion before saving...")
-        type_map = {
-            "symbol_id": 'int64', "timeframe_id": 'int64',
-            "open_time": 'int64', "close_time": 'int64', # Crucial: Ensure these are standard integers
-            "open": 'float64', "high": 'float64', "low": 'float64', "close": 'float64', "volume": 'float64',
-            "quote_asset_volume": 'float64',
-            "number_of_trades": 'float64', # Store as float to allow NULLs easily in SQLite via pandas
-            "taker_buy_base_asset_volume": 'float64', "taker_buy_quote_asset_volume": 'float64'
-        }
-        conversion_errors = False
-        for col, target_type in type_map.items():
-            if col in df_to_insert.columns:
-                try:
-                    current_dtype = df_to_insert[col].dtype
-                    logger.debug(f"Converting column '{col}' (current: {current_dtype}) to {target_type}...")
-                    if pd.api.types.is_integer_dtype(current_dtype) and df_to_insert[col].isnull().any():
-                        # If integer column has nulls, convert to float for SQLite compatibility via pandas
-                         if target_type.startswith('int'):
-                             logger.warning(f"Column '{col}' is integer with NaNs. Converting to float64 for SQLite storage.")
-                             df_to_insert[col] = df_to_insert[col].astype('float64')
-                         else:
-                             df_to_insert[col] = df_to_insert[col].astype(target_type) # Keep target type if already float
-                    elif current_dtype != target_type:
-                         # Explicitly convert non-nullable integers to standard Python int first if possible
-                         if target_type == 'int64' and pd.api.types.is_integer_dtype(current_dtype):
-                             # Ensure it's not already int64 before converting, avoid unnecessary work
-                             if str(current_dtype) != 'int64':
-                                  df_to_insert[col] = df_to_insert[col].astype('int64')
-                         else:
-                             df_to_insert[col] = df_to_insert[col].astype(target_type)
-                except Exception as conv_err:
-                    logger.error(f"Failed to convert column '{col}' to {target_type}: {conv_err}", exc_info=True)
-                    conversion_errors = True
-            else:
-                logger.warning(f"Column '{col}' defined in type_map not found in DataFrame to insert.")
+        # Select only columns that exist in the DataFrame
+        columns_to_insert = required_columns + [col for col in optional_columns if col in df_to_insert.columns]
+        df_to_insert = df_to_insert[columns_to_insert]
 
-        if conversion_errors:
-            logger.error("Errors occurred during type conversion before saving. Aborting.")
-            conn.rollback()
-            return False
-        # --- End Explicit Type Conversion ---
+        # Convert data types
+        for col in df_to_insert.columns:
+            if col in ['open_time', 'close_time', 'number_of_trades']:
+                df_to_insert[col] = pd.to_numeric(df_to_insert[col], downcast='integer')
+            elif col in ['open', 'high', 'low', 'close', 'volume', 'quote_asset_volume', 
+                        'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume']:
+                df_to_insert[col] = pd.to_numeric(df_to_insert[col], downcast='float')
 
-        # Add a final sanity check log for open_time type and min value
-        logger.debug(f"Final check before to_sql: 'open_time' dtype={df_to_insert['open_time'].dtype}, min={df_to_insert['open_time'].min()}")
-        if df_to_insert['open_time'].min() < min_valid_timestamp_ms:
-             logger.error(f"CRITICAL: 'open_time' invalid ({df_to_insert['open_time'].min()}) immediately before to_sql. Aborting.")
-             conn.rollback()
-             return False
-
-        try:
-            # Use pandas to_sql with 'append'. DB's UNIQUE constraint handles duplicates.
-            df_to_insert.to_sql('historical_data', conn, if_exists='append', index=False, method='multi', chunksize=1000)
-            conn.commit() # Commit data and IDs together
-            logger.info(f"Successfully appended {len(df_to_insert)} records to {db_path}. DB's UNIQUE constraint handles duplicates.")
-            return True
-        except sqlite3.IntegrityError as ie:
-             conn.rollback() # Rollback on integrity error
-             logger.warning(f"Integrity error during append (likely duplicate open_time): {ie}. Transaction rolled back.")
-             # Duplicates mean the data is likely already there, consider success?
-             # Let's return False to be safe, as other integrity issues could cause this.
-             return False
-        except sqlite3.Error as db_err: # Catch other DB errors during to_sql
-            conn.rollback()
-            logger.error(f"SQLite error during save: {db_err}. Rolling back.")
-            return False
+        # Insert data
+        df_to_insert.to_sql('historical_data', conn, if_exists='append', index=False, 
+                           method='multi', chunksize=1000)
+        
+        conn.commit()
+        logger.info(f"Successfully saved {len(df)} records to {db_path}")
+        return True
 
     except Exception as e:
-        try: conn.rollback()
-        except: pass
-        logger.error(f"Unexpected error saving data: {e}", exc_info=True)
+        logger.error(f"Error saving data to {db_path}: {e}", exc_info=True)
+        if conn:
+            try:
+                conn.rollback()
+            except:
+                pass
         return False
     finally:
         if conn:
             conn.close()
-            logger.debug(f"Closed connection to {db_path} after save attempt.")
 
 # --- Timestamp & Data Download Control ---
 def _get_last_timestamp(db_path: str, symbol_id: int, timeframe_id: int) -> Optional[int]:
     """Gets the last recorded open_time (milliseconds) from the database."""
     db_file = Path(db_path)
     if not db_file.is_file():
-         logger.info(f"Database file {db_path} not found. No last timestamp available.")
-         return None
+        logger.info(f"Database file {db_path} not found. No last timestamp available.")
+        return None
 
     conn = sqlite_manager.create_connection(db_path)
-    if not conn: return None
+    if not conn: 
+        return None
     try:
         cursor = conn.cursor()
         # Verify table exists first
         cursor.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='historical_data';")
         if cursor.fetchone() is None:
-             logger.warning(f"Table 'historical_data' not found in {db_path}. Cannot get last timestamp.")
-             return None
+            logger.warning(f"Table 'historical_data' not found in {db_path}. Cannot get last timestamp.")
+            return None
 
-        cursor.execute("SELECT MAX(open_time) FROM historical_data WHERE symbol_id = ? AND timeframe_id = ?", (symbol_id, timeframe_id))
+        cursor.execute("SELECT MAX(open_time) FROM historical_data WHERE symbol_id = ? AND timeframe_id = ?", 
+                      (symbol_id, timeframe_id))
         result = cursor.fetchone()
         last_ts = result[0] if result and result[0] is not None else None
 
         if last_ts:
-             # ---> ADDED: Validate last_ts here too <---
-             min_valid_timestamp_ms = EARLIEST_VALID_DATE.timestamp() * 1000
-             if last_ts < min_valid_timestamp_ms:
-                 logger.error(f"Last timestamp found in DB ({last_ts}) is unreasonably old. Treating as no previous data.")
-                 return None
-             # ---> END ADDED VALIDATION <---
-             # ---> Corrected Timestamp Conversion <---
-             last_dt_utc = datetime.fromtimestamp(last_ts/1000).replace(tzinfo=timezone.utc)
-             # ---> End Correction <---
-             logger.info(f"Last timestamp found in DB for SymbolID {symbol_id}, TFID {timeframe_id}: {last_ts} ({last_dt_utc})")
+            # Validate timestamp
+            min_valid_timestamp_ms = EARLIEST_VALID_DATE.timestamp() * 1000
+            if last_ts < min_valid_timestamp_ms:
+                logger.error(f"Last timestamp found in DB ({last_ts}) is unreasonably old. Treating as no previous data.")
+                return None
+            last_dt_utc = datetime.fromtimestamp(last_ts/1000).replace(tzinfo=timezone.utc)
+            logger.info(f"Last timestamp found in DB for SymbolID {symbol_id}, TFID {timeframe_id}: {last_ts} ({last_dt_utc})")
         else:
-             logger.info(f"No previous data found in DB for SymbolID {symbol_id}, TFID {timeframe_id}.")
+            logger.info(f"No previous data found in DB for SymbolID {symbol_id}, TFID {timeframe_id}.")
         return last_ts
-    except sqlite3.Error as e:
-        logger.error(f"Error getting last timestamp from '{db_path}': {e}", exc_info=True)
-        return None
     finally:
-        if conn: conn.close()
+        conn.close()
 
 def download_binance_data(symbol: str, timeframe: str, db_path: Path) -> bool:
     """Downloads/updates historical klines data from Binance into the SQLite database."""

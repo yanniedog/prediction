@@ -221,4 +221,140 @@ def test_database_recovery(temp_db_path, valid_symbol, valid_timeframe):
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
     tables = {row[0] for row in cursor.fetchall()}
     assert "leaderboard" in tables
-    conn.close() 
+    conn.close()
+
+def test_database_initialization():
+    """Test database initialization with required tables and columns."""
+    # Create a test database
+    test_db = Path("test.db")
+    if test_db.exists():
+        test_db.unlink()
+        
+    conn = sqlite3.connect(str(test_db))
+    assert conn is not None, "Failed to create database connection"
+    
+    try:
+        # Initialize database
+        _initialize_database(str(test_db), "BTCUSDT", "1h")
+        
+        # Verify tables exist
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = {row[0] for row in cursor.fetchall()}
+        
+        required_tables = {
+            'symbols', 'timeframes', 'indicators', 'indicator_configs',
+            'historical_data', 'correlations', 'leaderboard'
+        }
+        assert tables.issuperset(required_tables), f"Missing tables: {required_tables - tables}"
+        
+        # Verify columns in historical_data table
+        cursor.execute("PRAGMA table_info(historical_data)")
+        columns = {row[1] for row in cursor.fetchall()}
+        required_columns = {
+            'id', 'symbol_id', 'timeframe_id', 'open_time', 'open', 'high',
+            'low', 'close', 'volume', 'created_at'
+        }
+        assert columns.issuperset(required_columns), f"Missing columns in historical_data: {required_columns - columns}"
+        
+        # Verify foreign key constraints
+        cursor.execute("PRAGMA foreign_key_check")
+        assert cursor.fetchone() is None, "Foreign key constraint violation"
+        
+        # Verify indices
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='index'")
+        indices = {row[0] for row in cursor.fetchall()}
+        required_indices = {
+            'idx_historical_data_symbol_timeframe',
+            'idx_historical_data_open_time',
+            'idx_correlations_symbols',
+            'idx_leaderboard_correlation'
+        }
+        assert indices.issuperset(required_indices), f"Missing indices: {required_indices - indices}"
+        
+    finally:
+        conn.close()
+        if test_db.exists():
+            test_db.unlink()
+
+def test_database_connection_handling():
+    """Test database connection handling and retry logic."""
+    test_db = Path("test.db")
+    if test_db.exists():
+        test_db.unlink()
+        
+    # Test connection creation
+    conn1 = sqlite3.connect(str(test_db))
+    assert conn1 is not None, "Failed to create first connection"
+    
+    # Test concurrent connections
+    conn2 = sqlite3.connect(str(test_db))
+    assert conn2 is not None, "Failed to create second connection"
+    
+    try:
+        # Initialize database
+        _initialize_database(str(test_db), "BTCUSDT", "1h")
+        
+        # Test concurrent writes
+        cursor1 = conn1.cursor()
+        cursor2 = conn2.cursor()
+        
+        # Insert test data
+        cursor1.execute("INSERT INTO symbols (symbol) VALUES (?)", ("BTCUSDT",))
+        cursor2.execute("INSERT INTO timeframes (timeframe) VALUES (?)", ("1d",))
+        
+        conn1.commit()
+        conn2.commit()
+        
+        # Verify data
+        cursor1.execute("SELECT symbol FROM symbols WHERE symbol = ?", ("BTCUSDT",))
+        assert cursor1.fetchone()[0] == "BTCUSDT", "Failed to verify symbol insertion"
+        
+        cursor2.execute("SELECT timeframe FROM timeframes WHERE timeframe = ?", ("1d",))
+        assert cursor2.fetchone()[0] == "1d", "Failed to verify timeframe insertion"
+        
+    finally:
+        conn1.close()
+        conn2.close()
+        if test_db.exists():
+            test_db.unlink()
+
+def test_database_recovery():
+    """Test database recovery from corruption."""
+    test_db = Path("test.db")
+    if test_db.exists():
+        test_db.unlink()
+        
+    # Create and initialize database
+    conn = sqlite3.connect(str(test_db))
+    assert conn is not None, "Failed to create database connection"
+    
+    try:
+        _initialize_database(str(test_db), "BTCUSDT", "1h")
+        
+        # Corrupt database by writing invalid data
+        with open(test_db, 'wb') as f:
+            f.write(b'invalid data')
+            
+        # Attempt to initialize corrupted database
+        _initialize_database(str(test_db), "BTCUSDT", "1h")
+        
+        # Verify database was recreated
+        conn = sqlite3.connect(str(test_db))
+        assert conn is not None, "Failed to connect to recovered database"
+        
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = {row[0] for row in cursor.fetchall()}
+        
+        required_tables = {
+            'symbols', 'timeframes', 'indicators', 'indicator_configs',
+            'historical_data', 'correlations', 'leaderboard'
+        }
+        assert tables.issuperset(required_tables), "Database not properly recovered"
+        
+    finally:
+        if conn:
+            conn.close()
+        if test_db.exists():
+            test_db.unlink() 
