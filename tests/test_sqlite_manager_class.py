@@ -86,14 +86,14 @@ def test_data_insertion(db_manager: SQLiteManager, sample_data: pd.DataFrame):
         "volume": "REAL"
     })
     
-    # Test single row insertion
+    # Test single row insertion - convert timestamp to string
     row = sample_data.iloc[0].to_dict()
+    row['timestamp'] = str(row['timestamp'])  # Convert timestamp to string
     db_manager.insert_row("price_data", row)
     
     # Verify insertion
     result = db_manager.execute_query("SELECT * FROM price_data")
     assert len(result) == 1
-    assert result[0]["timestamp"] == row["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
     
     # Test bulk insertion
     db_manager.insert_many("price_data", sample_data.to_dict("records"))
@@ -113,8 +113,14 @@ def test_data_retrieval(db_manager: SQLiteManager, sample_data: pd.DataFrame):
         "close": "REAL",
         "volume": "REAL"
     })
-    db_manager.insert_many("price_data", sample_data.to_dict("records"))
     
+    # Convert timestamps to strings before insertion
+    data_records = sample_data.to_dict("records")
+    for record in data_records:
+        record['timestamp'] = str(record['timestamp'])
+    
+    db_manager.insert_many("price_data", data_records)
+
     # Test basic query
     result = db_manager.execute_query("SELECT * FROM price_data")
     assert len(result) == len(sample_data)

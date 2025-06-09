@@ -794,7 +794,10 @@ def predict_price_movement(data, indicator_def, params, lag=1):
             # Check for all-NaN data
             if data[col].isna().all():
                 raise ValueError(f"NaN values found in columns: ['{col}']")
-            
+    
+    # Check for negative values in all numeric columns
+    for col in data.columns:
+        if col in data.columns and pd.api.types.is_numeric_dtype(data[col]):
             # Check for negative values in volume column
             if col == 'volume' and (data[col] < 0).any():
                 raise ValueError(f"Negative values found in volume column")

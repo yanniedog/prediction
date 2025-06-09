@@ -334,6 +334,8 @@ def test_execute_and_commit(temp_db):
 
 def test_fetchone_and_fetchall(temp_db):
     conn = _connect(str(temp_db.db_path))
+    # Create the test table first
+    _create_table(conn, "test", "id INTEGER PRIMARY KEY, value TEXT")
     _execute(conn, "INSERT INTO test (value) VALUES (?)", ("abc",))
     _commit(conn)
     one = _fetchone(conn, "SELECT value FROM test")

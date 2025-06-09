@@ -779,13 +779,13 @@ def capture_test_output():
 @pytest.fixture(autouse=True)
 def reset_logging():
     """Reset logging configuration before and after each test."""
-    # Store original handlers
-    original_handlers = logging.getLogger().handlers[:]
+    # Store original level
     original_level = logging.getLogger().level
     
     # Close all existing handlers to prevent ResourceWarnings
-    for handler in original_handlers:
+    for handler in logging.getLogger().handlers[:]:
         try:
+            handler.flush()
             handler.close()
         except Exception:
             pass
@@ -797,14 +797,15 @@ def reset_logging():
     yield
     
     # Close any handlers that might have been created during the test
-    for handler in logging.getLogger().handlers:
+    for handler in logging.getLogger().handlers[:]:
         try:
+            handler.flush()
             handler.close()
         except Exception:
             pass
     
-    # Restore original state
-    logging.getLogger().handlers = original_handlers
+    # Clear all handlers and restore level only
+    logging.getLogger().handlers = []
     logging.getLogger().level = original_level
 
 # Hook to capture test names
