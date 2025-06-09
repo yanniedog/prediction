@@ -6,6 +6,7 @@ import config # Assuming config.py defines LOG_DIR
 import os
 from typing import List, Dict
 from pathlib import Path
+import traceback
 
 # Global variable to hold the console handler reference
 _console_handler = None
@@ -57,8 +58,11 @@ def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_m
 
     log_filename = log_dir / "logfile.txt"
     
-    # Define formatters
-    file_formatter = logging.Formatter('%(asctime)s - %(levelname)-8s - [%(name)s:%(lineno)d] - %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    # Define formatters with enhanced detail for file logging
+    file_formatter = logging.Formatter(
+        '%(asctime)s - %(levelname)-8s - [%(name)s:%(lineno)d] - %(message)s', 
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
     console_formatter = logging.Formatter('%(levelname)s: %(message)s')
 
     # Get root logger and clear existing handlers to prevent duplicate logs
@@ -91,6 +95,17 @@ def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_m
         file_handler = logging.FileHandler(log_filename, mode=file_mode, encoding='utf-8')
         file_handler.setLevel(_file_log_level) # Set level for this specific handler
         file_handler.setFormatter(file_formatter)
+        
+        # Create a custom filter to ensure all warnings, errors, and critical messages are logged
+        class CriticalMessageFilter(logging.Filter):
+            def filter(self, record):
+                # Always log warnings, errors, and critical messages
+                if record.levelno >= logging.WARNING:
+                    return True
+                # For other levels, use the handler's level setting
+                return record.levelno >= self.handler.level
+        
+        file_handler.addFilter(CriticalMessageFilter())
         logger.addHandler(file_handler)
         
         # Force a flush to ensure the file is created and writable
@@ -130,6 +145,40 @@ def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_m
     for handler in logger.handlers:
         if hasattr(handler, 'flush'):
             handler.flush()
+
+def log_with_traceback(level: int, message: str, exc_info=None):
+    """Log a message with full traceback information.
+    
+    Args:
+        level: Logging level (logging.WARNING, logging.ERROR, logging.CRITICAL)
+        message: Message to log
+        exc_info: Exception info (if None, will capture current traceback)
+    """
+    logger = logging.getLogger()
+    
+    # If no exception info provided, capture current traceback
+    if exc_info is None:
+        exc_info = sys.exc_info()
+    
+    # Log with full traceback
+    logger.log(level, message, exc_info=exc_info)
+    
+    # Force flush to ensure immediate writing
+    for handler in logger.handlers:
+        if hasattr(handler, 'flush'):
+            handler.flush()
+
+def log_warning_with_traceback(message: str, exc_info=None):
+    """Log a warning with full traceback information."""
+    log_with_traceback(logging.WARNING, message, exc_info)
+
+def log_error_with_traceback(message: str, exc_info=None):
+    """Log an error with full traceback information."""
+    log_with_traceback(logging.ERROR, message, exc_info)
+
+def log_critical_with_traceback(message: str, exc_info=None):
+    """Log a critical message with full traceback information."""
+    log_with_traceback(logging.CRITICAL, message, exc_info)
 
 def set_console_log_level(level: int):
     """Sets the logging level for the console handler dynamically."""

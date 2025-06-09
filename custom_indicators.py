@@ -198,34 +198,40 @@ def compute_vwap(data: pd.DataFrame) -> pd.DataFrame:
         data: DataFrame with OHLCV data
     Returns:
         DataFrame with VWAP column
+        
     Raises:
         MissingColumnsError: If required columns are missing
-        IndicatorError: For other calculation errors
     """
-    required_cols = ['high', 'low', 'close', 'volume']
-    _check_required_cols(data, required_cols, 'VWAP')
-
-    logger.debug(f"Computing VWAP")
+    required_cols = ['open', 'high', 'low', 'close', 'volume']
+    _check_required_cols(data, required_cols, "VWAP")
+    
+    logger.debug("Computing VWAP")
     result_df = pd.DataFrame(index=data.index)
+    
     try:
-        # Use typical price for VWAP
+        # Calculate typical price
         typical_price = (data['high'] + data['low'] + data['close']) / 3
-        safe_volume = data['volume'].clip(lower=0)
-        # Calculate cumulative terms
-        cum_vol = safe_volume.cumsum()
-        cum_vol_price = (typical_price * safe_volume).cumsum()
+        
+        # Calculate cumulative volume-weighted average price
+        cumulative_tp_volume = (typical_price * data['volume']).cumsum()
+        cumulative_volume = data['volume'].cumsum()
+        
         # Avoid division by zero
-        vwap = cum_vol_price.divide(cum_vol).replace([np.inf, -np.inf], np.nan)
-        # Set VWAP to NaN where current volume is zero
-        vwap[data['volume'] == 0] = np.nan
+        zero_volume_mask = cumulative_volume == 0
+        vwap = pd.Series(np.nan, index=data.index)
+        non_zero_mask = ~zero_volume_mask
+        
+        if non_zero_mask.any():
+            vwap[non_zero_mask] = cumulative_tp_volume[non_zero_mask] / cumulative_volume[non_zero_mask]
+        
         result_df[VWAP] = vwap
         return result_df
+        
     except Exception as e:
         if isinstance(e, MissingColumnsError):
             raise
         logger.error(f"Error calculating VWAP: {e}", exc_info=True)
         raise IndicatorError(f"Failed to calculate VWAP: {e}")
-
 
 def _compute_volume_index(data: pd.DataFrame, col_name: str, volume_condition: Callable[[float], bool]) -> Optional[pd.DataFrame]:
     """Helper function to compute volume-based indices (PVI/NVI).
@@ -320,37 +326,89 @@ def compute_nvi(data: pd.DataFrame) -> pd.DataFrame:
         raise IndicatorError("Failed to calculate NVI")
     return result_df
 
-def compute_returns(data: pd.DataFrame, period: int = 1) -> pd.Series:
-    """Compute simple returns for the given period on the 'close' column."""
+def compute_returns(data: pd.DataFrame, period: int = 1) -> pd.DataFrame:
+    """Compute simple returns for the given period on the 'close' column.
+    
+    Args:
+        data: DataFrame with close price data
+        period: Period for return calculation
+        
+    Returns:
+        DataFrame with returns column
+        
+    Raises:
+        MissingColumnsError: If close column is missing
+        InvalidParameterError: If period is invalid
+    """
     # Accept period as int or dict (from JSON params)
     if isinstance(period, dict):
         period = int(period.get('default', 1))
+    
     _check_required_cols(data, ['close'], 'Returns')
+    
     if not isinstance(period, int) or period < 1:
         raise InvalidParameterError(f"Invalid period: {period}")
-    if len(data) < period + 1:
-        # Not enough data, return a Series of NaN with correct index
-        returns = pd.Series([np.nan] * len(data), index=data.index, name=f"returns_{period}")
-        return returns
-    returns = data['close'].pct_change(periods=period)
-    returns.name = f"returns_{period}"
-    return returns
+    
+    logger.debug(f"Computing Returns: period={period}")
+    result_df = pd.DataFrame(index=data.index)
+    
+    try:
+        if len(data) < period + 1:
+            # Not enough data, return a DataFrame with NaN column
+            result_df[f"returns_{period}"] = np.nan
+            return result_df
+        
+        returns = data['close'].pct_change(periods=period)
+        result_df[f"returns_{period}"] = returns.replace([np.inf, -np.inf], np.nan)
+        return result_df
+        
+    except Exception as e:
+        if isinstance(e, (MissingColumnsError, InvalidParameterError)):
+            raise
+        logger.error(f"Error calculating Returns: {e}", exc_info=True)
+        raise IndicatorError(f"Failed to calculate Returns: {e}")
 
-def compute_volatility(data: pd.DataFrame, period: int = 20) -> pd.Series:
-    """Compute rolling volatility (stddev of returns) for the given period on the 'close' column."""
+def compute_volatility(data: pd.DataFrame, period: int = 20) -> pd.DataFrame:
+    """Compute rolling volatility (stddev of returns) for the given period on the 'close' column.
+    
+    Args:
+        data: DataFrame with close price data
+        period: Period for volatility calculation
+        
+    Returns:
+        DataFrame with volatility column
+        
+    Raises:
+        MissingColumnsError: If close column is missing
+        InvalidParameterError: If period is invalid
+    """
     if isinstance(period, dict):
         period = int(period.get('default', 20))
+    
     _check_required_cols(data, ['close'], 'Volatility')
+    
     if not isinstance(period, int) or period < 1:
         raise InvalidParameterError(f"Invalid period: {period}")
-    if len(data) < period + 1:
-        # Not enough data, return a Series of NaN with correct index
-        volatility = pd.Series([np.nan] * len(data), index=data.index, name=f"volatility_{period}")
-        return volatility
-    returns = data['close'].pct_change()
-    volatility = returns.rolling(window=period).std()
-    volatility.name = f"volatility_{period}"
-    return volatility
+    
+    logger.debug(f"Computing Volatility: period={period}")
+    result_df = pd.DataFrame(index=data.index)
+    
+    try:
+        if len(data) < period + 1:
+            # Not enough data, return a DataFrame with NaN column
+            result_df[f"volatility_{period}"] = np.nan
+            return result_df
+        
+        returns = data['close'].pct_change()
+        volatility = returns.rolling(window=period).std()
+        result_df[f"volatility_{period}"] = volatility.replace([np.inf, -np.inf], np.nan)
+        return result_df
+        
+    except Exception as e:
+        if isinstance(e, (MissingColumnsError, InvalidParameterError)):
+            raise
+        logger.error(f"Error calculating Volatility: {e}", exc_info=True)
+        raise IndicatorError(f"Failed to calculate Volatility: {e}")
 
 def custom_rsi(data, period=14):
     import pandas as pd

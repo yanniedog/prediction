@@ -64,6 +64,28 @@ class IndicatorFactory:
         register_custom_indicator('custom_rsi', custom_rsi)
         register_custom_indicator('returns', compute_returns)
 
+        # --- Automatically register all custom indicators from indicator_params.json ---
+        for ind_name, ind_def in self.indicator_params.items():
+            if ind_def.get('type') == 'custom':
+                func_name = None
+                # Map indicator name to function name
+                if ind_name.lower() == 'vwap':
+                    func_name = 'compute_vwap'
+                elif ind_name.lower() == 'returns':
+                    func_name = 'compute_returns'
+                elif ind_name.lower() in ['volume_oscillator', 'volumeoscillator']:
+                    func_name = 'compute_volume_oscillator'
+                # Add more mappings here if needed
+                if func_name and hasattr(custom_indicators, func_name):
+                    func = getattr(custom_indicators, func_name)
+                    # Only register if not already registered
+                    if ind_name.lower() not in _custom_indicator_registry:
+                        register_custom_indicator(ind_name.lower(), func)
+                        logger.info(f"Auto-registered custom indicator: {ind_name.lower()} -> {func_name}")
+                else:
+                    import logging_setup
+                    logging_setup.log_warning_with_traceback(f"Custom indicator '{ind_name}' defined in params but no function '{func_name}' found in custom_indicators.py")
+
     def _load_params(self) -> Dict[str, Any]:
         """Load indicator parameters from JSON file."""
         try:
@@ -258,25 +280,58 @@ class IndicatorFactory:
                 if key in valid_params:
                     filtered_params[key] = value
             
-            # Prepare input data based on the function signature
-            # Check if the function expects OHLC data
-            if len(sig.parameters) > 1:  # More than just the first parameter
-                param_names = list(sig.parameters.keys())
-                if 'high' in param_names and 'low' in param_names and 'close' in param_names:
-                    if 'open' in param_names:
-                        input_data = (data['open'], data['high'], data['low'], data['close'])
-                    else:
-                        input_data = (data['high'], data['low'], data['close'])
-                elif 'close' in param_names:
-                    input_data = data['close']
-                elif 'volume' in param_names:
-                    input_data = data['volume']
-                else:
-                    # Default to close price
-                    input_data = data['close']
-            else:
-                # Single parameter function, default to close price
+            # Prepare input data based on the function signature and known TA-Lib patterns
+            param_names = list(sig.parameters.keys())
+            
+            # Handle specific TA-Lib functions that require multiple inputs
+            if func_name == 'MFI':
+                # MFI requires high, low, close, volume
+                input_data = (data['high'], data['low'], data['close'], data['volume'])
+            elif func_name == 'ADX':
+                # ADX requires high, low, close
+                input_data = (data['high'], data['low'], data['close'])
+            elif func_name == 'CCI':
+                # CCI requires high, low, close
+                input_data = (data['high'], data['low'], data['close'])
+            elif func_name == 'STOCH':
+                # STOCH requires high, low, close
+                input_data = (data['high'], data['low'], data['close'])
+            elif func_name == 'BBANDS':
+                # BBANDS requires close
                 input_data = data['close']
+            elif func_name == 'ATR':
+                # ATR requires high, low, close
+                input_data = (data['high'], data['low'], data['close'])
+            elif func_name == 'MACD':
+                # MACD requires close
+                input_data = data['close']
+            elif func_name == 'RSI':
+                # RSI requires close
+                input_data = data['close']
+            elif func_name == 'SMA':
+                # SMA requires close
+                input_data = data['close']
+            elif func_name == 'EMA':
+                # EMA requires close
+                input_data = data['close']
+            else:
+                # Generic handling based on parameter names
+                if len(param_names) > 1:  # More than just the first parameter
+                    if 'high' in param_names and 'low' in param_names and 'close' in param_names:
+                        if 'open' in param_names:
+                            input_data = (data['open'], data['high'], data['low'], data['close'])
+                        else:
+                            input_data = (data['high'], data['low'], data['close'])
+                    elif 'close' in param_names:
+                        input_data = data['close']
+                    elif 'volume' in param_names:
+                        input_data = data['volume']
+                    else:
+                        # Default to close price
+                        input_data = data['close']
+                else:
+                    # Single parameter function, default to close price
+                    input_data = data['close']
             
             # Call the function
             if isinstance(input_data, tuple):
@@ -325,10 +380,18 @@ class IndicatorFactory:
     def _compute_custom_indicator(self, data: pd.DataFrame, indicator_name: str, params: Dict[str, Any]) -> pd.DataFrame:
         """Compute a custom indicator."""
         try:
-            if indicator_name not in _custom_indicator_registry:
+            # Try case-insensitive lookup
+            func = None
+            if indicator_name in _custom_indicator_registry:
+                func = _custom_indicator_registry[indicator_name]
+            elif indicator_name.lower() in _custom_indicator_registry:
+                func = _custom_indicator_registry[indicator_name.lower()]
+            elif indicator_name.upper() in _custom_indicator_registry:
+                func = _custom_indicator_registry[indicator_name.upper()]
+            
+            if func is None:
                 raise ValueError(f"Custom indicator {indicator_name} not found")
             
-            func = _custom_indicator_registry[indicator_name]
             results = func(data, **params)
             
             if isinstance(results, pd.Series):

@@ -254,19 +254,30 @@ def recover_database(db_path: str, symbol: str, timeframe: str) -> bool:
 
 def _get_or_create_id(conn: sqlite3.Connection, table: str, column: str, value: Any) -> int:
     """Gets ID for value in lookup table, creating if necessary (case-insensitive lookup). Assumes caller handles transactions."""
-    cursor = conn.cursor()
-    # Ensure value is string for consistent lookup/insertion, handle None
-    str_value = str(value) if value is not None else None
-    if str_value is None: raise ValueError(f"Cannot get/create ID for None value in {table}.{column}")
-    # Use lower case for case-insensitive lookup
-    lookup_value = str_value.lower()
-
     try:
-        # Map table names to their actual column names
+        cursor = conn.cursor()
+        str_value = str(value).strip()
+        lookup_value = str_value.lower()
+        
+        # Special handling for indicators table which requires both name and type
+        if table == 'indicators':
+            # Check if the indicator already exists
+            cursor.execute("SELECT id FROM indicators WHERE LOWER(name) = ?", (lookup_value,))
+            result = cursor.fetchone()
+            if result:
+                return result[0]
+            
+            # Get indicator type from indicator_params.json
+            indicator_type = _get_indicator_type(str_value)
+            
+            # Insert new indicator with both name and type
+            cursor.execute("INSERT INTO indicators (name, type) VALUES (?, ?)", (str_value, indicator_type))
+            return cursor.lastrowid
+        
+        # Standard handling for other tables
         column_map = {
             'symbols': 'symbol',
-            'timeframes': 'timeframe',
-            'indicators': 'name'
+            'timeframes': 'timeframe'
         }
         actual_column = column_map.get(table, column)
         
@@ -285,6 +296,38 @@ def _get_or_create_id(conn: sqlite3.Connection, table: str, column: str, value: 
         logger.error(f"DB error getting/creating ID for '{value}' in '{table}': {e}", exc_info=True)
         # Don't rollback here - let the caller handle the transaction
         raise
+
+def _get_indicator_type(indicator_name: str) -> str:
+    """Get the type of an indicator from indicator_params.json."""
+    try:
+        import json
+        import os
+        
+        # Load indicator parameters
+        params_file = "indicator_params.json"
+        if not os.path.exists(params_file):
+            logger.warning(f"indicator_params.json not found, defaulting to 'talib' for {indicator_name}")
+            return "talib"
+        
+        with open(params_file, 'r') as f:
+            indicator_params = json.load(f)
+        
+        # Try different case variations
+        indicator_key = None
+        for key in indicator_params.keys():
+            if key.upper() == indicator_name.upper():
+                indicator_key = key
+                break
+        
+        if indicator_key and indicator_key in indicator_params:
+            return indicator_params[indicator_key].get('type', 'talib')
+        else:
+            logger.warning(f"Indicator {indicator_name} not found in params, defaulting to 'talib'")
+            return "talib"
+            
+    except Exception as e:
+        logger.error(f"Error getting indicator type for {indicator_name}: {e}")
+        return "talib"  # Default fallback
 
 def get_or_create_indicator_config_id(conn: sqlite3.Connection, indicator_name: str, params: Dict[str, Any]) -> int:
     """Gets the ID for an indicator config, creating if necessary. Manages its own transaction."""

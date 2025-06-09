@@ -656,8 +656,9 @@ def _process_default_config_fast_eval(
         else:
             indicator_df = indicator_factory_instance._compute_single_indicator(
                 data=base_data.copy(),
-                name=indicator_name,
-                config=indicator_config
+                indicator_name=indicator_name,
+                config=indicator_config,
+                params=defaults_full
             )
         # Cache result (or empty DF on failure)
         indicator_series_cache[default_hash] = indicator_df if (indicator_df is not None and not indicator_df.empty) else pd.DataFrame()
