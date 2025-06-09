@@ -992,7 +992,9 @@ def _calculate_indicators_and_correlations(
                          total_analysis_steps_global)
     
     indicator_calc_start = time.time()
-    data_with_indicators, failed_calc_ids = indicator_factory.compute_configured_indicators(
+    # Create an instance of IndicatorFactory and call the method
+    indicator_factory_instance = indicator_factory.IndicatorFactory()
+    data_with_indicators, failed_calc_ids = indicator_factory_instance.compute_configured_indicators(
         data.copy(), 
         indicator_configs_to_process
     )
@@ -1252,6 +1254,13 @@ def _generate_final_reports_and_predict(
 # --- Main Analysis Orchestration ---
 def run_analysis():
     """Run the main analysis with improved error handling."""
+    
+    # Define a simple progress display function
+    def display_progress(message: str, current_step: float, total_steps: int):
+        """Simple progress display function."""
+        progress = (current_step / total_steps) * 100
+        print(f"[{progress:.1f}%] {message}")
+    
     try:
         # Setup and mode selection
         timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")

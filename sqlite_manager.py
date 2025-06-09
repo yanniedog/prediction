@@ -1234,6 +1234,111 @@ class SQLiteManager:
                 conn.close()
             return []
 
+    def is_connected(self) -> bool:
+        """Check if the database is connected."""
+        try:
+            if self.conn is None:
+                return False
+            # Test the connection with a simple query
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+            return True
+        except Exception:
+            return False
+
+    def get_tables(self) -> List[str]:
+        """Get list of all tables in the database."""
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            return [row[0] for row in cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Error getting tables: {e}")
+            return []
+
+    def insert_row(self, table_name: str, data: Dict[str, Any]) -> bool:
+        """Insert a single row into a table."""
+        try:
+            cursor = self.conn.cursor()
+            columns = list(data.keys())
+            placeholders = ','.join(['?' for _ in columns])
+            values = list(data.values())
+            
+            query = f"INSERT INTO {table_name} ({','.join(columns)}) VALUES ({placeholders})"
+            cursor.execute(query, values)
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error inserting row into {table_name}: {e}")
+            return False
+
+    def update_row(self, table_name: str, data: Dict[str, Any], where_conditions: Dict[str, Any]) -> bool:
+        """Update a single row in a table."""
+        try:
+            cursor = self.conn.cursor()
+            set_clause = ','.join([f"{k}=?" for k in data.keys()])
+            where_clause = ' AND '.join([f"{k}=?" for k in where_conditions.keys()])
+            
+            query = f"UPDATE {table_name} SET {set_clause} WHERE {where_clause}"
+            values = list(data.values()) + list(where_conditions.values())
+            
+            cursor.execute(query, values)
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating row in {table_name}: {e}")
+            return False
+
+    def update_many(self, table_name: str, data: Dict[str, Any], where_conditions: Dict[str, Any]) -> bool:
+        """Update multiple rows in a table."""
+        try:
+            cursor = self.conn.cursor()
+            set_clause = ','.join([f"{k}=?" for k in data.keys()])
+            where_clause = ' AND '.join([f"{k}=?" for k in where_conditions.keys()])
+            
+            query = f"UPDATE {table_name} SET {set_clause} WHERE {where_clause}"
+            values = list(data.values()) + list(where_conditions.values())
+            
+            cursor.execute(query, values)
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating rows in {table_name}: {e}")
+            return False
+
+    def delete_row(self, table_name: str, where_conditions: Dict[str, Any]) -> bool:
+        """Delete a single row from a table."""
+        try:
+            cursor = self.conn.cursor()
+            where_clause = ' AND '.join([f"{k}=?" for k in where_conditions.keys()])
+            
+            query = f"DELETE FROM {table_name} WHERE {where_clause}"
+            values = list(where_conditions.values())
+            
+            cursor.execute(query, values)
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting row from {table_name}: {e}")
+            return False
+
+    def delete_many(self, table_name: str, where_conditions: Dict[str, Any]) -> bool:
+        """Delete multiple rows from a table."""
+        try:
+            cursor = self.conn.cursor()
+            where_clause = ' AND '.join([f"{k}=?" for k in where_conditions.keys()])
+            
+            query = f"DELETE FROM {table_name} WHERE {where_clause}"
+            values = list(where_conditions.values())
+            
+            cursor.execute(query, values)
+            self.conn.commit()
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting rows from {table_name}: {e}")
+            return False
+
 class TransactionContext:
     """Context manager for database transactions."""
     
@@ -1257,3 +1362,44 @@ class TransactionContext:
                 # Commit on success
                 self.conn.commit()
             self.conn.close()
+
+# Helper functions for tests
+def _connect(db_path: str) -> sqlite3.Connection:
+    """Create a connection to the database."""
+    return create_connection(db_path)
+
+def _close(conn: sqlite3.Connection) -> None:
+    """Close a database connection."""
+    if conn:
+        conn.close()
+
+def _execute(conn: sqlite3.Connection, query: str, params: tuple = ()) -> None:
+    """Execute a SQL query."""
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+
+def _commit(conn: sqlite3.Connection) -> None:
+    """Commit a transaction."""
+    conn.commit()
+
+def _fetchone(conn: sqlite3.Connection, query: str, params: tuple = ()) -> tuple:
+    """Fetch one row from a query."""
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    return cursor.fetchone()
+
+def _fetchall(conn: sqlite3.Connection, query: str, params: tuple = ()) -> list:
+    """Fetch all rows from a query."""
+    cursor = conn.cursor()
+    cursor.execute(query, params)
+    return cursor.fetchall()
+
+def _create_table(conn: sqlite3.Connection, table_name: str, schema: str) -> None:
+    """Create a table."""
+    cursor = conn.cursor()
+    cursor.execute(f"CREATE TABLE {table_name} ({schema})")
+
+def _drop_table(conn: sqlite3.Connection, table_name: str) -> None:
+    """Drop a table."""
+    cursor = conn.cursor()
+    cursor.execute(f"DROP TABLE {table_name}")

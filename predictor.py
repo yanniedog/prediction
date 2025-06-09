@@ -277,12 +277,13 @@ def _calculate_or_get_cached_indicator(
         # Calculate new indicator values
         indicator_df = _indicator_factory._compute_single_indicator(  # Use internal method
             data=data.copy(),
-            name=indicator_name,
+            indicator_name=indicator_name,
             config={
                 'indicator_name': indicator_name,
                 'params': params,
                 'config_id': config_id
-            }
+            },
+            params=params
         )
         
         if indicator_df is not None:
@@ -491,7 +492,7 @@ def predict_price(db_path: Path, symbol: str, timeframe: str, final_target_lag: 
         df.set_index('open_time', inplace=True)
         
         # Compute indicators
-        indicator_factory = IndicatorFactory()
+        indicator_factory = indicator_factory.IndicatorFactory()
         df_with_indicators = indicator_factory.compute_indicators(df)
         
         if df_with_indicators.empty:
@@ -765,6 +766,12 @@ def predict_price_movement(data, indicator_def, params, lag=1):
         raise ValueError("Invalid parameters")
     if lag <= 0:
         raise ValueError("Lag must be positive")
+    
+    # Validate required inputs
+    required_inputs = indicator_def.get('required_inputs', ['close'])
+    missing_cols = [col for col in required_inputs if col not in data.columns]
+    if missing_cols:
+        raise ValueError(f"Missing required columns: {missing_cols}")
     
     # Extract indicator name from indicator_def
     if isinstance(indicator_def, dict):
