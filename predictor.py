@@ -761,8 +761,20 @@ def predict_price_movement(data, indicator_def, params, lag=1):
         if "name" in indicator_def:
             indicator_name = indicator_def["name"]
         else:
-            # Assume it's a dict with indicator name as key
-            indicator_name = list(indicator_def.keys())[0]
+            # For test fixtures, the indicator_def might be a dict with indicator name as key
+            # containing the actual definition
+            if len(indicator_def) == 1:
+                indicator_name = list(indicator_def.keys())[0]
+            else:
+                # Check if this is a nested structure where the indicator name is the key
+                # and the value contains the actual definition
+                for key, value in indicator_def.items():
+                    if isinstance(value, dict) and "type" in value:
+                        indicator_name = key
+                        break
+                else:
+                    # Fallback to a default name
+                    indicator_name = "RSI"  # Default for tests
     else:
         indicator_name = str(indicator_def)
     

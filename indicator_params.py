@@ -54,9 +54,9 @@ def validate_indicator_params(name: str, params: dict) -> bool:
     if name not in defs:
         raise KeyError(name)
     definition = defs[name]
-    if 'parameters' not in definition:
+    if 'params' not in definition:
         raise ValueError("No parameters defined for indicator")
-    for param, spec in definition['parameters'].items():
+    for param, spec in definition['params'].items():
         if param not in params:
             raise ValueError(f"Missing parameter: {param}")
         value = params[param]

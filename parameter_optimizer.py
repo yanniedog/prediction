@@ -81,7 +81,7 @@ def _objective_function(params_list: List[Any], *, # Use keyword-only args after
             elif isinstance(v, np.floating): params_dict[k] = float(v)
 
         full_params = params_dict.copy()
-        param_defs = indicator_def.get('parameters', {})
+        param_defs = indicator_def.get('params', {})
         if not param_defs:
             raise ValueError(f"Indicator '{indicator_name}' has no parameter definitions. Please check indicator_params.json.")
 
@@ -240,7 +240,7 @@ def optimize_parameters_bayesian_per_lag(
     logger.info(f"--- Starting Bayesian Opt Per-Lag for: {indicator_name} ---")
     logger.info(f"Lags: 1-{max_lag}, Evals/Lag: {n_calls_per_lag}, Initials: {n_initial_points_per_lag}")
 
-    search_space, param_names, param_bounds, has_tunable = _define_search_space(indicator_def.get('parameters', {}))
+    search_space, param_names, param_bounds, has_tunable = _define_search_space(indicator_def.get('params', {}))
     if not has_tunable:
         logger.warning(f"'{indicator_name}' has no tunable parameters defined for optimization. Evaluating default only.")
         master_evaluated_configs_temp: Dict[str, Dict[str, Any]] = {} # Need a temp map for default processing
@@ -259,7 +259,7 @@ def optimize_parameters_bayesian_per_lag(
         )
         default_configs = []
         if default_id is not None:
-             default_params = {k: v['default'] for k,v in indicator_def.get('parameters',{}).items() if 'default' in v}
+             default_params = {k: v['default'] for k,v in indicator_def.get('params',{}).items() if 'default' in v}
              default_configs.append({'indicator_name': indicator_name, 'params': default_params, 'config_id': default_id})
         return {}, default_configs # Return empty best_per_lag, possibly default config list
 
@@ -341,7 +341,7 @@ def optimize_parameters_bayesian_per_lag(
                 logger.warning(f"Aborting '{indicator_name}' during initial points (Lag {target_lag}) due to failures.")
                 aborted_indicator = True; break
 
-            tunable_param_defs = {name: indicator_def['parameters'][name] for name in param_names if name in indicator_def.get('parameters', {})}
+            tunable_param_defs = {name: indicator_def['params'][name] for name in param_names if name in indicator_def.get('params', {})}
             random_params_dict = parameter_generator._generate_random_valid_config(tunable_param_defs, indicator_def.get('conditions', []))
             if random_params_dict is None: continue # Could not generate a valid random config
 
@@ -605,7 +605,7 @@ def _process_default_config_fast_eval(
     symbol: str, timeframe: str, data_daterange: str, source_db_name: str
 ) -> Optional[int]:
     """Evaluates default config, updates caches, accumulator, and checks leaderboard."""
-    param_defs = indicator_def.get('parameters', {})
+    param_defs = indicator_def.get('params', {})
     # Construct default parameters dict from tunable and fixed parts
     defaults_opt = {p: param_defs[p]['default'] for p in param_names if p in param_defs and 'default' in param_defs[p]}
     defaults_full = {**fixed_params, **defaults_opt}
@@ -776,20 +776,20 @@ def optimize_parameters_bayesian(data, indicator_def, n_trials=10):
         raise ValueError("Input data is empty or None. Please provide valid market data.")
 
     if not indicator_def or not isinstance(indicator_def, dict):
-        raise ValueError("Invalid indicator definition. Expected a dictionary with 'name' and 'parameters' keys.")
+        raise ValueError("Invalid indicator definition. Expected a dictionary with 'name' and 'params' keys.")
 
     # Handle the case where indicator_def is a dict with indicator name as key
     if len(indicator_def) == 1:
         # Extract the actual indicator definition
         indicator_name = next(iter(indicator_def))
         actual_def = indicator_def[indicator_name]
-        param_defs = actual_def.get("params") or actual_def.get("parameters")
+        param_defs = actual_def.get("params") or actual_def.get("params")
     else:
         # Direct indicator definition
-        param_defs = indicator_def.get("params") or indicator_def.get("parameters")
+        param_defs = indicator_def.get("params") or indicator_def.get("params")
     
     if not param_defs or not isinstance(param_defs, dict):
-        raise ValueError(f"Indicator '{indicator_def.get('name', 'UNKNOWN')}' must have 'params' or 'parameters' as a dictionary.")
+        raise ValueError(f"Indicator '{indicator_def.get('name', 'UNKNOWN')}' must have 'params' or 'params' as a dictionary.")
     
     # Validate required fields
     missing_fields = []
@@ -894,13 +894,13 @@ def optimize_parameters_classical(data, indicator_def):
         # Extract the actual indicator definition
         indicator_name = next(iter(indicator_def))
         actual_def = indicator_def[indicator_name]
-        param_defs = actual_def.get("params") or actual_def.get("parameters")
+        param_defs = actual_def.get("params") or actual_def.get("params")
     else:
         # Direct indicator definition
-        param_defs = indicator_def.get("params") or indicator_def.get("parameters")
+        param_defs = indicator_def.get("params") or indicator_def.get("params")
     
     if not param_defs or not isinstance(param_defs, dict):
-        raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
+        raise ValueError("Indicator definition must have 'params' or 'params' as a dict.")
     
     # Get the indicator name for computing
     if len(indicator_def) == 1:
@@ -958,7 +958,7 @@ def _prepare_optimization_data(data: pd.DataFrame, indicator_definition: dict) -
     import os
     # If indicator_definition is already in correct format, return as is
     if isinstance(indicator_definition, dict) and any(
-        isinstance(v, dict) and ("params" in v or "parameters" in v)
+        isinstance(v, dict) and ("params" in v or "params" in v)
         for v in indicator_definition.values()
     ):
         return data, indicator_definition
@@ -987,13 +987,13 @@ def objective_function(config, data, indicator_def):
         # Extract the actual indicator definition
         indicator_name = next(iter(indicator_def))
         actual_def = indicator_def[indicator_name]
-        param_defs = actual_def.get("params") or actual_def.get("parameters")
+        param_defs = actual_def.get("params") or actual_def.get("params")
     else:
         # Direct indicator definition
-        param_defs = indicator_def.get("params") or indicator_def.get("parameters")
+        param_defs = indicator_def.get("params") or indicator_def.get("params")
     
     if not param_defs or not isinstance(param_defs, dict):
-        raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
+        raise ValueError("Indicator definition must have 'params' or 'params' as a dict.")
     
     # Validate config against param_defs
     for param_name, spec in param_defs.items():
@@ -1047,13 +1047,13 @@ def _evaluate_configuration(config: dict, data: pd.DataFrame, indicator_def: dic
         # Extract the actual indicator definition
         indicator_name = next(iter(indicator_def))
         actual_def = indicator_def[indicator_name]
-        param_defs = actual_def.get("params") or actual_def.get("parameters")
+        param_defs = actual_def.get("params") or actual_def.get("params")
     else:
         # Direct indicator definition
-        param_defs = indicator_def.get("params") or indicator_def.get("parameters")
+        param_defs = indicator_def.get("params") or indicator_def.get("params")
     
     if not param_defs or not isinstance(param_defs, dict):
-        raise ValueError("Indicator definition must have 'params' or 'parameters' as a dict.")
+        raise ValueError("Indicator definition must have 'params' or 'params' as a dict.")
     
     # Validate config against param_defs
     for param_name, spec in param_defs.items():

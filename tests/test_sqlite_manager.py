@@ -13,15 +13,12 @@ from pathlib import Path
 @pytest.fixture(scope="function")
 def temp_db(tmp_path):
     db_path = tmp_path / "test.db"
-    conn = sqlite3.connect(db_path)
-    conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, value TEXT)")
-    conn.commit()
-    conn.close()
-    return db_path
+    sqlite_manager = SQLiteManager(str(db_path))
+    return sqlite_manager
 
 @pytest.fixture(scope="function")
 def sqlite_manager(temp_db):
-    return SQLiteManager(str(temp_db))
+    return temp_db
 
 @pytest.mark.timeout(10)  # 10 second timeout for each test
 def test_sqlite_manager_initialization(temp_db):

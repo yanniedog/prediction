@@ -57,8 +57,9 @@ def test_end_to_end_pipeline(temp_dir, sample_data):
     indicators = factory.compute_indicators(loaded, {"RSI": {"timeperiod": 14}})
     loaded["RSI"] = indicators["RSI"]
     
-    # Predict
-    preds = predict_price_movement(loaded, indicator_name="RSI", lag=1, params={"timeperiod": 14})
+    # Predict - fix the function call to use correct parameters
+    indicator_def = {"RSI": {"type": "talib", "required_inputs": ["close"], "params": {"timeperiod": {"default": 14, "min": 2, "max": 100}}}}
+    preds = predict_price_movement(loaded, indicator_def, {"timeperiod": 14}, lag=1)
     loaded["pred"] = preds
     
     # Backtest

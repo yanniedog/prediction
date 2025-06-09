@@ -178,8 +178,13 @@ class IndicatorFactory:
                 input_data = data[input_name]
                 # Convert datetime columns to numeric if needed
                 if pd.api.types.is_datetime64_any_dtype(input_data):
-                    # Convert datetime to numeric (timestamp)
-                    input_data = input_data.astype(np.int64) // 10**9  # Convert to seconds
+                    # Convert datetime to numeric (timestamp) - use safer conversion
+                    try:
+                        # Convert to pandas timestamp first, then to numeric
+                        input_data = pd.to_numeric(input_data, errors='coerce')
+                    except (ValueError, TypeError, OverflowError):
+                        # Fallback: convert to seconds since epoch
+                        input_data = input_data.astype('datetime64[s]').astype(np.int64)
                 elif not pd.api.types.is_numeric_dtype(input_data):
                     # Try to convert to numeric
                     try:
