@@ -268,15 +268,13 @@ def test_data():
 
 @pytest.fixture
 def sample_data():
-    """Provide sample data for testing."""
+    """Create sample data for testing."""
     dates = pd.date_range(start='2020-01-01', periods=100, freq='h')
-    np.random.seed(42)  # For reproducibility
-    
     data = pd.DataFrame({
         'timestamp': dates,
         'open': np.random.normal(100, 1, 100).cumsum() + 1000,
-        'high': np.random.normal(101, 1, 100).cumsum() + 1000,
-        'low': np.random.normal(99, 1, 100).cumsum() + 1000,
+        'high': np.random.normal(100, 1, 100).cumsum() + 1000,
+        'low': np.random.normal(100, 1, 100).cumsum() + 1000,
         'close': np.random.normal(100, 1, 100).cumsum() + 1000,
         'volume': np.random.lognormal(10, 1, 100)
     })
@@ -285,8 +283,9 @@ def sample_data():
     data['high'] = data[['open', 'close', 'high']].max(axis=1)
     data['low'] = data[['open', 'close', 'low']].min(axis=1)
     
-    # Ensure no NaN values
-    data = data.ffill().bfill().astype(float)
+    # Ensure no NaN values - only convert numeric columns to float
+    numeric_columns = ['open', 'high', 'low', 'close', 'volume']
+    data[numeric_columns] = data[numeric_columns].ffill().bfill().astype(float)
     
     return data
 
