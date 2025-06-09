@@ -395,18 +395,21 @@ class IndicatorFactory:
                     expected_type = param_def['type']
                     if expected_type == 'int':
                         try:
-                            value = int(value)
-                            params[param_name] = value  # Update with converted value
+                            if value is not None:  # Skip validation for None values
+                                value = int(value)
+                                params[param_name] = value  # Update with converted value
                         except (ValueError, TypeError):
                             raise ValueError(f"Parameter '{param_name}' must be integer for indicator '{indicator_name}'")
                     elif expected_type == 'float':
                         try:
-                            value = float(value)
-                            params[param_name] = value  # Update with converted value
+                            if value is not None:  # Skip validation for None values
+                                value = float(value)
+                                params[param_name] = value  # Update with converted value
                         except (ValueError, TypeError):
                             raise ValueError(f"Parameter '{param_name}' must be numeric for indicator '{indicator_name}'")
                     elif expected_type == 'str' and not isinstance(value, str):
-                        raise ValueError(f"Parameter '{param_name}' must be string for indicator '{indicator_name}'")
+                        if value is not None:  # Skip validation for None values
+                            raise ValueError(f"Parameter '{param_name}' must be string for indicator '{indicator_name}'")
                 
                 # Validate range
                 if 'min' in param_def and value < param_def['min']:

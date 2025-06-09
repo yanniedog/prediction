@@ -835,6 +835,24 @@ def generate_consistency_report(
         output_filepath.parent.mkdir(parents=True, exist_ok=True)
         output_filepath.write_text(output_string, encoding='utf-8')
         logger.info(f"Consistency report saved to: {output_filepath}")
+        
+        # Generate heatmap visualization
+        try:
+            import visualization_generator
+            heatmap_path = visualization_generator.generate_enhanced_heatmap(
+                correlations_by_config_id=correlations_by_config_id,
+                indicator_configs_processed=indicator_configs_processed,
+                max_lag=max_lag,
+                output_dir=output_dir,
+                file_prefix=file_prefix
+            )
+            if heatmap_path:
+                logger.info(f"Consistency heatmap saved to: {heatmap_path}")
+            else:
+                logger.warning("Failed to generate consistency heatmap")
+        except Exception as heatmap_error:
+            logger.error(f"Error generating consistency heatmap: {heatmap_error}")
+        
         # ** Removed print statement **
         return True
     except Exception as e:

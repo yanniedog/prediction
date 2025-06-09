@@ -374,7 +374,12 @@ def _generate_range_values(min_val, max_val, num_values, is_int=True, default=No
     # Ensure default is included
     if default is not None and default not in values:
         values.append(default)
-        values = sorted(set(values))
+        # Only sort if all values are of the same type
+        try:
+            values = sorted(set(values))
+        except TypeError:
+            # If sorting fails due to mixed types, just remove duplicates
+            values = list(set(values))
     
     return values
 

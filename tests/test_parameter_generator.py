@@ -933,7 +933,7 @@ def test_generate_random_valid_config_impossible_conditions(sample_parameter_def
     config = _generate_random_valid_config(sample_parameter_definitions, impossible_conditions)
     assert config is None  # Should return None for impossible conditions
 
-def test_generate_random_valid_config_no_conditions():
+def test_generate_random_valid_config_no_conditions(sample_parameter_definitions):
     """Test generating random valid configuration with no conditions."""
     config = _generate_random_valid_config(sample_parameter_definitions, [])
     assert config is not None

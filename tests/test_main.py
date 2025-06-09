@@ -528,7 +528,7 @@ def test_error_handling(temp_dir: Path) -> None:
                 mock_cursor.execute.side_effect = sqlite3.OperationalError("no such table: timeframes")
                 mock_conn_instance.cursor.return_value = mock_cursor
                 mock_conn.return_value = mock_conn_instance
-                with pytest.raises(ValueError):
+                with pytest.raises(sqlite3.OperationalError):
                     main._select_data_source_and_lag()
 
     # Force cleanup after each test case

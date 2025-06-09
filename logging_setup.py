@@ -98,6 +98,9 @@ def setup_logging(file_level=logging.WARNING, console_level=logging.INFO, file_m
         # Force a flush to ensure the file is created and writable
         file_handler.flush()
         
+        # Write a test message to ensure the file is working
+        logger.info(f"Logging initialized (Console: {logging.getLevelName(_default_console_level)}, File: {logging.getLevelName(_file_log_level)}, Mode: '{file_mode}', Path: {log_filename})")
+        
     except Exception as e:
         print(f"CRITICAL ERROR setting up file logging: {e}", file=sys.stderr)
         # Consider exiting if file logging is essential and fails

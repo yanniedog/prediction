@@ -246,7 +246,7 @@ def test_objective_function_invalid_params(
 # Test _define_search_space
 def test_define_search_space(sample_indicator_definition):
     """Test search space definition."""
-    param_defs = sample_indicator_definition['parameters']
+    param_defs = sample_indicator_definition['RSI']['params']
     space, param_names, param_bounds, has_categorical = _define_search_space(param_defs)
     
     assert isinstance(space, list)
