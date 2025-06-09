@@ -429,8 +429,11 @@ def test_error_handling(temp_dir: Path) -> None:
             with pytest.raises(ValueError):
                 main._select_data_source_and_lag()
 
-    # Test database connection failure - mock the database operations
-    with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
+    # Test database connection failure - create a proper test database first
+    test_db_path = temp_dir / "test.db"
+    _initialize_database(test_db_path, "BTCUSD", "1h")
+    
+    with patch('main.data_manager.manage_data_source', return_value=(test_db_path, "BTCUSD", "1h")):
         with patch('main.data_manager.load_data', return_value=pd.DataFrame({'close': [1, 2, 3]})):
             with patch('main.sqlite_manager.create_connection', return_value=None):
                 with pytest.raises(ValueError):

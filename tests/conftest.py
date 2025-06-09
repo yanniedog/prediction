@@ -342,7 +342,7 @@ def indicator_defs():
             }
         },
         "BB": {
-            "name": "BB",
+            "name": "BBANDS",
             "type": "talib",
             "required_inputs": ["close"],
             "params": {
@@ -360,6 +360,28 @@ def indicator_defs():
                     "min": 0.1,
                     "max": 5.0,
                     "default": 2.0
+                }
+            }
+        },
+        "MACD": {
+            "name": "MACD",
+            "type": "talib",
+            "required_inputs": ["close"],
+            "params": {
+                "fastperiod": {
+                    "min": 2,
+                    "max": 200,
+                    "default": 12
+                },
+                "slowperiod": {
+                    "min": 2,
+                    "max": 200,
+                    "default": 26
+                },
+                "signalperiod": {
+                    "min": 2,
+                    "max": 200,
+                    "default": 9
                 }
             }
         }

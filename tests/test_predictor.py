@@ -199,7 +199,7 @@ def test_perform_prediction_regression(predictor, test_data):
 def test_predict_price(predictor, test_data, test_db_path):
     """Test predicting price."""
     # Initialize database schema
-    if not initialize_database(str(test_db_path)):
+    if not initialize_database(str(test_db_path), "BTCUSDT", "1h"):
         pytest.fail("Failed to initialize database schema")
     
     # Save test data to database

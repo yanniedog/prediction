@@ -946,7 +946,7 @@ def optimize_parameters(data, indicator_def, method="bayesian", n_trials=10):
     elif method == "classical":
         return optimize_parameters_classical(data, indicator_def)
     else:
-        raise ValueError(f"Unknown optimization method: {method}")
+        raise ValueError(f"Invalid optimization method: {method}")
 
 def _prepare_optimization_data(data: pd.DataFrame, indicator_definition: dict) -> Tuple[pd.DataFrame, dict]:
     """
@@ -998,10 +998,8 @@ def objective_function(config, data, indicator_def):
     # Validate config against param_defs
     for param_name, spec in param_defs.items():
         if param_name not in config:
-            if "default" in spec:
-                config[param_name] = spec["default"]
-            else:
-                raise ValueError(f"Missing required parameter: {param_name}")
+            # Don't use default values, raise error instead
+            raise ValueError(f"Missing required parameter: {param_name}")
         
         val = config[param_name]
         if "min" in spec and val < spec["min"]:
