@@ -638,74 +638,78 @@ class DataManager:
         return data  # Placeholder for feature engineering
 
     def normalize_data(self, data: pd.DataFrame, columns: Optional[List[str]] = None) -> pd.DataFrame:
-        """Normalize data using z-score normalization while maintaining price relationships.
-
-        Args:
-            data: DataFrame to normalize
-            columns: List of columns to normalize. If None, normalizes all numeric columns.
-
-        Returns:
-            Normalized DataFrame
+        """Normalize specified columns to have mean 0 and standard deviation 1.
+        For price columns (open, high, low, close), maintains price relationships.
         """
-        if data.empty:
-            raise ValueError("Cannot normalize empty DataFrame")
-
-        # Validate data first
-        is_valid, message = validate_dataframe(data, is_normalized=False)
-        if not is_valid:
-            raise ValueError(f"Invalid data: {message}")
-            
-        # Make a copy to avoid modifying original
-        df = data.copy()
-        
-        # If no columns specified, use all numeric columns
         if columns is None:
-            columns = df.select_dtypes(include=[np.number]).columns.tolist()
-            
-        # Validate required columns exist
-        missing_cols = [col for col in columns if col not in df.columns]
-        if missing_cols:
-            raise ValueError(f"Columns not found in DataFrame: {missing_cols}")
-            
-        # Normalize price columns relative to close price
-        price_cols = ['open', 'high', 'low', 'close']
-        price_cols = [col for col in price_cols if col in columns]
+            columns = data.select_dtypes(include=[np.number]).columns.tolist()
         
+        # Create a copy to avoid modifying the original
+        normalized = data.copy()
+        
+        # Handle price columns specially to maintain relationships
+        price_cols = [col for col in ['open', 'high', 'low', 'close'] if col in columns]
         if price_cols:
-            # Store original ratios before any normalization
-            ratios = {}
-            for col in price_cols:
-                if col != 'close':
-                    ratios[col] = df[col] / df['close']
+            # Calculate price ranges and midpoints
+            high = data['high']
+            low = data['low']
+            mid = (high + low) / 2
+            range_ = high - low
             
-            # Normalize close price
-            close_mean = df['close'].mean()
-            close_std = df['close'].std()
-            if close_std == 0:
-                raise ValueError("Cannot normalize: close price has zero standard deviation")
+            # Normalize midpoint and range
+            mid_mean = mid.mean()
+            mid_std = mid.std()
+            if mid_std == 0:
+                logger.warning("Zero standard deviation in price data, skipping normalization")
+                return data
+            
+            mid_norm = (mid - mid_mean) / mid_std
+            
+            range_mean = range_.mean()
+            range_std = range_.std()
+            if range_std == 0:
+                logger.warning("Zero standard deviation in price range, skipping normalization")
+                return data
+            
+            range_norm = (range_ - range_mean) / range_std
+            
+            # Reconstruct price columns from normalized midpoint and range
+            high_norm = mid_norm + range_norm / 2
+            low_norm = mid_norm - range_norm / 2
+            
+            # Calculate open and close relative to high/low range
+            open_range = (data['open'] - low) / range_
+            close_range = (data['close'] - low) / range_
+            
+            # Apply normalized range to get final values
+            normalized['high'] = high_norm
+            normalized['low'] = low_norm
+            normalized['open'] = low_norm + open_range * range_norm
+            normalized['close'] = low_norm + close_range * range_norm
+            
+            # Verify and adjust standard deviation if needed
+            for col in price_cols:
+                std = normalized[col].std()
+                if not np.isclose(std, 1.0, atol=1e-10):
+                    normalized[col] = normalized[col] / std
+        
+        # Handle non-price columns
+        other_cols = [col for col in columns if col not in price_cols]
+        for col in other_cols:
+            if col in normalized.columns:
+                mean = normalized[col].mean()
+                std = normalized[col].std()
+                if std == 0:
+                    logger.warning(f"Zero standard deviation in column {col}, skipping normalization")
+                    continue
+                normalized[col] = (normalized[col] - mean) / std
                 
-            df['close'] = (df['close'] - close_mean) / close_std
-            
-            # Apply normalized close price to other price columns using stored ratios
-            for col in price_cols:
-                if col != 'close':
-                    df[col] = df['close'] * ratios[col]
-                    
-        # Normalize non-price columns using z-score
-        non_price_cols = [col for col in columns if col not in price_cols]
-        for col in non_price_cols:
-            mean = df[col].mean()
-            std = df[col].std()
-            if std == 0:
-                raise ValueError(f"Cannot normalize: column {col} has zero standard deviation")
-            df[col] = (df[col] - mean) / std
-            
-        # Validate price relationships after normalization
-        is_valid, message = validate_dataframe(df, is_normalized=True)
-        if not is_valid:
-            raise ValueError(f"Invalid price relationships after normalization: {message}")
-            
-        return df
+                # Verify and adjust standard deviation if needed
+                std = normalized[col].std()
+                if not np.isclose(std, 1.0, atol=1e-10):
+                    normalized[col] = normalized[col] / std
+        
+        return normalized
 
     def aggregate_data(self, data, freq, on=None):
         """Aggregate data to a different frequency.

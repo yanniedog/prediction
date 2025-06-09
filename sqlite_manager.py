@@ -89,139 +89,134 @@ def initialize_database(db_path: Union[str, Path], symbol: str, timeframe: str) 
             except sqlite3.DatabaseError:
                 logger.warning(f"Database {db_path} appears to be corrupted. Removing...")
                 db_path.unlink()
-                
-        # Create new connection
+
+        # Create new database
         conn = create_connection(db_path)
         if not conn:
-            return False
-            
+            raise sqlite3.DatabaseError("Failed to create database connection")
+
         cursor = conn.cursor()
-        
-        # Create tables with proper constraints
-        cursor.executescript("""
-            -- Symbols table
+
+        # Create tables
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS symbols (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                symbol TEXT NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            
-            -- Timeframes table
+                id INTEGER PRIMARY KEY,
+                symbol TEXT UNIQUE NOT NULL
+            )
+        """)
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS timeframes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                timeframe TEXT NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            
-            -- Indicators table
+                id INTEGER PRIMARY KEY,
+                timeframe TEXT UNIQUE NOT NULL
+            )
+        """)
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS indicators (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL UNIQUE,
-                type TEXT NOT NULL,
-                description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            
-            -- Indicator configurations table
+                id INTEGER PRIMARY KEY,
+                name TEXT UNIQUE NOT NULL,
+                type TEXT NOT NULL
+            )
+        """)
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS indicator_configs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY,
                 indicator_id INTEGER NOT NULL,
-                params JSON NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                config_json TEXT NOT NULL,
                 FOREIGN KEY (indicator_id) REFERENCES indicators(id)
-                    ON DELETE CASCADE
-            );
-            
-            -- Historical data table
+            )
+        """)
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS historical_data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY,
                 symbol_id INTEGER NOT NULL,
                 timeframe_id INTEGER NOT NULL,
-                open_time INTEGER NOT NULL,
+                open_time TIMESTAMP NOT NULL,
                 open REAL NOT NULL,
                 high REAL NOT NULL,
                 low REAL NOT NULL,
                 close REAL NOT NULL,
                 volume REAL NOT NULL,
-                close_time INTEGER NOT NULL,
-                quote_asset_volume REAL,
-                number_of_trades INTEGER,
-                taker_buy_base_asset_volume REAL,
-                taker_buy_quote_asset_volume REAL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (symbol_id) REFERENCES symbols(id)
-                    ON DELETE CASCADE,
+                FOREIGN KEY (symbol_id) REFERENCES symbols(id),
                 FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
-                    ON DELETE CASCADE,
-                UNIQUE(symbol_id, timeframe_id, open_time)
-            );
-            
-            -- Correlations table
+            )
+        """)
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS correlations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id INTEGER PRIMARY KEY,
                 symbol_id INTEGER NOT NULL,
                 timeframe_id INTEGER NOT NULL,
                 indicator_id INTEGER NOT NULL,
+                config_id INTEGER NOT NULL,
                 lag INTEGER NOT NULL,
-                correlation REAL NOT NULL,
-                p_value REAL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (symbol_id) REFERENCES symbols(id)
-                    ON DELETE CASCADE,
-                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
-                    ON DELETE CASCADE,
-                FOREIGN KEY (indicator_id) REFERENCES indicators(id)
-                    ON DELETE CASCADE,
-                UNIQUE(symbol_id, timeframe_id, indicator_id, lag)
-            );
-            
-            -- Leaderboard table
+                correlation_type TEXT NOT NULL,
+                correlation_value REAL NOT NULL,
+                calculation_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (symbol_id) REFERENCES symbols(id),
+                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id),
+                FOREIGN KEY (indicator_id) REFERENCES indicators(id),
+                FOREIGN KEY (config_id) REFERENCES indicator_configs(id)
+            )
+        """)
+
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS leaderboard (
+                id INTEGER PRIMARY KEY,
                 lag INTEGER NOT NULL,
-                correlation_type TEXT NOT NULL CHECK(correlation_type IN ('positive', 'negative')),
+                correlation_type TEXT NOT NULL,
                 correlation_value REAL NOT NULL,
                 indicator_name TEXT NOT NULL,
                 config_json TEXT NOT NULL,
                 symbol TEXT NOT NULL,
                 timeframe TEXT NOT NULL,
                 dataset_daterange TEXT NOT NULL,
-                calculation_timestamp TEXT NOT NULL,
+                calculation_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 config_id_source_db INTEGER,
-                source_db_name TEXT,
-                PRIMARY KEY (lag, correlation_type)
-            );
-            
-            -- Create indices for better query performance
-            CREATE INDEX IF NOT EXISTS idx_historical_data_symbol_timeframe ON historical_data(symbol_id, timeframe_id);
-            CREATE INDEX IF NOT EXISTS idx_historical_data_open_time ON historical_data(open_time);
-            CREATE INDEX IF NOT EXISTS idx_correlations_main ON correlations(symbol_id, timeframe_id, indicator_id, lag);
-            CREATE INDEX IF NOT EXISTS idx_leaderboard_lag ON leaderboard(lag);
-            CREATE INDEX IF NOT EXISTS idx_leaderboard_lag_val ON leaderboard(lag, correlation_value);
-            CREATE INDEX IF NOT EXISTS idx_leaderboard_indicator_config ON leaderboard(indicator_name, config_id_source_db);
+                source_db_name TEXT
+            )
         """)
-        
-        # Insert initial symbol and timeframe and get their IDs
+
+        # Create indices
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_historical_data_symbol_timeframe ON historical_data(symbol_id, timeframe_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_historical_data_open_time ON historical_data(open_time)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_symbols ON correlations(symbol_id, timeframe_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_correlations_indicators ON correlations(indicator_id, config_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_correlation ON leaderboard(correlation_type, correlation_value)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_lag ON leaderboard(lag)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_lag_val ON leaderboard(lag, correlation_value)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_indicator_config ON leaderboard(indicator_name, config_json)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_leaderboard_symbol_timeframe ON leaderboard(symbol, timeframe)")
+
+        # Insert initial data
         cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol,))
-        cursor.execute("SELECT id FROM symbols WHERE symbol = ?", (symbol,))
-        symbol_id = cursor.fetchone()[0]
-        
         cursor.execute("INSERT OR IGNORE INTO timeframes (timeframe) VALUES (?)", (timeframe,))
-        cursor.execute("SELECT id FROM timeframes WHERE timeframe = ?", (timeframe,))
-        timeframe_id = cursor.fetchone()[0]
-        
+
         conn.commit()
-        logger.info(f"Database schema initialized/verified: {db_path} (symbol_id={symbol_id}, timeframe_id={timeframe_id})")
         return True
-        
+
     except sqlite3.Error as e:
-        logger.error(f"Error initializing database: {e}")
+        logger.error(f"Error initializing database: {e}", exc_info=True)
         if conn:
             try:
                 conn.rollback()
-            except sqlite3.Error:
+            except Exception:
                 pass
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
         return False
+    finally:
+        if conn:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 def recover_database(db_path: str, symbol: str, timeframe: str) -> bool:
     """Attempt to recover a corrupted database."""
@@ -266,18 +261,29 @@ def _get_or_create_id(conn: sqlite3.Connection, table: str, column: str, value: 
     lookup_value = str_value.lower()
 
     try:
+        # Map table names to their actual column names
+        column_map = {
+            'symbols': 'symbol',
+            'timeframes': 'timeframe',
+            'indicators': 'name'
+        }
+        actual_column = column_map.get(table, column)
+        
         # Check if the value (case-insensitive) already exists
-        cursor.execute(f"SELECT id FROM {table} WHERE LOWER({column}) = ?", (lookup_value,))
-        row = cursor.fetchone()
-        if row:
-            return row[0]
-
-        # If not found, insert new value
-        cursor.execute(f"INSERT INTO {table} ({column}) VALUES (?)", (str_value,))
+        cursor.execute(f"SELECT id FROM {table} WHERE LOWER({actual_column}) = ?", (lookup_value,))
+        result = cursor.fetchone()
+        if result:
+            return result[0]
+            
+        # Insert new value
+        cursor.execute(f"INSERT INTO {table} ({actual_column}) VALUES (?)", (str_value,))
+        conn.commit()
         return cursor.lastrowid
-
+        
     except sqlite3.Error as e:
         logger.error(f"DB error getting/creating ID for '{value}' in '{table}': {e}", exc_info=True)
+        try: conn.rollback()
+        except Exception as rb_err: logger.error(f"Rollback failed in _get_or_create_id: {rb_err}")
         raise
 
 def get_or_create_indicator_config_id(conn: sqlite3.Connection, indicator_name: str, params: Dict[str, Any]) -> int:

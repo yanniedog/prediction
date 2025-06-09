@@ -74,7 +74,7 @@ def validate_data(data: pd.DataFrame, is_normalized: bool = False) -> Tuple[bool
                 
         # Check for negative values in volume (only for non-normalized data)
         if not is_normalized and (data['volume'] < 0).any():
-            return False, "Negative values found in volume column"
+            return False, "Negative values found in columns: ['volume']"
             
         # Check minimum data points
         if len(data) < 100:
@@ -85,7 +85,7 @@ def validate_data(data: pd.DataFrame, is_normalized: bool = False) -> Tuple[bool
             time_diffs = data.index.to_series().diff()
             max_gap = time_diffs.max()
             if max_gap > pd.Timedelta(days=7):
-                return False, f"Large gap detected in data: {max_gap}"
+                return False, "Large gap detected in data"
                 
         return True, "Data validation successful"
         

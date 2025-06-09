@@ -685,3 +685,17 @@ def dict_hash(d: Dict[str, Any]) -> str:
     dict_str = json.dumps(rounded_dict, sort_keys=True, separators=(',', ':'))
     # Generate SHA256 hash
     return hashlib.sha256(dict_str.encode('utf-8')).hexdigest()
+
+def safe_divide(numerator: float, denominator: float) -> float:
+    """Safely divide two numbers, returning 0 if denominator is 0.
+    
+    Args:
+        numerator: The number to divide
+        denominator: The number to divide by
+        
+    Returns:
+        float: The result of division, or 0 if denominator is 0
+    """
+    if denominator == 0:
+        return 0.0
+    return numerator / denominator

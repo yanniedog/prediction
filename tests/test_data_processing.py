@@ -255,9 +255,9 @@ def test_data_processing_with_duplicate_dates(sample_data):
     # Add duplicate dates
     data = sample_data.copy()
     data.index = data.index.tolist()[:-1] + [data.index[-1]]
-
-    # Mock data manager functions to return data with duplicates
-    with patch('data_processing.validate_dataframe', return_value=(False, "Duplicate timestamps found in data")):
+    
+    # Mock validate_dataframe to return the error we want to test
+    with patch('data_processing.validate_data', return_value=(False, "Duplicate timestamps found in data")):
         with pytest.raises(ValueError) as exc_info:
             process_data(data)
         assert "Duplicate timestamps found in data" in str(exc_info.value)
@@ -267,9 +267,9 @@ def test_data_processing_with_non_monotonic_dates(sample_data):
     # Shuffle dates
     data = sample_data.copy()
     data.index = data.index.tolist()[::-1]
-
-    # Mock data manager functions to return non-monotonic data
-    with patch('data_processing.validate_dataframe', return_value=(False, "Timestamps must be in ascending order")):
+    
+    # Mock validate_dataframe to return the error we want to test
+    with patch('data_processing.validate_data', return_value=(False, "Timestamps must be in ascending order")):
         with pytest.raises(ValueError) as exc_info:
             process_data(data)
         assert "Timestamps must be in ascending order" in str(exc_info.value)
@@ -278,9 +278,9 @@ def test_data_processing_with_insufficient_data(sample_data):
     """Test data processing with insufficient data"""
     # Create small dataset
     data = sample_data.iloc[:5]
-
-    # Mock data manager functions to return insufficient data
-    with patch('data_processing.validate_dataframe', return_value=(False, "Insufficient data points")):
+    
+    # Mock validate_dataframe to return the error we want to test
+    with patch('data_processing.validate_data', return_value=(False, "Insufficient data points (minimum 100 required)")):
         with pytest.raises(ValueError) as exc_info:
             process_data(data)
         assert "Insufficient data points" in str(exc_info.value)
@@ -294,9 +294,9 @@ def test_data_processing_with_large_gaps(sample_data):
     # Reindex to a new range with gaps
     new_index = pd.date_range(start=data.index.min(), end=data.index.max(), freq='4h')
     data = data.reindex(new_index)
-
-    # Mock data manager functions to return data with gaps
-    with patch('data_processing.validate_dataframe', return_value=(False, "Large gaps detected in data")):
+    
+    # Mock validate_dataframe to return the error we want to test
+    with patch('data_processing.validate_data', return_value=(False, "Large gaps detected in data")):
         with pytest.raises(ValueError) as exc_info:
             process_data(data)
         assert "Large gaps detected in data" in str(exc_info.value)

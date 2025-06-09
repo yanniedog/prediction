@@ -136,7 +136,7 @@ class IndicatorFactory:
             # Check for NaN values
             if data.isna().any().any():
                 logger.warning("NaN values detected in input data")
-                data = data.fillna(method='ffill').fillna(method='bfill')
+                data = data.ffill().bfill()
             
             # Get required columns from config
             required_cols = config.get('required_columns', ['close'])
@@ -146,7 +146,11 @@ class IndicatorFactory:
             
             # Get the indicator function
             if indicator_type == 'talib':
-                ta_func = getattr(ta, indicator_name)
+                # Handle BB/BBANDS special case
+                if indicator_name.upper() in ['BB', 'BBANDS']:
+                    ta_func = getattr(ta, 'BBANDS')
+                else:
+                    ta_func = getattr(ta, indicator_name)
             else:
                 ta_func = getattr(custom_indicators, f"compute_{indicator_name.lower()}")
             
@@ -160,9 +164,30 @@ class IndicatorFactory:
             
             # Add any additional parameters from config
             params = config.get('params', {})
-            if indicator_name == 'RSI' and 'timeperiod' in params:
+            
+            # Handle special cases for different indicators
+            if indicator_name.upper() in ['BB', 'BBANDS']:
+                # Ensure proper parameter names for BBANDS
+                if 'timeperiod' in params:
+                    timeperiod = params.pop('timeperiod')
+                    params['timeperiod'] = timeperiod
+                if 'nbdevup' in params:
+                    nbdevup = params.pop('nbdevup')
+                    params['nbdevup'] = nbdevup
+                if 'nbdevdn' in params:
+                    nbdevdn = params.pop('nbdevdn')
+                    params['nbdevdn'] = nbdevdn
+                results = ta_func(inputs['real'], **params)
+                # Rename columns to match indicator name
+                if isinstance(results, tuple):
+                    output_names = [f"{indicator_name}_upper", f"{indicator_name}_middle", f"{indicator_name}_lower"]
+                    result_df = pd.DataFrame({name: values for name, values in zip(output_names, results)})
+                else:
+                    result_df = pd.DataFrame({f"{indicator_name}": results})
+            elif indicator_name == 'RSI' and 'timeperiod' in params:
                 timeperiod = params.pop('timeperiod')
                 results = ta_func(inputs['real'], timeperiod=timeperiod)
+                result_df = pd.DataFrame({indicator_name: results})
             else:
                 # Compute indicator with all parameters
                 try:
@@ -176,14 +201,15 @@ class IndicatorFactory:
                     else:
                         raise
             
-            # Convert results to DataFrame
-            if isinstance(results, tuple):
-                # Handle multiple outputs
-                output_names = config.get('output_names', [f"{indicator_name}_{i}" for i in range(len(results))])
-                result_df = pd.DataFrame({name: values for name, values in zip(output_names, results)})
-            else:
-                # Single output
-                result_df = pd.DataFrame({indicator_name: results})
+            # Convert results to DataFrame if not already done
+            if not isinstance(result_df, pd.DataFrame):
+                if isinstance(results, tuple):
+                    # Handle multiple outputs
+                    output_names = config.get('output_names', [f"{indicator_name}_{i}" for i in range(len(results))])
+                    result_df = pd.DataFrame({name: values for name, values in zip(output_names, results)})
+                else:
+                    # Single output
+                    result_df = pd.DataFrame({indicator_name: results})
             
             # Set index to match input data
             result_df.index = data.index

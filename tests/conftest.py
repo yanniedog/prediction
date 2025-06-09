@@ -267,55 +267,62 @@ def test_data():
     return data
 
 @pytest.fixture(scope="function")
-def temp_db(request):
-    """Provide a temporary database for testing."""
-    # Create a unique database file for each test
-    with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmp:
-        db_path = Path(tmp.name)
-    
-    # Register for cleanup
-    register_cleanup(db_path)
-    
-    # Create and yield the manager
-    manager = None
+def temp_db_path(tmp_path):
+    """Create a temporary database path for testing."""
+    db_path = tmp_path / "test.db"
+    yield db_path
+    # Ensure proper cleanup
     try:
-        manager = SQLiteManager(str(db_path))
-        # Set a shorter timeout for tests
-        if manager.connection is not None:
-            manager.connection.execute("PRAGMA busy_timeout = 5000")  # 5 second timeout
-        # Initialize the database schema
-        if not manager.initialize_database():
-            raise RuntimeError("Failed to initialize test database schema")
-        yield manager
-    finally:
-        # Ensure connection is closed
-        if manager is not None:
-            conn = getattr(manager, 'connection', None)
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-            manager = None  # Clear reference
-        
-        # Force cleanup with retries
-        max_retries = 3
-        retry_delay = 0.1
-        for attempt in range(max_retries):
+        if db_path.exists():
+            # Close any open connections
+            import sqlite3
             try:
-                force_close_file_handles(db_path)
-                if db_path.exists():
-                    db_path.unlink()
-                break
-            except Exception:
-                if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
-                else:
-                    # Log the failure but don't raise
-                    logging.warning(f"Failed to clean up temp DB after {max_retries} attempts: {db_path}")
-        
-        # Force garbage collection
-        gc.collect()
+                conn = sqlite3.connect(str(db_path))
+                conn.close()
+            except sqlite3.Error:
+                pass
+            # Wait for file handles to be released
+            import time
+            time.sleep(0.1)
+            # Remove the database file
+            db_path.unlink()
+            # Also remove any WAL files
+            wal_path = db_path.with_suffix('.db-wal')
+            if wal_path.exists():
+                wal_path.unlink()
+            shm_path = db_path.with_suffix('.db-shm')
+            if shm_path.exists():
+                shm_path.unlink()
+    except Exception as e:
+        logger.warning(f"Error cleaning up test database {db_path}: {e}")
+
+@pytest.fixture(scope="function")
+def temp_db_dir(tmp_path):
+    """Create a temporary directory for test databases."""
+    db_dir = tmp_path / "test_dbs"
+    db_dir.mkdir(exist_ok=True)
+    yield db_dir
+    # Ensure proper cleanup
+    try:
+        if db_dir.exists():
+            # Close any open connections
+            import sqlite3
+            for db_file in db_dir.glob("*.db*"):
+                try:
+                    conn = sqlite3.connect(str(db_file))
+                    conn.close()
+                except sqlite3.Error:
+                    pass
+            # Wait for file handles to be released
+            import time
+            time.sleep(0.1)
+            # Remove all database files
+            for db_file in db_dir.glob("*.db*"):
+                db_file.unlink()
+            # Remove the directory
+            db_dir.rmdir()
+    except Exception as e:
+        logger.warning(f"Error cleaning up test database directory {db_dir}: {e}")
 
 @pytest.fixture(scope="session")
 def config():

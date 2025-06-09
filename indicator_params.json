@@ -14,6 +14,36 @@
         },
         "conditions": []
     },
+    "BB": {
+        "name": "BBANDS",
+        "type": "talib",
+        "required_inputs": ["close"],
+        "params": {
+            "timeperiod": {
+                "type": "int",
+                "min": 2,
+                "max": 200,
+                "default": 20,
+                "description": "Bollinger Bands period"
+            },
+            "nbdevup": {
+                "type": "float",
+                "min": 0.1,
+                "max": 5.0,
+                "default": 2.0,
+                "description": "Upper band deviation"
+            },
+            "nbdevdn": {
+                "type": "float",
+                "min": 0.1,
+                "max": 5.0,
+                "default": 2.0,
+                "description": "Lower band deviation"
+            }
+        },
+        "conditions": [],
+        "output_names": ["BB_upper", "BB_middle", "BB_lower"]
+    },
     "MACD": {
         "name": "MACD",
         "type": "talib",
@@ -48,35 +78,6 @@
                 }
             }
         ]
-    },
-    "BBANDS": {
-        "name": "BBANDS",
-        "type": "talib",
-        "required_inputs": ["close"],
-        "params": {
-            "timeperiod": {
-                "type": "int",
-                "min": 2,
-                "max": 200,
-                "default": 20,
-                "description": "Bollinger Bands period"
-            },
-            "nbdevup": {
-                "type": "float",
-                "min": 0.1,
-                "max": 5.0,
-                "default": 2.0,
-                "description": "Upper band deviation"
-            },
-            "nbdevdn": {
-                "type": "float",
-                "min": 0.1,
-                "max": 5.0,
-                "default": 2.0,
-                "description": "Lower band deviation"
-            }
-        },
-        "conditions": []
     },
     "ATR": {
         "name": "ATR",
@@ -185,6 +186,51 @@
                 "max": 200,
                 "default": 14,
                 "description": "VWAP period"
+            }
+        },
+        "conditions": []
+    },
+    "EMA": {
+        "name": "EMA",
+        "type": "talib",
+        "required_inputs": ["close"],
+        "params": {
+            "timeperiod": {
+                "type": "int",
+                "min": 2,
+                "max": 200,
+                "default": 14,
+                "description": "EMA period"
+            }
+        },
+        "conditions": []
+    },
+    "SMA": {
+        "name": "SMA",
+        "type": "talib",
+        "required_inputs": ["close"],
+        "params": {
+            "timeperiod": {
+                "type": "int",
+                "min": 2,
+                "max": 200,
+                "default": 14,
+                "description": "SMA period"
+            }
+        },
+        "conditions": []
+    },
+    "Returns": {
+        "name": "Returns",
+        "type": "custom",
+        "required_inputs": ["close"],
+        "params": {
+            "timeperiod": {
+                "type": "int",
+                "min": 1,
+                "max": 200,
+                "default": 1,
+                "description": "Returns period"
             }
         },
         "conditions": []

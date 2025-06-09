@@ -535,14 +535,18 @@ def _select_data_source_and_lag(choice: Optional[int] = None, max_lag: Optional[
     if not db_path or not symbol or not timeframe:
         raise ValueError("Invalid data source parameters")
         
-    if not _initialize_database(db_path, symbol, timeframe):
-        raise ValueError("Database initialization failed")
-        
+    # Get timeframe from database to ensure consistency
     conn = sqlite_manager.create_connection(str(db_path))
     if not conn:
         raise ValueError("Failed to connect to database")
         
     try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT timeframe FROM timeframes WHERE id = (SELECT timeframe_id FROM historical_data LIMIT 1)")
+        timeframe_result = cursor.fetchone()
+        if timeframe_result:
+            timeframe = timeframe_result[0]  # Use actual timeframe from database
+        
         data = data_manager.load_data(conn, symbol, timeframe)
         if data is None or data.empty:
             raise ValueError("No data available")
