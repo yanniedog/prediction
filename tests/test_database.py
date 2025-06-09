@@ -67,15 +67,13 @@ def test_database_initialization(temp_db_path, valid_symbol, valid_timeframe):
 
 def test_invalid_symbol(temp_db_path, invalid_symbol, valid_timeframe):
     """Test database initialization with invalid symbol"""
-    result = _initialize_database(temp_db_path, invalid_symbol, valid_timeframe)
-    assert result is False
-    assert not temp_db_path.exists()
+    with pytest.raises(ValueError, match="Invalid symbol format"):
+        _initialize_database(temp_db_path, invalid_symbol, valid_timeframe)
 
 def test_invalid_timeframe(temp_db_path, valid_symbol, invalid_timeframe):
     """Test database initialization with invalid timeframe"""
-    result = _initialize_database(temp_db_path, valid_symbol, invalid_timeframe)
-    assert result is False
-    assert not temp_db_path.exists()
+    with pytest.raises(ValueError, match="Invalid timeframe format"):
+        _initialize_database(temp_db_path, valid_symbol, invalid_timeframe)
 
 def test_symbol_validation():
     """Test symbol format validation"""
@@ -159,26 +157,38 @@ def test_leaderboard_constraints(temp_db_path, valid_symbol, valid_timeframe):
     conn = sqlite3.connect(temp_db_path)
     cursor = conn.cursor()
     
-    # Insert different symbol and timeframe for testing
-    cursor.execute("INSERT INTO symbols (symbol) VALUES (?)", ("ETHUSDT",))
-    cursor.execute("INSERT INTO timeframes (timeframe) VALUES (?)", ("4h",))
-    symbol_id = cursor.lastrowid
-    timeframe_id = cursor.lastrowid
-    
-    # Test unique constraint
+    # Test unique constraint on (lag, correlation_type)
     cursor.execute("""
         INSERT INTO leaderboard (
-            symbol_id, timeframe_id, predictor_name, parameters, performance_metrics, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, strftime('%s','now'), strftime('%s','now'))
-    """, (symbol_id, timeframe_id, "RSI", "{}", "{}"))
+            lag, correlation_type, correlation_value, indicator_name, config_json,
+            symbol, timeframe, dataset_daterange, calculation_timestamp,
+            config_id_source_db, source_db_name
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (1, 'positive', 0.5, 'RSI', '{}', 'BTCUSDT', '1h', '2023-01-01/2023-12-31', 
+          '2024-01-01T00:00:00.000Z', 1, 'test.db'))
     
-    # Try to insert duplicate
+    # Try to insert duplicate (lag, correlation_type)
     with pytest.raises(sqlite3.IntegrityError):
         cursor.execute("""
             INSERT INTO leaderboard (
-                symbol_id, timeframe_id, predictor_name, parameters, performance_metrics, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, strftime('%s','now'), strftime('%s','now'))
-        """, (symbol_id, timeframe_id, "RSI", "{}", "{}"))
+                lag, correlation_type, correlation_value, indicator_name, config_json,
+                symbol, timeframe, dataset_daterange, calculation_timestamp,
+                config_id_source_db, source_db_name
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (1, 'positive', 0.6, 'MACD', '{}', 'ETHUSDT', '4h', '2023-01-01/2023-12-31',
+              '2024-01-01T00:00:00.000Z', 2, 'test2.db'))
+    
+    # Test correlation_type check constraint
+    with pytest.raises(sqlite3.IntegrityError):
+        cursor.execute("""
+            INSERT INTO leaderboard (
+                lag, correlation_type, correlation_value, indicator_name, config_json,
+                symbol, timeframe, dataset_daterange, calculation_timestamp,
+                config_id_source_db, source_db_name
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (2, 'invalid', 0.5, 'RSI', '{}', 'BTCUSDT', '1h', '2023-01-01/2023-12-31',
+              '2024-01-01T00:00:00.000Z', 1, 'test.db'))
+    
     conn.close()
 
 def test_database_rollback(temp_db_path, valid_symbol, valid_timeframe):

@@ -16,6 +16,7 @@ import config
 import sqlite_manager
 import utils
 from data_processing import validate_data as validate_dataframe, process_data, validate_required_columns_and_nans
+from utils import is_valid_symbol, is_valid_timeframe  # Add explicit imports
 
 logger = logging.getLogger(__name__)
 
@@ -636,51 +637,74 @@ class DataManager:
             raise ValueError(f"Cannot engineer features from invalid data: {message}")
         return data  # Placeholder for feature engineering
 
-    def normalize_data(self, data, columns=None):
-        """Normalize data using z-score normalization with validation."""
+    def normalize_data(self, data: pd.DataFrame, columns: Optional[List[str]] = None) -> pd.DataFrame:
+        """Normalize data using z-score normalization while maintaining price relationships.
+
+        Args:
+            data: DataFrame to normalize
+            columns: List of columns to normalize. If None, normalizes all numeric columns.
+
+        Returns:
+            Normalized DataFrame
+        """
         if data.empty:
-            raise ValueError("Empty DataFrame provided")
-        is_valid, message = validate_dataframe(data)
+            raise ValueError("Cannot normalize empty DataFrame")
+
+        # Validate data first
+        is_valid, message = validate_dataframe(data, is_normalized=False)
         if not is_valid:
-            raise ValueError(f"Cannot normalize invalid data: {message}")
-        
+            raise ValueError(f"Invalid data: {message}")
+            
+        # Make a copy to avoid modifying original
         df = data.copy()
         
-        # Store index if it's datetime
-        is_datetime_index = isinstance(df.index, pd.DatetimeIndex)
-        if is_datetime_index:
-            index = df.index
-            df = df.reset_index(drop=True)
-        
-        # Select columns to normalize
+        # If no columns specified, use all numeric columns
         if columns is None:
-            numeric_cols = df.select_dtypes(include=[np.number]).columns
-        else:
-            # Validate columns exist
-            missing_cols = [col for col in columns if col not in df.columns]
-            if missing_cols:
-                raise ValueError(f"Columns not found in DataFrame: {missing_cols}")
-            # Validate columns are numeric
-            non_numeric = [col for col in columns if not pd.api.types.is_numeric_dtype(df[col])]
-            if non_numeric:
-                raise ValueError(f"Non-numeric columns: {non_numeric}")
-            numeric_cols = columns
+            columns = df.select_dtypes(include=[np.number]).columns.tolist()
+            
+        # Validate required columns exist
+        missing_cols = [col for col in columns if col not in df.columns]
+        if missing_cols:
+            raise ValueError(f"Columns not found in DataFrame: {missing_cols}")
+            
+        # Normalize price columns relative to close price
+        price_cols = ['open', 'high', 'low', 'close']
+        price_cols = [col for col in price_cols if col in columns]
         
-        # Z-score normalization
-        for col in numeric_cols:
+        if price_cols:
+            # Store original ratios before any normalization
+            ratios = {}
+            for col in price_cols:
+                if col != 'close':
+                    ratios[col] = df[col] / df['close']
+            
+            # Normalize close price
+            close_mean = df['close'].mean()
+            close_std = df['close'].std()
+            if close_std == 0:
+                raise ValueError("Cannot normalize: close price has zero standard deviation")
+                
+            df['close'] = (df['close'] - close_mean) / close_std
+            
+            # Apply normalized close price to other price columns using stored ratios
+            for col in price_cols:
+                if col != 'close':
+                    df[col] = df['close'] * ratios[col]
+                    
+        # Normalize non-price columns using z-score
+        non_price_cols = [col for col in columns if col not in price_cols]
+        for col in non_price_cols:
             mean = df[col].mean()
             std = df[col].std()
-            if std != 0:
-                df[col] = (df[col] - mean) / std
-        
-        # Restore index if it was datetime
-        if is_datetime_index:
-            df.index = index
-        
-        # Only check for required columns and NaNs after normalization
-        is_valid, message = validate_required_columns_and_nans(df)
+            if std == 0:
+                raise ValueError(f"Cannot normalize: column {col} has zero standard deviation")
+            df[col] = (df[col] - mean) / std
+            
+        # Validate price relationships after normalization
+        is_valid, message = validate_dataframe(df, is_normalized=True)
         if not is_valid:
-            raise ValueError(message)
+            raise ValueError(f"Invalid price relationships after normalization: {message}")
+            
         return df
 
     def aggregate_data(self, data, freq, on=None):

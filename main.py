@@ -35,6 +35,18 @@ import backtester
 from indicator_params import indicator_definitions
 from sqlite_manager_class import SQLiteManager
 
+# Configure logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Create console handler if not already exists
+if not logger.handlers:
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
 # --- Configuration Constants (Fetched from config) ---
 ETA_UPDATE_INTERVAL_SECONDS: int = config.DEFAULTS.get("eta_update_interval_seconds", 15)
 INTERIM_REPORT_FREQUENCY: int = config.DEFAULTS.get("interim_report_frequency", 10)
@@ -58,7 +70,6 @@ def _setup_and_select_mode(timestamp_str: str) -> Optional[str]:
     Returns:
         Optional[str]: Selected mode ('a', 'c', 'b') or None if quit
     """
-    logger = logging.getLogger(__name__)
     logger.info("Initializing leaderboard database (pre-cleanup)...")
     
     if not leaderboard_manager.initialize_leaderboard_db():
@@ -186,7 +197,7 @@ def _setup_and_select_mode(timestamp_str: str) -> Optional[str]:
 
 def _run_custom_mode(timestamp_str: str):
     """Runs actions on an existing database without recalculating."""
-    logger = logging.getLogger(__name__); logger.info("--- Entering Custom Mode ---"); print("\n--- Custom Mode ---")
+    logger.info("--- Entering Custom Mode ---"); print("\n--- Custom Mode ---")
     db_path_custom = data_manager.select_existing_database()
     if not db_path_custom: print("No database selected for Custom Mode."); return
     logger.info(f"Custom Mode using DB: {db_path_custom.name}")
@@ -288,7 +299,6 @@ def _run_custom_mode(timestamp_str: str):
 
 def _run_backtest_check_mode(timestamp_str: str) -> None:
     """Runs the historical predictor check (simplified backtest)."""
-    logger = logging.getLogger(__name__)
     logger.info("--- Entering Historical Predictor Check Mode ---")
     print("\n--- Historical Predictor Check ---")
     print("WARNING: This mode uses the FINAL leaderboard, introducing LOOKAHEAD BIAS.")
@@ -352,16 +362,152 @@ def _run_backtest_check_mode(timestamp_str: str) -> None:
     logger.info("Finished historical check.")
 
 
-def _initialize_database(db_path: Path, symbol: str, timeframe: str) -> bool:
-    """Initialize database with proper tables and validation."""
-    if not utils.is_valid_symbol(symbol) or not utils.is_valid_timeframe(timeframe):
-        raise ValueError("Invalid symbol or timeframe")
-    db_manager = SQLiteManager(str(db_path))
-    db_manager.initialize_database()  # Ensure schema is created
-    db_manager._get_or_create_id("symbols", "symbol", symbol)
-    db_manager._get_or_create_id("timeframes", "timeframe", timeframe)
-    db_manager.close()
-    return True
+def _initialize_database(db_path: Union[str, Path], symbol: str, timeframe: str) -> bool:
+    """Initialize database with proper tables and validation.
+    
+    Args:
+        db_path: Path to database file (string or Path object)
+        symbol: Trading symbol (e.g. 'BTCUSDT')
+        timeframe: Timeframe (e.g. '1h', '1d')
+        
+    Returns:
+        bool: True if initialization successful, False otherwise
+    """
+    if not utils.is_valid_symbol(symbol):
+        raise ValueError("Invalid symbol format")
+    if not utils.is_valid_timeframe(timeframe):
+        raise ValueError("Invalid timeframe format")
+
+    # Convert string to Path if needed
+    db_path = Path(db_path) if isinstance(db_path, str) else db_path
+
+    # Create database directory if it doesn't exist
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Initialize database with proper schema
+    conn = sqlite_manager.create_connection(str(db_path))
+    if not conn:
+        raise ValueError("Failed to connect to database")
+
+    try:
+        # Create tables
+        cursor = conn.cursor()
+        cursor.executescript("""
+            -- Symbols table
+            CREATE TABLE IF NOT EXISTS symbols (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Timeframes table
+            CREATE TABLE IF NOT EXISTS timeframes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timeframe TEXT NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Indicators table
+            CREATE TABLE IF NOT EXISTS indicators (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                type TEXT NOT NULL,
+                description TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            -- Indicator configurations table
+            CREATE TABLE IF NOT EXISTS indicator_configs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                indicator_id INTEGER NOT NULL,
+                params JSON NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (indicator_id) REFERENCES indicators(id)
+                    ON DELETE CASCADE
+            );
+
+            -- Historical data table
+            CREATE TABLE IF NOT EXISTS historical_data (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol_id INTEGER NOT NULL,
+                timeframe_id INTEGER NOT NULL,
+                open_time INTEGER NOT NULL,
+                open REAL NOT NULL,
+                high REAL NOT NULL,
+                low REAL NOT NULL,
+                close REAL NOT NULL,
+                volume REAL NOT NULL,
+                close_time INTEGER NOT NULL,
+                quote_asset_volume REAL,
+                number_of_trades INTEGER,
+                taker_buy_base_asset_volume REAL,
+                taker_buy_quote_asset_volume REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (symbol_id) REFERENCES symbols(id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
+                    ON DELETE CASCADE,
+                UNIQUE(symbol_id, timeframe_id, open_time)
+            );
+
+            -- Correlations table
+            CREATE TABLE IF NOT EXISTS correlations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol_id INTEGER NOT NULL,
+                timeframe_id INTEGER NOT NULL,
+                indicator_id INTEGER NOT NULL,
+                lag INTEGER NOT NULL,
+                correlation REAL NOT NULL,
+                p_value REAL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (symbol_id) REFERENCES symbols(id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
+                    ON DELETE CASCADE,
+                FOREIGN KEY (indicator_id) REFERENCES indicators(id)
+                    ON DELETE CASCADE,
+                UNIQUE(symbol_id, timeframe_id, indicator_id, lag)
+            );
+
+            -- Leaderboard table
+            CREATE TABLE IF NOT EXISTS leaderboard (
+                lag INTEGER NOT NULL,
+                correlation_type TEXT NOT NULL CHECK(correlation_type IN ('positive', 'negative')),
+                correlation_value REAL NOT NULL,
+                indicator_name TEXT NOT NULL,
+                config_json TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                timeframe TEXT NOT NULL,
+                dataset_daterange TEXT NOT NULL,
+                calculation_timestamp TEXT NOT NULL,
+                config_id_source_db INTEGER,
+                source_db_name TEXT,
+                PRIMARY KEY (lag, correlation_type)
+            );
+
+            -- Create indices for better query performance
+            CREATE INDEX IF NOT EXISTS idx_historical_data_symbol_timeframe ON historical_data(symbol_id, timeframe_id);
+            CREATE INDEX IF NOT EXISTS idx_historical_data_open_time ON historical_data(open_time);
+            CREATE INDEX IF NOT EXISTS idx_correlations_main ON correlations(symbol_id, timeframe_id, indicator_id, lag);
+            CREATE INDEX IF NOT EXISTS idx_leaderboard_lag ON leaderboard(lag);
+            CREATE INDEX IF NOT EXISTS idx_leaderboard_lag_val ON leaderboard(lag, correlation_value);
+            CREATE INDEX IF NOT EXISTS idx_leaderboard_indicator_config ON leaderboard(indicator_name, config_id_source_db);
+        """)
+
+        # Insert symbol and timeframe
+        cursor.execute("INSERT OR IGNORE INTO symbols (symbol) VALUES (?)", (symbol,))
+        cursor.execute("INSERT OR IGNORE INTO timeframes (timeframe) VALUES (?)", (timeframe,))
+
+        conn.commit()
+        logger.info(f"Database schema initialized/verified: {db_path}")
+        return True
+
+    except sqlite3.Error as e:
+        logger.error(f"Database error during initialization: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
 
 def _select_data_source_and_lag(choice: Optional[int] = None, max_lag: Optional[int] = None) -> Tuple[Path, str, str, pd.DataFrame, int, int, int, str]:
     """Select data source and get lag input with improved error handling.

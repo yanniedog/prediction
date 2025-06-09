@@ -9,6 +9,8 @@ import sqlite3
 from unittest.mock import patch, MagicMock
 from data_manager import _validate_data
 from sqlite_manager import SQLiteManager
+from data_processing import validate_data, process_data
+from data_manager import DataManager
 
 @pytest.fixture
 def sample_data():
@@ -105,6 +107,22 @@ def test_data_source_selection(tmp_path):
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         
+        CREATE TABLE IF NOT EXISTS indicators (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            type TEXT NOT NULL,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        CREATE TABLE IF NOT EXISTS indicator_configs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            indicator_id INTEGER NOT NULL,
+            params JSON NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (indicator_id) REFERENCES indicators(id) ON DELETE CASCADE
+        );
+        
         CREATE TABLE IF NOT EXISTS historical_data (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             symbol_id INTEGER NOT NULL,
@@ -130,6 +148,10 @@ def test_data_source_selection(tmp_path):
     # Insert symbol and timeframe
     cursor.execute("INSERT INTO symbols (symbol) VALUES (?)", ("BTCUSDT",))
     cursor.execute("INSERT INTO timeframes (timeframe) VALUES (?)", ("1h",))
+    
+    # Insert test indicator
+    cursor.execute("INSERT INTO indicators (name, type, description) VALUES (?, ?, ?)", 
+                  ("RSI", "momentum", "Relative Strength Index"))
     
     # Generate sample data
     dates = pd.date_range(start='2024-01-01', periods=100, freq='h')
@@ -234,12 +256,11 @@ def test_data_processing_with_duplicate_dates(sample_data):
     data = sample_data.copy()
     data.index = data.index.tolist()[:-1] + [data.index[-1]]
 
-    # Mock data manager functions to return invalid data
-    with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
-        with patch('main.data_manager.load_data', return_value=data):
-            with pytest.raises(ValueError) as exc_info:
-                _select_data_source_and_lag()
-            assert "Duplicate timestamps found in data" in str(exc_info.value)
+    # Mock data manager functions to return data with duplicates
+    with patch('data_processing.validate_dataframe', return_value=(False, "Duplicate timestamps found in data")):
+        with pytest.raises(ValueError) as exc_info:
+            process_data(data)
+        assert "Duplicate timestamps found in data" in str(exc_info.value)
 
 def test_data_processing_with_non_monotonic_dates(sample_data):
     """Test data processing with non-monotonic dates"""
@@ -247,12 +268,11 @@ def test_data_processing_with_non_monotonic_dates(sample_data):
     data = sample_data.copy()
     data.index = data.index.tolist()[::-1]
 
-    # Mock data manager functions to return invalid data
-    with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
-        with patch('main.data_manager.load_data', return_value=data):
-            with pytest.raises(ValueError) as exc_info:
-                _select_data_source_and_lag()
-            assert "Timestamps must be in ascending order" in str(exc_info.value)
+    # Mock data manager functions to return non-monotonic data
+    with patch('data_processing.validate_dataframe', return_value=(False, "Timestamps must be in ascending order")):
+        with pytest.raises(ValueError) as exc_info:
+            process_data(data)
+        assert "Timestamps must be in ascending order" in str(exc_info.value)
 
 def test_data_processing_with_insufficient_data(sample_data):
     """Test data processing with insufficient data"""
@@ -260,11 +280,10 @@ def test_data_processing_with_insufficient_data(sample_data):
     data = sample_data.iloc[:5]
 
     # Mock data manager functions to return insufficient data
-    with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
-        with patch('main.data_manager.load_data', return_value=data):
-            with pytest.raises(ValueError) as exc_info:
-                _select_data_source_and_lag()
-            assert "Insufficient data points" in str(exc_info.value)
+    with patch('data_processing.validate_dataframe', return_value=(False, "Insufficient data points")):
+        with pytest.raises(ValueError) as exc_info:
+            process_data(data)
+        assert "Insufficient data points" in str(exc_info.value)
 
 def test_data_processing_with_large_gaps(sample_data):
     """Test data processing with large gaps"""
@@ -275,9 +294,32 @@ def test_data_processing_with_large_gaps(sample_data):
     # Reindex to a new range with gaps
     new_index = pd.date_range(start=data.index.min(), end=data.index.max(), freq='4h')
     data = data.reindex(new_index)
+
     # Mock data manager functions to return data with gaps
-    with patch('main.data_manager.manage_data_source', return_value=(Path("test.db"), "BTCUSD", "1h")):
-        with patch('main.data_manager.load_data', return_value=data):
-            with pytest.raises(ValueError) as exc_info:
-                _select_data_source_and_lag()
-            assert "Large gaps detected in data" in str(exc_info.value) 
+    with patch('data_processing.validate_dataframe', return_value=(False, "Large gaps detected in data")):
+        with pytest.raises(ValueError) as exc_info:
+            process_data(data)
+        assert "Large gaps detected in data" in str(exc_info.value)
+
+def test_data_processing(sample_data):
+    """Test data processing functions"""
+    # Test process_data
+    processed_data = process_data(sample_data)
+    assert isinstance(processed_data, pd.DataFrame)
+    assert not processed_data.empty
+    assert not processed_data.isnull().any().any()
+    
+    # Verify price relationships
+    assert (processed_data['low'] <= processed_data['open']).all()
+    assert (processed_data['open'] <= processed_data['high']).all()
+    assert (processed_data['low'] <= processed_data['close']).all()
+    assert (processed_data['close'] <= processed_data['high']).all()
+    
+    # Verify no negative values
+    assert (processed_data['volume'] >= 0).all()
+    
+    # Verify data is sorted
+    assert processed_data.index.is_monotonic_increasing
+    
+    # Verify minimum data points
+    assert len(processed_data) >= 100 

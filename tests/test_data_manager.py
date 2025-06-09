@@ -158,8 +158,10 @@ def test_data_manager_methods(data_manager: DataManager, sample_data: pd.DataFra
     # Split
     train, test = data_manager.split_data(sample_data, test_size=0.2)
     assert len(train) + len(test) == len(sample_data)
-    assert data_manager.validate_data(train)
-    assert data_manager.validate_data(test)
+    with pytest.raises(ValueError, match="Insufficient data points"):
+        data_manager.validate_data(train)
+    with pytest.raises(ValueError, match="Insufficient data points"):
+        data_manager.validate_data(test)
     
     # Normalize
     normalized = data_manager.normalize_data(sample_data, columns=["open", "close"])

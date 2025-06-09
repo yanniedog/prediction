@@ -177,32 +177,27 @@ def initialize_database(db_path: Union[str, Path], symbol: str, timeframe: str) 
             
             -- Leaderboard table
             CREATE TABLE IF NOT EXISTS leaderboard (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                symbol_id INTEGER NOT NULL,
-                timeframe_id INTEGER NOT NULL,
-                indicator_id INTEGER NOT NULL,
                 lag INTEGER NOT NULL,
                 correlation_type TEXT NOT NULL CHECK(correlation_type IN ('positive', 'negative')),
                 correlation_value REAL NOT NULL,
+                indicator_name TEXT NOT NULL,
                 config_json TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                timeframe TEXT NOT NULL,
                 dataset_daterange TEXT NOT NULL,
                 calculation_timestamp TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (symbol_id) REFERENCES symbols(id)
-                    ON DELETE CASCADE,
-                FOREIGN KEY (timeframe_id) REFERENCES timeframes(id)
-                    ON DELETE CASCADE,
-                FOREIGN KEY (indicator_id) REFERENCES indicators(id)
-                    ON DELETE CASCADE,
-                UNIQUE(symbol_id, timeframe_id, indicator_id, lag, correlation_type)
+                config_id_source_db INTEGER,
+                source_db_name TEXT,
+                PRIMARY KEY (lag, correlation_type)
             );
             
             -- Create indices for better query performance
             CREATE INDEX IF NOT EXISTS idx_historical_data_symbol_timeframe ON historical_data(symbol_id, timeframe_id);
             CREATE INDEX IF NOT EXISTS idx_historical_data_open_time ON historical_data(open_time);
             CREATE INDEX IF NOT EXISTS idx_correlations_main ON correlations(symbol_id, timeframe_id, indicator_id, lag);
-            CREATE INDEX IF NOT EXISTS idx_leaderboard_main ON leaderboard(symbol_id, timeframe_id, indicator_id, lag);
-            CREATE INDEX IF NOT EXISTS idx_leaderboard_correlation ON leaderboard(correlation_type, correlation_value);
+            CREATE INDEX IF NOT EXISTS idx_leaderboard_lag ON leaderboard(lag);
+            CREATE INDEX IF NOT EXISTS idx_leaderboard_lag_val ON leaderboard(lag, correlation_value);
+            CREATE INDEX IF NOT EXISTS idx_leaderboard_indicator_config ON leaderboard(indicator_name, config_id_source_db);
         """)
         
         # Insert initial symbol and timeframe and get their IDs
@@ -273,34 +268,17 @@ def _get_or_create_id(conn: sqlite3.Connection, table: str, column: str, value: 
     try:
         # Check if the value (case-insensitive) already exists
         cursor.execute(f"SELECT id FROM {table} WHERE LOWER({column}) = ?", (lookup_value,))
-        result = cursor.fetchone()
-        if result:
-            return result[0] # Return existing ID
-        else:
-            # Insert the new value (using original case)
-            cursor.execute(f"INSERT INTO {table} ({column}) VALUES (?)", (str_value,))
-            new_id = cursor.lastrowid
-            # Verify insertion and ID retrieval
-            if new_id is None:
-                 # This can happen in rare cases, re-query to be sure
-                 logger.warning(f"Insert into '{table}' for '{str_value}' did not return lastrowid. Re-querying.")
-                 cursor.execute(f"SELECT id FROM {table} WHERE LOWER({column}) = ?", (lookup_value,))
-                 result = cursor.fetchone()
-                 if result: return result[0]
-                 else: raise sqlite3.OperationalError(f"Cannot retrieve ID for '{str_value}' in '{table}' after insert.")
-            # logger.debug(f"Inserted '{str_value}' into '{table}', ID: {new_id}") # Reduce log noise
-            return new_id
-    except sqlite3.IntegrityError: # Handle potential race condition if another process inserts concurrently
-        logger.warning(f"IntegrityError inserting '{str_value}' into '{table}'. Re-querying.")
-        cursor.execute(f"SELECT id FROM {table} WHERE LOWER({column}) = ?", (lookup_value,))
-        result = cursor.fetchone()
-        if result: return result[0]
-        else: # This should ideally not happen if IntegrityError occurred due to uniqueness
-            logger.critical(f"CRITICAL: Cannot retrieve ID for '{str_value}' in '{table}' after IntegrityError.")
-            raise
+        row = cursor.fetchone()
+        if row:
+            return row[0]
+
+        # If not found, insert new value
+        cursor.execute(f"INSERT INTO {table} ({column}) VALUES (?)", (str_value,))
+        return cursor.lastrowid
+
     except sqlite3.Error as e:
-        logger.error(f"DB error getting/creating ID for '{str_value}' in '{table}': {e}", exc_info=True)
-        raise # Re-raise the original SQLite error
+        logger.error(f"DB error getting/creating ID for '{value}' in '{table}': {e}", exc_info=True)
+        raise
 
 def get_or_create_indicator_config_id(conn: sqlite3.Connection, indicator_name: str, params: Dict[str, Any]) -> int:
     """Gets the ID for an indicator config, creating if necessary. Manages its own transaction."""

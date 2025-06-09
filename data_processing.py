@@ -2,11 +2,12 @@ import pandas as pd
 from pathlib import Path
 from typing import Tuple
 
-def validate_data(data: pd.DataFrame) -> Tuple[bool, str]:
+def validate_data(data: pd.DataFrame, is_normalized: bool = False) -> Tuple[bool, str]:
     """Validate input data for required format and quality.
     
     Args:
         data (pd.DataFrame): Input data to validate
+        is_normalized (bool): Whether the data is normalized. If True, validates relative relationships instead of absolute values.
         
     Returns:
         Tuple[bool, str]: (is_valid, error_message)
@@ -19,8 +20,10 @@ def validate_data(data: pd.DataFrame) -> Tuple[bool, str]:
     3. No NaN values allowed
     4. No duplicate timestamps
     5. Timestamps must be monotonically increasing
-    6. Price relationships must be valid (low <= open/close <= high)
-    7. No negative values in any column
+    6. Price relationships must be valid:
+       - For non-normalized data: low <= open/close <= high
+       - For normalized data: relative relationships maintained
+    7. No negative values in volume (for non-normalized data)
     8. Minimum 100 data points required
     9. No gaps larger than 7 days in data
     """
@@ -53,15 +56,25 @@ def validate_data(data: pd.DataFrame) -> Tuple[bool, str]:
             
         # Check price relationships
         price_cols = ['open', 'high', 'low', 'close']
-        for idx, row in data.iterrows():
-            if not (row['low'] <= row['open'] <= row['high'] and 
-                   row['low'] <= row['close'] <= row['high']):
-                return False, f"Invalid price relationship at {idx}: low <= open/close <= high must be true"
+        if is_normalized:
+            # For normalized data, check relative relationships
+            for idx, row in data.iterrows():
+                # Get the order of values
+                values = [row['low'], row['open'], row['close'], row['high']]
+                sorted_values = sorted(values)
+                # Check if the order matches expected relationships
+                if not (sorted_values[0] == row['low'] and sorted_values[-1] == row['high']):
+                    return False, f"Invalid normalized price relationship at {idx}: relative order of prices not maintained"
+        else:
+            # For non-normalized data, check absolute relationships
+            for idx, row in data.iterrows():
+                if not (row['low'] <= row['open'] <= row['high'] and 
+                       row['low'] <= row['close'] <= row['high']):
+                    return False, f"Invalid price relationship at {idx}: low <= open/close <= high must be true"
                 
-        # Check for negative values
-        neg_cols = data[required_cols].columns[(data[required_cols] < 0).any()].tolist()
-        if neg_cols:
-            return False, f"Negative values found in columns: {neg_cols}"
+        # Check for negative values in volume (only for non-normalized data)
+        if not is_normalized and (data['volume'] < 0).any():
+            return False, "Negative values found in volume column"
             
         # Check minimum data points
         if len(data) < 100:
@@ -173,4 +186,53 @@ def validate_required_columns_and_nans(data: pd.DataFrame) -> Tuple[bool, str]:
         return False, f"NaN values found in columns: {nan_cols}"
     if data.empty:
         return False, "Empty DataFrame after normalization"
-    return True, "OK" 
+    return True, "OK"
+
+def validate_dataframe(df: pd.DataFrame) -> Tuple[bool, str]:
+    """Validate DataFrame for data integrity and price relationships.
+    
+    Args:
+        df: DataFrame to validate
+        
+    Returns:
+        Tuple of (is_valid, message) where is_valid is a boolean indicating if the data is valid,
+        and message is a string describing any validation errors found.
+    """
+    if df.empty:
+        return False, "DataFrame is empty"
+        
+    # Check for required columns
+    required_cols = ['open', 'high', 'low', 'close']
+    missing_cols = [col for col in required_cols if col not in df.columns]
+    if missing_cols:
+        return False, f"Missing required columns: {missing_cols}"
+        
+    # Check for NaN values
+    if df[required_cols].isnull().any().any():
+        return False, "Found NaN values in price columns"
+        
+    # Check for duplicate timestamps
+    if isinstance(df.index, pd.DatetimeIndex):
+        if not df.index.is_monotonic_increasing:
+            return False, "Timestamps must be in ascending order"
+        if df.index.duplicated().any():
+            return False, "Duplicate timestamps found in data"
+            
+    # Check for sufficient data points
+    if len(df) < 30:  # Minimum required for meaningful analysis
+        return False, "Insufficient data points (minimum 30 required)"
+        
+    # Check for large gaps in data
+    if isinstance(df.index, pd.DatetimeIndex):
+        time_diff = df.index.to_series().diff()
+        max_gap = time_diff.max()
+        if max_gap > pd.Timedelta(days=7):  # Adjust threshold as needed
+            return False, f"Large gaps detected in data (max gap: {max_gap})"
+            
+    # Validate price relationships
+    for idx, row in df.iterrows():
+        if not (row['low'] <= row['open'] <= row['high'] and 
+                row['low'] <= row['close'] <= row['high']):
+            return False, f"Invalid price relationship at {idx}: low <= open/close <= high must be true"
+            
+    return True, "Data validation passed" 
