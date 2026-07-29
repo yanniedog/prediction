@@ -160,6 +160,7 @@ cython_debug/
 #.idea/
 *.db
 *.txt
+!requirements.txt
 *.png
 *.bak
 *.csv
@@ -167,3 +168,12 @@ cython_debug/
 temp_test_test_backup_and_restore.db-shm
 temp_test_test_backup_and_restore.db-wal
 *.db-shm
+
+# Local / generated artifacts (keep out of fresh clones)
+project_backup/
+.venv/
+__pycache__/
+*.db-wal
+.coverage
+htmlcov/
+.pytest_cache/
